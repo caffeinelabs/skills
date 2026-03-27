@@ -1,14 +1,14 @@
 ---
 name: email-verification
 description: Support for sending an email with a link the recipient can click to prove they own the email address.
-version: 0.1.0
+version: 0.1.1
 compatibility:
   mops:
     caffeineai-email-verification: "~0.1.0"
     caffeineai-email: "~0.1.0"
 ---
 
-# Email — Verification (v1)
+# Email — Verification
 
 ## Overview
 
@@ -46,7 +46,7 @@ To check whether an email is verified use the `contains` function. Do NOT try to
 
 ### To handle the verification link
 
-Use the prefabricated module `caffeineai-email-verification/verificationMixin.mo` which cannot be modified.
+Use the prefabricated module `mo:caffeineai-email-verification/verificationMixin.mo` which cannot be modified.
 
 The MixinEmailVerification handles calls to the verification link to verify an email address.
 
@@ -56,7 +56,7 @@ import MixinEmailVerification "mo:caffeineai-email-verification/verificationMixi
 
 ### For sending users a verification email
 
-- This component depends on the `email` component for sending emails.
+- This extension depends on the [extension-email](../extension-email/SKILL.md) for sending emails.
 - Use the sendVerificationEmail function. 
 - It returns a SendResult which is #ok if the email is sent successfully otherwise #err(error) with the error text. 
 - Each recipient receives an individual email with a specific verification link for them
