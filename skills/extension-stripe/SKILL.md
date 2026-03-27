@@ -1,7 +1,7 @@
 ---
 name: stripe
 description: Payment support based on Stripe, supporting credit cards and debit cards
-version: 0.1.0
+version: 0.1.1
 compatibility:
   mops:
     caffeineai-stripe: "~0.1.0"
@@ -9,7 +9,7 @@ compatibility:
     caffeineai-authorization: "~0.1.0"
 ---
 
-# Stripe Payment Integration (v3)
+# Stripe Payment Integration
 
 ## Overview
 
@@ -19,7 +19,7 @@ This skill adds Stripe payment support using HTTP outcalls. The backend manages 
 
 For Stripe payment integration:
 
-Prerequisite: You must have the `authorization` component implemented, as this integration depends on it.
+Prerequisite: You must follow [extension-authorization](../extension-authorization/SKILL.md) first, as this integration depends on it.
 
 There is the prefabricated module `mo:caffeineai-stripe/stripe.mo` that that cannot be modified. It provides fundamental functionality for making HTTP GET or PUT requests in the backend.
 
