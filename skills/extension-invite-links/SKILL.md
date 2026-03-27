@@ -1,14 +1,14 @@
 ---
 name: invite-links
 description: Requests invite-link / RSVP based access where guests can submit responses without login while admin can view responses with login.
-version: 0.1.0
+version: 0.1.1
 compatibility:
   mops:
     caffeineai-invite-links: "~0.1.0"
     caffeineai-authorization: "~0.1.0"
 ---
 
-# Invite Links & RSVP (v3)
+# Invite Links & RSVP
 
 ## Overview
 
@@ -18,7 +18,7 @@ This skill adds invite-link generation and RSVP collection. Admins generate uniq
 
 Invite links and RSVP system functionality:
 
-Prerequisite: You must have the `authorization` component implemented first, as this system depends on it for admin access control.
+Prerequisite: You must follow [extension-authorization](../extension-authorization/SKILL.md) first, as this integration depends on it.
 
 There is a prefabricated module `mo:caffeineai-invite-links/invite-links-module.mo` that cannot be modified. It provides invite links with RSVP management.
 
