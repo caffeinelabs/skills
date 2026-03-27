@@ -1,0 +1,1 @@
+{"version":3,"file":"index.js","sourceRoot":"","sources":["../src/index.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,YAAY,EAAE,MAAM,QAAQ,CAAC;AACtC,OAAO,EAAE,aAAa,EAAE,MAAM,iBAAiB,CAAC","sourcesContent":["export { ExternalBlob } from \"./blob\";\nexport { StorageClient } from \"./StorageClient\";\n"]}

@@ -1,0 +1,18 @@
+name = "no-redeclare-immutable-object-storage-gateway"
+description = "Do NOT redeclare _immutableObjectStorageUpdateGatewayPrincipals — it is provided by MixinStorage"
+query = """
+(source_file
+  (obj_dec "actor"
+    (obj_body
+      (dec_field
+        (func_dec
+          (_) @error
+          (#eq? @error "_immutableObjectStorageUpdateGatewayPrincipals"))))))
+(source_file
+  (class_dec "actor"
+    (obj_body
+      (dec_field
+        (func_dec
+          (_) @error
+          (#eq? @error "_immutableObjectStorageUpdateGatewayPrincipals"))))))
+"""

@@ -1,0 +1,13 @@
+[package]
+name = "caffeineai-object-storage"
+version = "0.1.0"
+description = "Object storage integration for Caffeine"
+license = "Apache-2.0"
+repository = "https://github.com/caffeinelabs/skills"
+keywords = ["motoko", "icp", "storage"]
+
+[dependencies]
+core = "2.2.0"
+
+[toolchain]
+moc = "1.2.0"
