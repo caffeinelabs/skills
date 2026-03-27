@@ -1,0 +1,64 @@
+---
+name: email
+description: Support for sending service/transactional emails. Don't use this for sending marketing emails or verification emails.
+version: 0.1.0
+compatibility:
+  mops:
+    caffeineai-email: "~0.1.0"
+---
+
+# Email — Service/Transactional (v1)
+
+## Overview
+
+This skill adds support for sending service and transactional emails from the backend canister. Use `sendServiceEmail` for order confirmations, notifications, and similar one-off emails.
+
+# Backend
+
+This component is for sending service/transactional emails. 
+
+There is the prefabricated module `caffeineai-email/emailClient.mo` which cannot be modified.
+
+- Use the sendServiceEmail function. 
+- Each recipient is sent an individual email
+- It returns a SendResult which is #ok if the email is sent successfully otherwise #err(error) with the error text. 
+
+```mo:caffeineai-email/emailClient.mo
+module {
+  public type SendResult = {
+    #ok;
+    #err : Text;
+  };
+
+  public func sendServiceEmail(
+    fromUsername : Text,
+    recipients : [Text],
+    subject : Text,
+    htmlBody : Text,
+  ) : async SendResult;
+};
+```
+
+Usage for `sendServiceEmail`:
+
+```motoko filepath=main.mo
+import Runtime "mo:core/Runtime";
+import EmailClient "mo:caffeineai-email/emailClient";
+
+actor {
+  public func sendOrderConfirmationEmail(recipientEmailAddress : Text, username : Text, orderReference : Text) : async () {
+    let result = await EmailClient.sendServiceEmail(
+      "no-reply",
+      [recipientEmailAddress],
+      "Order " # orderReference # " confirmed",
+      "Hello " # username # ",\nYour order " # orderReference # " has been confirmed. Your items will ship tomorrow.",
+    );
+    switch (result) {
+      case (#ok) {};
+      case (#err(error)) {
+        Runtime.trap("Failed to send order confirmation email: " # error);
+      };
+    };
+  };
+};
+```
