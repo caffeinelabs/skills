@@ -1,13 +1,13 @@
 ---
 name: http-outcalls
 description: HTTP outcalls performed by the backend canister (not in the frontend).
-version: 0.1.0
+version: 0.1.1
 compatibility:
   mops:
     caffeineai-http-outcalls: "~0.1.0"
 ---
 
-# HTTP Outcalls (v3)
+# HTTP Outcalls
 
 ## Overview
 
