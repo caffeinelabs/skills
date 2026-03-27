@@ -1,15 +1,15 @@
 ---
 name: authorization
 description: Authorization system with role-based access control. Must-have for all apps that manage personal or access-restricted data.
-version: 0.1.0
+version: 0.1.1
 compatibility:
   mops:
-    caffeineai-authorization: "~1.0.0"
+    caffeineai-authorization: "~0.1.0"
   npm:
-    "@caffeineai/core-infrastructure": "~1.0.0"
+    "@caffeineai/core-infrastructure": "~0.1.0"
 ---
 
-# Authorization (v5 — Mixin-Based Access Control)
+# Authorization
 
 ## Overview
 
