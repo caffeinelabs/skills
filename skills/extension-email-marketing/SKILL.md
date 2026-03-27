@@ -1,7 +1,7 @@
 ---
 name: email-marketing
-description: Support for sending personalised marketing emails to subscribers with an unsubscribe link.
-version: 0.1.0
+description: Send personalised marketing emails to subscribers with an unsubscribe link.
+version: 0.1.1
 compatibility:
   mops:
     caffeineai-email-marketing: "~0.1.0"
@@ -9,7 +9,7 @@ compatibility:
     caffeineai-email-verification: "~0.1.0"
 ---
 
-# Email — Marketing (v1)
+# Email — Marketing
 
 ## Overview
 
@@ -21,11 +21,11 @@ This skill adds direct marketing email support with subscriber management, topic
 
 - Users MUST have verified their email address AND MUST be subscribed to a marketing topic before they can receive marketing emails on that topic
 - Marketing emails MUST contain an unsubscribe link which will unsubscribe the user from the given topic
-- This component depends on the `email-verification` component for verifying email addresses.
+- This component depends on the [extension-email-verification](../extension-email-verification/SKILL.md) for verifying email addresses, be sure to check that too.
 
 ### To subscribe users to marketing topics and manage lists of subscribers
 
-- Use the prefabricated module `caffeineai-email-marketing/subscribers.mo` which cannot be modified.
+- Use the prefabricated module `mo:caffeineai-email-marketing/subscribers.mo` which cannot be modified.
 - Marketing email subscribers MUST be handled solely through this subscribers module
 - Do NOT also store a subscribed status against user profiles
 
