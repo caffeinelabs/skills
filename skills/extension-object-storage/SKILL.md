@@ -1,7 +1,7 @@
 ---
 name: object-storage
 description: General file/object storage, such as for images, videos, files, documents and other bulk data. Perfect fit for image galleries, video galleries, and other file or object management. Supports large files beyond IC limit, with browser-cached HTTP URL access.
-version: 0.1.0
+version: 0.1.1
 compatibility:
   mops:
     caffeineai-object-storage: "~0.1.0"
@@ -33,7 +33,7 @@ fileRef : Text
 
 ## Module API
 
-The only type you use from `object-storage/Storage` is `ExternalBlob` (which is `Blob`). All other functions in `Storage.mo` are internal infrastructure used by `MixinStorage` -- do not call them directly.
+The only type you use from `mo:caffeineai-object-storage/Storage` is `ExternalBlob` (which is `Blob`). All other functions in `Storage.mo` are internal infrastructure used by `MixinStorage` -- do not call them directly.
 
 ## Setup in main.mo
 
