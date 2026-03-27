@@ -1,14 +1,14 @@
 ---
 name: user-approval
 description: Approval-based user management.
-version: 0.1.0
+version: 0.1.1
 compatibility:
   mops:
     caffeineai-user-approval: "~0.1.0"
     caffeineai-authorization: "~0.1.0"
 ---
 
-# User Approval (v3)
+# User Approval
 
 ## Overview
 
@@ -18,7 +18,7 @@ This skill adds approval-based user management. Users request access; admins app
 
 Approval-based user management:
 
-Prerequisite: You must have the `authorization` component implemented first, as this system depends on it.
+Prerequisite: You must follow [extension-authorization](../extension-authorization/SKILL.md) first, as this integration depends on it.
 
 There is a prefabricated module `mo:caffeineai-user-approval/approval` that cannot be modified. It provides approval-based user management with role-based access control.
 
