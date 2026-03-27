@@ -1,14 +1,14 @@
 ---
 name: email-calendar-events
 description: Support for organising events/meetings and sending invitations by email.
-version: 0.1.0
+version: 0.1.1
 compatibility:
   mops:
     caffeineai-email-calendar-events: "~0.1.0"
     caffeineai-authorization: "~0.1.0"
 ---
 
-# Email — Calendar Events (v1)
+# Email — Calendar Events
 
 ## Overview
 
@@ -23,7 +23,7 @@ This skill adds support for organising events/meetings and sending iCalendar inv
 
 ### To add/update/cancel/delete/get/list calendar events
 
-- Use the prefabricated module `caffeineai-email-calendar-events/calendarEvents.mo` which cannot be modified.
+- Use the prefabricated module `mo:caffeineai-email-calendar-events/calendarEvents.mo` which cannot be modified.
 
 ```mo:caffeineai-email-calendar-events/calendarEvents.mo
 module {
@@ -84,7 +84,7 @@ module {
 
 ### For sending calendar event invittions to attendees by email
 
-- This component depends on the `email` component for sending calendar event emails.
+- This component depends on [extension-email](../extension-email/SKILL.md) for sending calendar event emails.
 - Use the sendCalendarEvent function. 
 
 ```mo:caffeineai-email/emailClient.mo
