@@ -1,0 +1,18 @@
+name = "no-redeclare-get-caller-user-role"
+description = "Do NOT redeclare getCallerUserRole — it is provided by MixinAuthorization"
+query = """
+(source_file
+  (obj_dec "actor"
+    (obj_body
+      (dec_field
+        (func_dec
+          (_) @error
+          (#eq? @error "getCallerUserRole"))))))
+(source_file
+  (class_dec "actor"
+    (obj_body
+      (dec_field
+        (func_dec
+          (_) @error
+          (#eq? @error "getCallerUserRole"))))))
+"""

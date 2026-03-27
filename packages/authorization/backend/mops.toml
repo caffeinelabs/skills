@@ -1,0 +1,13 @@
+[package]
+name = "caffeineai-authorization"
+version = "0.1.0"
+description = "Authorization system with role-based access control. Must-have for all apps that manage personal or access-restricted data."
+license = "Apache-2.0"
+repository = "https://github.com/caffeinelabs/skills"
+keywords = ["motoko", "icp", "rbac"]
+
+[dependencies]
+core = "2.2.0"
+
+[toolchain]
+moc = "1.2.0"

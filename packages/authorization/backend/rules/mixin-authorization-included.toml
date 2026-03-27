@@ -1,0 +1,16 @@
+name = "include-authorization"
+description = "Include the authorization mixin with `include MixinAuthorization(accessControlState);`"
+query = """
+(source_file (obj_dec "actor" (obj_body))) @error
+(source_file (class_dec "actor" (obj_body))) @error
+(source_file
+  (obj_dec "actor"
+   (obj_body
+    (dec_field (include_dec (identifier) @mixin))))
+   (#eq? @mixin "MixinAuthorization")) @filter
+(source_file
+  (class_dec "actor"
+   (obj_body
+    (dec_field (include_dec (identifier) @mixin))))
+   (#eq? @mixin "MixinAuthorization")) @filter
+"""
