@@ -1,13 +1,13 @@
 ---
 name: camera
 description: Web-camera support.
-version: 0.1.0
+version: 0.1.1
 compatibility:
   npm:
-    "@caffeineai/camera": "~1.0.0"
+    "@caffeineai/camera": "~0.1.0"
 ---
 
-# Camera (v1)
+# Camera
 
 ## Overview
 
@@ -17,9 +17,9 @@ This skill adds web-camera access via a prefabricated React hook. Supports photo
 
 For camera support:
 
-There is a prefabricated React hook `camera/hooks/useCamera.ts` that cannot be modified.
+There is a prefabricated React hook `@caffeinelabs/camera/hooks/useCamera.ts` that cannot be modified.
 
-```
+```typescript filepath=@caffeinelabs/camera/hooks/useCamera.ts
 import { RefObject } from 'react';
 
 export interface CameraConfig {
@@ -70,7 +70,7 @@ export declare function useCamera(config?: CameraConfig): UseCameraReturn;
 Usage example:
 
 ```
-import { useCamera } from '@caffeineai/camera/hooks/useCamera';
+import { useCamera } from '@caffeineai/camera';
 
 function CameraComponent() {
     const { 
