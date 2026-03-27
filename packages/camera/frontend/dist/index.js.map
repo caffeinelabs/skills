@@ -1,0 +1,1 @@
+{"version":3,"file":"index.js","sourceRoot":"","sources":["../src/index.ts"],"names":[],"mappings":"AAAA,OAAO,EAGN,SAAS,GACT,MAAM,mBAAmB,CAAC","sourcesContent":["export {\n\ttype CameraConfig,\n\ttype CameraError,\n\tuseCamera,\n} from \"./hooks/useCamera\";\n"]}
