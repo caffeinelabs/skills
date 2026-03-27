@@ -1,0 +1,15 @@
+[package]
+name = "caffeineai-email-marketing"
+version = "0.1.0"
+description = "Support for sending personalised marketing emails to subscribers with an unsubscribe link."
+license = "Apache-2.0"
+repository = "https://github.com/caffeinelabs/skills"
+keywords = ["motoko", "icp", "email"]
+
+[dependencies]
+core = "2.2.0"
+caffeineai-email = "../../email/backend"
+caffeineai-email-verification = "../../email-verification/backend"
+
+[toolchain]
+moc = "1.2.0"
