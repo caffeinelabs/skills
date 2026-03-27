@@ -1,0 +1,14 @@
+[package]
+name = "caffeineai-email-calendar-events"
+version = "0.1.0"
+description = "Support for organising events/meetings and sending invitations by email."
+license = "Apache-2.0"
+repository = "https://github.com/caffeinelabs/skills"
+keywords = ["motoko", "icp", "email"]
+
+[dependencies]
+core = "2.2.0"
+caffeineai-email = "../../email/backend"
+
+[toolchain]
+moc = "1.2.0"
