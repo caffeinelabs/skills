@@ -1,0 +1,13 @@
+[package]
+name = "caffeineai-email"
+version = "0.1.0"
+description = "Support for sending service/transactional emails. Don't use this for sending marketing emails or verification emails."
+license = "Apache-2.0"
+repository = "https://github.com/caffeinelabs/skills"
+keywords = ["motoko", "icp", "email"]
+
+[dependencies]
+core = "2.2.0"
+
+[toolchain]
+moc = "1.2.0"
