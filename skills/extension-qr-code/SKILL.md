@@ -1,14 +1,14 @@
 ---
 name: qr-code
 description: QR code scanner using the camera.
-version: 0.1.0
+version: 0.1.1
 compatibility:
   npm:
     "@caffeineai/qr-code": "~0.1.0"
     "@caffeineai/camera": "~0.1.0"
 ---
 
-# QR Code Scanner (v1)
+# QR Code Scanner
 
 ## Overview
 
@@ -18,11 +18,11 @@ This skill adds QR code scanning using the device camera. Built on top of the ca
 
 For QR code scanner support:
 
-There is a prefabricated React hook `qr-code/hooks/useQRScanner.ts` that cannot be modified.
+There is a prefabricated React hook imported from `@caffeinelabs/qr-code` that cannot be modified.
 
-```
+```typescript filepath=@caffeinelabs/qr-code/src/hooks/useQRScanner.ts
 import { RefObject } from 'react';
-import { CameraConfig, CameraError } from '@caffeineai/camera/hooks/useCamera';
+import { CameraConfig, CameraError } from '@caffeineai/camera';
 
 export interface QRResult {
   // The decoded QR code data
@@ -85,8 +85,8 @@ export declare function useQRScanner(config?: QRScannerConfig): UseQRScannerRetu
 
 Usage example:
 
-```
-import { useQRScanner } from '@caffeineai/qr-code/hooks/useQRScanner';
+```typescript filepath=example.ts
+import { useQRScanner } from '@caffeineai/qr-code';
 
 function QRScannerComponent() {
     const { 
