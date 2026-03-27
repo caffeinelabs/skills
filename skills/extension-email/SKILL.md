@@ -1,13 +1,13 @@
 ---
 name: email
 description: Support for sending service/transactional emails. Don't use this for sending marketing emails or verification emails.
-version: 0.1.0
+version: 0.1.1
 compatibility:
   mops:
     caffeineai-email: "~0.1.0"
 ---
 
-# Email — Service/Transactional (v1)
+# Email — Service/Transactional
 
 ## Overview
 
@@ -17,7 +17,7 @@ This skill adds support for sending service and transactional emails from the ba
 
 This component is for sending service/transactional emails. 
 
-There is the prefabricated module `caffeineai-email/emailClient.mo` which cannot be modified.
+There is the prefabricated module `mo:caffeineai-email/emailClient.mo` which cannot be modified.
 
 - Use the sendServiceEmail function. 
 - Each recipient is sent an individual email
