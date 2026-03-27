@@ -1,0 +1,15 @@
+[package]
+name = "caffeineai-email-verification"
+version = "0.1.0"
+description = "Support for sending an email with a link the recipient can click to prove they own the email address."
+license = "Apache-2.0"
+repository = "https://github.com/caffeinelabs/skills"
+keywords = ["motoko", "icp", "email"]
+
+[dependencies]
+core = "2.2.0"
+caffeineai-email = "../../email/backend"
+
+
+[toolchain]
+moc = "1.2.0"
