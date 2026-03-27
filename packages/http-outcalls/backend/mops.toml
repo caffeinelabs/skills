@@ -1,0 +1,13 @@
+[package]
+name = "caffeineai-http-outcalls"
+version = "0.1.0"
+description = "HTTP outcalls performed by the backend canister (not in the frontend)."
+license = "Apache-2.0"
+repository = "https://github.com/caffeinelabs/skills"
+keywords = ["motoko", "icp", "http"]
+
+[dependencies]
+core = "2.2.0"
+
+[toolchain]
+moc = "1.2.0"
