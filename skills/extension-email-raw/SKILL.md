@@ -1,0 +1,78 @@
+---
+name: email-raw
+description: Support for sending an email with multiple to, cc and bcc addresses.
+version: 0.1.0
+compatibility:
+  mops:
+    caffeineai-email: "~0.1.0"
+---
+
+# Email — Raw Multi-Recipient (v1)
+
+## Overview
+
+This skill adds support for sending emails with multiple `to`, `cc`, and `bcc` recipients. Not suitable for bulk service emails (recipients see each other).
+
+# Backend
+
+## This component is for sending an email with support for multiple `to`, `cc` and `bcc` addresses.
+
+- This should NOT be used for sending service emails to multiple users because each recipient will see all the other recipients listed which would typically be a breach of user privacy.
+
+### For sending an email
+
+- This component depends on the `email` component for sending emails.
+- Use the sendRawEmail function. 
+- It returns a SendResult which is #ok if the email is sent successfully otherwise #err(error) with the error text. 
+- There can be a maximum of 50 recipients in total
+- Each recipient receives the same email
+
+```mo:caffeineai-email/emailClient.mo
+module {
+  public type SendResult = {
+    #ok;
+    #err : Text;
+  };
+
+  public func sendRawEmail(
+    fromUsername : Text,
+    to : [Text],
+    cc : [Text],
+    bcc : [Text],
+    subject : Text,
+    htmlBody : Text,
+  ) : async SendResult;
+};
+```
+
+### Example usage for sending an email reminder to meeting attendees.
+
+```motoko filepath=main.mo
+import Runtime "mo:core/Runtime";
+import EmailClient "mo:caffeineai-email/emailClient";
+
+actor {
+  public func sendMeetingReminder(
+    meetingSubject : Text,
+    meetingTime : Text,
+    confirmedAttendeeEmails : [Text],
+    tentativeAttendeeEmails : [Text],
+  ) : async () {
+    let result = await EmailClient.sendRawEmail(
+      "no-reply",
+      confirmedAttendeeEmails,
+      tentativeAttendeeEmails,
+      [],
+      meetingSubject,
+      "Reminder the meeting will start at " # meetingTime,
+    );
+
+    switch (result) {
+      case (#ok) {};
+      case (#err(error)) {
+        Runtime.trap("Failed to send meeting reminder email: " # error);
+      };
+    };
+  };
+};
+```
