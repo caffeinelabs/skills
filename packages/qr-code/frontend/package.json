@@ -1,0 +1,43 @@
+{
+	"name": "@caffeineai/qr-code",
+	"version": "0.1.0",
+	"type": "module",
+	"license": "Apache-2.0",
+	"author": "Caffeine Labs AG",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/caffeinelabs/skills",
+		"directory": "packages/qr-code/frontend"
+	},
+	"files": [
+		"dist"
+	],
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"@caffeine/source": "./src/index.ts",
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		},
+		"./package.json": "./package.json"
+	},
+	"scripts": {
+		"clean": "rimraf dist",
+		"build": "tsc",
+		"type-check": "tsc --noEmit",
+		"biome:check": "biome check --error-on-warnings .",
+		"biome:check:fix": "biome check --write --error-on-warnings ."
+	},
+	"devDependencies": {
+		"@types/react": "~19.1.0",
+		"@types/node": "^25.5.0"
+	},
+	"dependencies": {
+		"react": "~19.1.0",
+		"@caffeineai/camera": "workspace:*"
+	},
+	"publishConfig": {
+		"access": "public"
+	}
+}
