@@ -1,13 +1,13 @@
 ---
 name: email-raw
-description: Support for sending an email with multiple to, cc and bcc addresses.
-version: 0.1.0
+description: Send an email with multiple to, cc and bcc addresses.
+version: 0.1.1
 compatibility:
   mops:
     caffeineai-email: "~0.1.0"
 ---
 
-# Email — Raw Multi-Recipient (v1)
+# Email — Raw Multi-Recipient
 
 ## Overview
 
@@ -15,13 +15,13 @@ This skill adds support for sending emails with multiple `to`, `cc`, and `bcc` r
 
 # Backend
 
-## This component is for sending an email with support for multiple `to`, `cc` and `bcc` addresses.
+## This extension is for sending an email with support for multiple `to`, `cc` and `bcc` addresses.
 
 - This should NOT be used for sending service emails to multiple users because each recipient will see all the other recipients listed which would typically be a breach of user privacy.
 
 ### For sending an email
 
-- This component depends on the `email` component for sending emails.
+- This extension depends on the [extension-email](../extension-email/SKILL.md) for sending emails.
 - Use the sendRawEmail function. 
 - It returns a SendResult which is #ok if the email is sent successfully otherwise #err(error) with the error text. 
 - There can be a maximum of 50 recipients in total
