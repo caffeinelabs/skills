@@ -1,0 +1,14 @@
+[package]
+name = "caffeineai-stripe"
+version = "0.1.0"
+description = "Payment support based on Stripe, supporting credit cards and debit cards"
+license = "Apache-2.0"
+repository = "https://github.com/caffeinelabs/skills"
+keywords = ["motoko", "icp", "payments"]
+
+[dependencies]
+core = "2.2.0"
+caffeineai-http-outcalls = "../../http-outcalls/backend"
+
+[toolchain]
+moc = "1.2.0"

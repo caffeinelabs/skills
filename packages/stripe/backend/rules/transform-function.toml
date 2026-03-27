@@ -1,0 +1,20 @@
+name = "transform-function"
+description = "transform function must be declared for HTTP outcall response transformation"
+query = """
+(source_file (obj_dec "actor" (obj_body))) @error
+(source_file (class_dec "actor" (obj_body))) @error
+(source_file
+  (obj_dec "actor"
+    (obj_body
+      (dec_field
+        (func_dec
+          (_) @fn
+          (#eq? @fn "transform"))))))  @filter
+(source_file
+  (class_dec "actor"
+    (obj_body
+      (dec_field
+        (func_dec
+          (_) @fn
+          (#eq? @fn "transform"))))))  @filter
+"""

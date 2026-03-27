@@ -1,0 +1,20 @@
+name = "is-stripe-configured"
+description = "isStripeConfigured function must be declared in the actor"
+query = """
+(source_file (obj_dec "actor" (obj_body))) @error
+(source_file (class_dec "actor" (obj_body))) @error
+(source_file
+  (obj_dec "actor"
+    (obj_body
+      (dec_field
+        (func_dec
+          (_) @fn
+          (#eq? @fn "isStripeConfigured"))))))  @filter
+(source_file
+  (class_dec "actor"
+    (obj_body
+      (dec_field
+        (func_dec
+          (_) @fn
+          (#eq? @fn "isStripeConfigured"))))))  @filter
+"""
