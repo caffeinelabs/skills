@@ -1,7 +1,7 @@
 ---
-name: http-outcalls
+name: extension-http-outcalls
 description: HTTP outcalls performed by the backend canister (not in the frontend).
-version: 0.1.1
+version: 0.1.2
 compatibility:
   mops:
     caffeineai-http-outcalls: "~0.1.0"
