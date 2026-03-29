@@ -1,7 +1,7 @@
 ---
-name: camera
+name: extension-camera
 description: Web-camera support.
-version: 0.1.1
+version: 0.1.2
 compatibility:
   npm:
     "@caffeineai/camera": "~0.1.0"
