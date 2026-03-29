@@ -1,7 +1,7 @@
 ---
-name: email-marketing
+name: extension-email-marketing
 description: Send personalised marketing emails to subscribers with an unsubscribe link.
-version: 0.1.1
+version: 0.1.2
 compatibility:
   mops:
     caffeineai-email-marketing: "~0.1.0"
