@@ -1,7 +1,7 @@
 ---
-name: stripe
+name: extension-stripe
 description: Payment support based on Stripe, supporting credit cards and debit cards
-version: 0.1.1
+version: 0.1.2
 compatibility:
   mops:
     caffeineai-stripe: "~0.1.0"
