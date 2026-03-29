@@ -1,7 +1,7 @@
 ---
-name: core-infrastructure
+name: extension-core-infrastructure
 description: Core infrastructure providing backend connection configuration, storage client, and React app entry point.
-version: 0.1.1
+version: 0.1.2
 compatibility:
   npm:
     "@caffeineai/core-infrastructure": "~0.1.0"
