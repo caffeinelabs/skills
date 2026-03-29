@@ -1,7 +1,7 @@
 ---
-name: object-storage
+name: extension-object-storage
 description: General file/object storage, such as for images, videos, files, documents and other bulk data. Perfect fit for image galleries, video galleries, and other file or object management. Supports large files beyond IC limit, with browser-cached HTTP URL access.
-version: 0.1.1
+version: 0.1.2
 compatibility:
   mops:
     caffeineai-object-storage: "~0.1.0"
