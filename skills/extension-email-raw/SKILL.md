@@ -1,7 +1,7 @@
 ---
-name: email-raw
+name: extension-email-raw
 description: Send an email with multiple to, cc and bcc addresses.
-version: 0.1.1
+version: 0.1.2
 compatibility:
   mops:
     caffeineai-email: "~0.1.0"
