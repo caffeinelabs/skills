@@ -1,5 +1,5 @@
 name = "include-object-storage"
-description = "Include the object storage mixin with `include ObjectStorage();`"
+description = "Include the object storage mixin with `include MixinObjectStorage();`"
 query = """
 (source_file (obj_dec "actor" (obj_body))) @error
 (source_file (class_dec "actor" (obj_body))) @error
@@ -7,10 +7,10 @@ query = """
   (obj_dec "actor"
    (obj_body
     (dec_field (include_dec (identifier) @mixin))))
-   (#eq? @mixin "ObjectStorage")) @filter
+   (#eq? @mixin "MixinObjectStorage")) @filter
 (source_file
   (class_dec "actor"
    (obj_body
     (dec_field (include_dec (identifier) @mixin))))
-   (#eq? @mixin "ObjectStorage")) @filter
+   (#eq? @mixin "MixinObjectStorage")) @filter
 """
