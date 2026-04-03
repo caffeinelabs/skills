@@ -1,12 +1,13 @@
 ---
 name: extension-stripe
 description: Payment support based on Stripe, supporting credit cards and debit cards
-version: 0.1.2
+version: 0.1.4
 compatibility:
   mops:
     caffeineai-stripe: "~0.1.0"
     caffeineai-http-outcalls: "~0.1.0"
     caffeineai-authorization: "~0.1.0"
+caffeineai-subscription: [none]
 ---
 
 # Stripe Payment Integration
@@ -56,9 +57,10 @@ module {
 
 Usage:
 
-```motoko filepath=main.mo
+```motoko filepath=src/backend/main.mo
 import Stripe "mo:caffeineai-stripe/stripe";
 import AccessControl "mo:caffeineai-authorization/access-control";
+import MixinAuthorization "mo:caffeineai-authorization/MixinAuthorization";
 import OutCall "mo:caffeineai-http-outcalls/outcall";
 import Map "mo:core/Map";
 import Iter "mo:core/Iter";
@@ -68,6 +70,7 @@ import Runtime "mo:core/Runtime";
 actor {
     // Include authorization
     let accessControlState = AccessControl.initState();
+    include MixinAuthorization(accessControlState);
 
     // Shopping data
     public type Product = {
