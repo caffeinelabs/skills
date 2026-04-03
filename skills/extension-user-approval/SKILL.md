@@ -1,11 +1,12 @@
 ---
 name: extension-user-approval
 description: Approval-based user management.
-version: 0.1.2
+version: 0.1.4
 compatibility:
   mops:
     caffeineai-user-approval: "~0.1.0"
     caffeineai-authorization: "~0.1.0"
+caffeineai-subscription: [none]
 ---
 
 # User Approval
@@ -50,8 +51,9 @@ module {
 
 Usage (all the following functions are required to be added):
 
-```motoko filepath=main.mo
+```motoko filepath=src/backend/main.mo
 import AccessControl "mo:caffeineai-authorization/access-control";
+import MixinAuthorization "mo:caffeineai-authorization/MixinAuthorization";
 import UserApproval "mo:caffeineai-user-approval/approval";
 import Principal "mo:core/Principal";
 import Runtime "mo:core/Runtime";
@@ -59,6 +61,7 @@ import Runtime "mo:core/Runtime";
 actor {
     // Include authorization
     let accessControlState = AccessControl.initState();
+    include MixinAuthorization(accessControlState);
 
     let approvalState = UserApproval.initState(accessControlState);
 
