@@ -1,10 +1,11 @@
 ---
 name: extension-http-outcalls
 description: HTTP outcalls performed by the backend canister (not in the frontend).
-version: 0.1.2
+version: 0.1.4
 compatibility:
   mops:
     caffeineai-http-outcalls: "~0.1.0"
+caffeineai-subscription: [none]
 ---
 
 # HTTP Outcalls
@@ -45,7 +46,7 @@ module {
 
 Usage for GET:
 
-```motoko filepath=main.mo
+```motoko filepath=src/backend/main.mo
 import OutCall "mo:caffeineai-http-outcalls/outcall";
 
 actor {
