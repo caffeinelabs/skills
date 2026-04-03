@@ -1,10 +1,11 @@
 ---
 name: extension-email
 description: Support for sending service/transactional emails. Don't use this for sending marketing emails or verification emails.
-version: 0.1.2
+version: 0.1.4
 compatibility:
   mops:
     caffeineai-email: "~0.1.0"
+caffeineai-subscription: [plus, pro]
 ---
 
 # Email — Service/Transactional
@@ -41,7 +42,7 @@ module {
 
 Usage for `sendServiceEmail`:
 
-```motoko filepath=main.mo
+```motoko filepath=src/backend/main.mo
 import Runtime "mo:core/Runtime";
 import EmailClient "mo:caffeineai-email/emailClient";
 
