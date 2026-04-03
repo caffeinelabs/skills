@@ -1,12 +1,13 @@
 ---
 name: extension-email-marketing
 description: Send personalised marketing emails to subscribers with an unsubscribe link.
-version: 0.1.2
+version: 0.1.4
 compatibility:
   mops:
     caffeineai-email-marketing: "~0.1.0"
     caffeineai-authorization: "~0.1.0"
     caffeineai-email-verification: "~0.1.0"
+caffeineai-subscription: [plus, pro]
 ---
 
 # Email — Marketing
@@ -128,7 +129,7 @@ module {
 
 ### Example usage for an app which can send marketing emails to users who are subscribed to topics managed by the admin
 
-```motoko filepath=main.mo
+```motoko filepath=src/backend/main.mo
 import Array "mo:core/Array";
 import Runtime "mo:core/Runtime";
 import Option "mo:core/Option";
@@ -138,6 +139,7 @@ import Map "mo:core/Map";
 import Set "mo:core/Set";
 import Text "mo:core/Text";
 import AccessControl "mo:caffeineai-authorization/access-control";
+import MixinAuthorization "mo:caffeineai-authorization/MixinAuthorization";
 import EmailClient "mo:caffeineai-email/emailClient";
 import MixinEmailUnsubscribe "mo:caffeineai-email-marketing/unsubscribeMixin";
 import EmailSubscribers "mo:caffeineai-email-marketing/subscribers";
@@ -152,6 +154,7 @@ actor {
 
   // Include authorization component
   let accessControlState = AccessControl.initState();
+  include MixinAuthorization(accessControlState);
 
   // Store a map of caller principal to UserProfile
   let userProfiles = Map.empty<Principal, UserProfile>();
