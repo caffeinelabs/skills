@@ -1,12 +1,13 @@
 ---
 name: extension-authorization
 description: Authorization system with role-based access control. Must-have for all apps that manage personal or access-restricted data.
-version: 0.1.2
+version: 0.1.4
 compatibility:
   mops:
     caffeineai-authorization: "~0.1.0"
   npm:
     "@caffeineai/core-infrastructure": "~0.1.0"
+caffeineai-subscription: [none]
 ---
 
 # Authorization
@@ -47,7 +48,7 @@ IMPORTANT: The `include MixinAuthorization(accessControlState)` line MUST be pla
 
 ## Setup in main.mo
 
-```motoko filepath=main.mo
+```motoko filepath=src/backend/main.mo
 import Map "mo:core/Map";
 import Principal "mo:core/Principal";
 import AccessControl "mo:caffeineai-authorization/access-control";
@@ -67,7 +68,7 @@ actor {
 
 ## Type Definitions in types.mo
 
-```motoko filepath=types.mo
+```motoko filepath=src/backend/types.mo
 module {
   public type UserProfile = {
     name : Text;
@@ -79,7 +80,7 @@ module {
 
 The frontend requires `getCallerUserProfile`, `saveCallerUserProfile`, and `getUserProfile`. Pass `accessControlState` to your mixin so it can check permissions.
 
-```motoko filepath=mixins/Profile.mo
+```motoko filepath=src/backend/mixins/Profile.mo
 import Map "mo:core/Map";
 import Principal "mo:core/Principal";
 import Runtime "mo:core/Runtime";
