@@ -1,11 +1,12 @@
 ---
 name: extension-email-verification
 description: Support for sending an email with a link the recipient can click to prove they own the email address.
-version: 0.1.2
+version: 0.1.4
 compatibility:
   mops:
     caffeineai-email-verification: "~0.1.0"
     caffeineai-email: "~0.1.0"
+caffeineai-subscription: [plus, pro]
 ---
 
 # Email — Verification
@@ -80,7 +81,7 @@ module {
 
 ### Example usage with endpoints for registering a user and for checking whether a user is verified.
 
-```motoko filepath=main.mo
+```motoko filepath=src/backend/main.mo
 import Map "mo:core/Map";
 import Runtime "mo:core/Runtime";
 import Principal "mo:core/Principal";
