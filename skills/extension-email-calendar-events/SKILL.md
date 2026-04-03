@@ -1,11 +1,12 @@
 ---
 name: extension-email-calendar-events
 description: Support for organising events/meetings and sending invitations by email.
-version: 0.1.2
+version: 0.1.4
 compatibility:
   mops:
     caffeineai-email-calendar-events: "~0.1.0"
     caffeineai-authorization: "~0.1.0"
+caffeineai-subscription: [plus, pro]
 ---
 
 # Email — Calendar Events
@@ -136,7 +137,7 @@ module {
 
 ### Example usage for an app which can add/update/cancel/delete/get/list calendar events and send invitations to them by email
 
-```motoko filepath=main.mo
+```motoko filepath=src/backend/main.mo
 import Runtime "mo:core/Runtime";
 import Principal "mo:core/Principal";
 import Map "mo:core/Map";
@@ -146,6 +147,7 @@ import Iter "mo:core/Iter";
 import Option "mo:core/Option";
 import Text "mo:core/Text";
 import AccessControl "mo:caffeineai-authorization/access-control";
+import MixinAuthorization "mo:caffeineai-authorization/MixinAuthorization";
 import EmailClient "mo:caffeineai-email/emailClient";
 import CalendarEvents "mo:caffeineai-email-calendar-events/calendarEvents";
 import Uuid "mo:caffeineai-email-calendar-events/uuid";
@@ -158,6 +160,7 @@ actor {
 
   // Include authorization component
   let accessControlState = AccessControl.initState();
+  include MixinAuthorization(accessControlState);
 
   // Store a map of caller principal to UserProfile
   var userProfiles = Map.empty<Principal, UserProfile>();
@@ -314,7 +317,7 @@ actor {
       };
     };
 
-    let result = await EmailClient.sendCalendarEvent(
+    ignore await EmailClient.sendCalendarEvent(
       "no-reply",
       event
     );
