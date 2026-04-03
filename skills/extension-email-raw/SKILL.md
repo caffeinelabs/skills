@@ -1,10 +1,11 @@
 ---
 name: extension-email-raw
 description: Send an email with multiple to, cc and bcc addresses.
-version: 0.1.2
+version: 0.1.4
 compatibility:
   mops:
     caffeineai-email: "~0.1.0"
+caffeineai-subscription: [plus, pro]
 ---
 
 # Email — Raw Multi-Recipient
@@ -47,7 +48,7 @@ module {
 
 ### Example usage for sending an email reminder to meeting attendees.
 
-```motoko filepath=main.mo
+```motoko filepath=src/backend/main.mo
 import Runtime "mo:core/Runtime";
 import EmailClient "mo:caffeineai-email/emailClient";
 
