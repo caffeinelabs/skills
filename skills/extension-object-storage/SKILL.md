@@ -1,17 +1,18 @@
 ---
 name: extension-object-storage
 description: General file/object storage, such as for images, videos, files, documents and other bulk data. Perfect fit for image galleries, video galleries, and other file or object management. Supports large files beyond IC limit, with browser-cached HTTP URL access.
-version: 0.1.2
+version: 0.1.4
 compatibility:
   mops:
-    caffeineai-object-storage: "~0.1.0"
+    caffeineai-object-storage: "~0.1.1"
+caffeineai-subscription: [none]
 ---
 
 # Object Storage
 
 ## Overview
 
-This skill adds off-chain file/object storage with on-chain references. The `MixinStorage` mixin provides infrastructure for file operations; you track uploaded files in your own data structures using `Storage.ExternalBlob`.
+This skill adds off-chain file/object storage with on-chain references. The `MixinObjectStorage` mixin provides infrastructure for file operations; you track uploaded files in your own data structures using `Storage.ExternalBlob`.
 
 # Backend
 
@@ -33,18 +34,18 @@ fileRef : Text
 
 ## Module API
 
-The only type you use from `mo:caffeineai-object-storage/Storage` is `ExternalBlob` (which is `Blob`). All other functions in `Storage.mo` are internal infrastructure used by `MixinStorage` -- do not call them directly.
+The only type you use from `mo:caffeineai-object-storage/Storage` is `ExternalBlob` (which is `Blob`). All other functions in `Storage.mo` are internal infrastructure used by `MixinObjectStorage` -- do not call them directly.
 
 ## Setup in main.mo
 
-`include MixinStorage()` MUST be placed in `main.mo`, not in a custom mixin file. Your own file-tracking logic goes in a separate mixin.
+`include MixinObjectStorage()` MUST be placed in `main.mo`, not in a custom mixin file. Your own file-tracking logic goes in a separate mixin.
 
-```motoko filepath=main.mo
-import MixinStorage "mo:caffeineai-object-storage/Mixin";
+```motoko filepath=src/backend/main.mo
+import MixinObjectStorage "mo:caffeineai-object-storage/Mixin";
 import Storage "mo:caffeineai-object-storage/Storage";
 
 actor {
-  include MixinStorage();
+  include MixinObjectStorage();
 
    // Track file references
   type Data = {
