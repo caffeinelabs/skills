@@ -9,12 +9,11 @@ function hasAccessControl(actor) {
 }
 const ACTOR_QUERY_KEY = "actor";
 export function useActor(createActor) {
-    const { identity } = useInternetIdentity();
+    const { identity, isAuthenticated } = useInternetIdentity();
     const queryClient = useQueryClient();
     const actorQuery = useQuery({
         queryKey: [ACTOR_QUERY_KEY, identity?.getPrincipal().toString()],
         queryFn: async () => {
-            const isAuthenticated = !!identity;
             if (!isAuthenticated) {
                 // Return anonymous actor if not authenticated
                 return await createActorWithConfig(createActor);

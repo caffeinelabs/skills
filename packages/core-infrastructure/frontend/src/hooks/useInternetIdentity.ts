@@ -49,11 +49,18 @@ export type InternetIdentityContext = {
 	/** `loginStatus === "logging-in"` */
 	isLoggingIn: boolean;
 
-	/** `loginStatus === "success"` */
+	/** `loginStatus === "success"` — true only immediately after an interactive login via the
+	 * Internet Identity popup. NOT true when a stored identity is restored on page reload.
+	 * For gating authenticated vs. unauthenticated UI, use {@link isAuthenticated} instead. */
 	isLoginSuccess: boolean;
 
 	/** `loginStatus === "loginError"` */
 	isLoginError: boolean;
+
+	/** `true` when the user holds a valid, non-anonymous identity (i.e. `!!identity`).
+	 * Covers both interactive login AND restored sessions on page reload.
+	 * Use this for conditional rendering of authenticated UI. */
+	isAuthenticated: boolean;
 
 	loginError?: Error;
 };
@@ -247,16 +254,20 @@ export function InternetIdentityProvider({
 				if (isAuthenticated) {
 					const loadedIdentity = existingClient.getIdentity();
 					setIdentity(loadedIdentity);
+					setStatus("success");
+				} else {
+					setIdentity(undefined);
+					setStatus("idle");
 				}
 			} catch (unknownError) {
+				if (cancelled) return;
+				setIdentity(undefined);
 				setStatus("loginError");
 				setError(
 					unknownError instanceof Error
 						? unknownError
 						: new Error("Initialization failed"),
 				);
-			} finally {
-				if (!cancelled) setStatus("idle");
 			}
 		})();
 		return () => {
@@ -275,6 +286,7 @@ export function InternetIdentityProvider({
 			isLoggingIn: loginStatus === "logging-in",
 			isLoginSuccess: loginStatus === "success",
 			isLoginError: loginStatus === "loginError",
+			isAuthenticated: !!identity && !identity.getPrincipal().isAnonymous(),
 			loginError,
 		}),
 		[identity, login, clear, loginStatus, loginError],

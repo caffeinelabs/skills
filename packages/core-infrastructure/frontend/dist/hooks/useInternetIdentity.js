@@ -135,17 +135,21 @@ export function InternetIdentityProvider({ children, createOptions, }) {
                 if (isAuthenticated) {
                     const loadedIdentity = existingClient.getIdentity();
                     setIdentity(loadedIdentity);
+                    setStatus("success");
+                }
+                else {
+                    setIdentity(undefined);
+                    setStatus("idle");
                 }
             }
             catch (unknownError) {
+                if (cancelled)
+                    return;
+                setIdentity(undefined);
                 setStatus("loginError");
                 setError(unknownError instanceof Error
                     ? unknownError
                     : new Error("Initialization failed"));
-            }
-            finally {
-                if (!cancelled)
-                    setStatus("idle");
             }
         })();
         return () => {
@@ -162,6 +166,7 @@ export function InternetIdentityProvider({ children, createOptions, }) {
         isLoggingIn: loginStatus === "logging-in",
         isLoginSuccess: loginStatus === "success",
         isLoginError: loginStatus === "loginError",
+        isAuthenticated: !!identity && !identity.getPrincipal().isAnonymous(),
         loginError,
     }), [identity, login, clear, loginStatus, loginError]);
     return createElement(InternetIdentityReactContext.Provider, {
