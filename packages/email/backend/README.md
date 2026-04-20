@@ -1,4 +1,5 @@
 # caffeineai-email
+Service/transactional email package for [Caffeine AI](https://caffeine.ai?utm_source=caffeine-skill-mops&utm_medium=referral).
 
 Support for sending service/transactional emails. Don't use this for sending marketing emails or verification emails.
 
