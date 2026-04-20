@@ -1,4 +1,5 @@
 # caffeineai-authorization
+Authorization package for [Caffeine AI](https://caffeine.ai?utm_source=caffeine-skill-mops&utm_medium=referral).
 
 Authorization system with role-based access control. Must-have for all apps that manage personal or access-restricted data.
 
