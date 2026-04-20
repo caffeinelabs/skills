@@ -1,6 +1,6 @@
 [package]
 name = "caffeineai-stripe"
-version = "0.1.0"
+version = "0.1.1"
 description = "Payment support based on Stripe, supporting credit cards and debit cards"
 license = "Apache-2.0"
 repository = "https://github.com/caffeinelabs/skills"
