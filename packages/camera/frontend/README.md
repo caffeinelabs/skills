@@ -1,4 +1,5 @@
 # @caffeineai/camera
+Camera package for [Caffeine AI](https://caffeine.ai?utm_source=caffeine-skill-npm&utm_medium=referral).
 
 Camera hooks for Caffeine apps on the Internet Computer.
 
