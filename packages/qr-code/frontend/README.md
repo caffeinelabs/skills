@@ -1,4 +1,5 @@
 # @caffeineai/qr-code
+QR code scanner package for [Caffeine AI](https://caffeine.ai?utm_source=caffeine-skill-npm&utm_medium=referral).
 
 QR code scanner hooks for Caffeine apps on the Internet Computer.
 
