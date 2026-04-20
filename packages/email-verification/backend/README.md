@@ -1,4 +1,5 @@
 # caffeineai-email-verification
+Email verification package for [Caffeine AI](https://caffeine.ai?utm_source=caffeine-skill-mops&utm_medium=referral).
 
 Support for sending an email with a link the recipient can click to prove they own the email address.
 
