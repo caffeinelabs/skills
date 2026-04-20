@@ -1,4 +1,5 @@
 # @caffeineai/core-infrastructure
+Core infrastructure package for [Caffeine AI](https://caffeine.ai?utm_source=caffeine-skill-npm&utm_medium=referral).
 
 Core infrastructure hooks (actors, Internet Identity) for Caffeine apps on the Internet Computer.
 
