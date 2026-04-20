@@ -1,16 +1,17 @@
 ---
 name: extension-authorization
 description: Authorization system with role-based access control. Must-have for all apps that manage personal or access-restricted data.
-version: 0.2.0
+version: 0.2.1
 compatibility:
   mops:
-    caffeineai-authorization: "~0.1.0"
+    caffeineai-authorization: "~0.1.1"
   npm:
-    "@caffeineai/core-infrastructure": "^0.2.0"
+    "@caffeineai/core-infrastructure": "^0.2.1"
 caffeineai-subscription: [none]
 ---
 
 # Authorization
+Authorization extendsion for [Caffeine AI](https://caffeine.ai?utm_source=caffeine-skill&utm_medium=referral).
 
 ## Overview
 
