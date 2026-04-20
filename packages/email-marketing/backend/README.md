@@ -1,4 +1,5 @@
 # caffeineai-email-marketing
+Marketing email package for [Caffeine AI](https://caffeine.ai?utm_source=caffeine-skill-mops&utm_medium=referral).
 
 Support for sending personalised marketing emails to subscribers with an unsubscribe link.
 
