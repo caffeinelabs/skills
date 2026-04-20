@@ -1,4 +1,5 @@
 # caffeineai-user-approval
+User approval package for [Caffeine AI](https://caffeine.ai?utm_source=caffeine-skill-mops&utm_medium=referral).
 
 Approval-based user management.
 
