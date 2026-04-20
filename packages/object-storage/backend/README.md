@@ -1,4 +1,5 @@
 # caffeineai-object-storage
+Object storage package for [Caffeine AI](https://caffeine.ai?utm_source=caffeine-skill-mops&utm_medium=referral).
 
 Object storage integration for Caffeine.
 
