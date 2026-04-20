@@ -1,4 +1,5 @@
 # caffeineai-email-calendar-events
+Calendar events email package for [Caffeine AI](https://caffeine.ai?utm_source=caffeine-skill-mops&utm_medium=referral).
 
 Support for organising events/meetings and sending invitations by email.
 
