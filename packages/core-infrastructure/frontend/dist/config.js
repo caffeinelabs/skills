@@ -18,12 +18,17 @@ export async function loadConfig() {
             console.error("CANISTER_ID_BACKEND is not set");
             throw new Error("CANISTER_ID_BACKEND is not set");
         }
+        const runtimeStorageGatewayUrl = config.storage_gateway_url && config.storage_gateway_url !== "undefined"
+            ? config.storage_gateway_url
+            : undefined;
         const fullConfig = {
             backend_host: config.backend_host === "undefined" ? undefined : config.backend_host,
             backend_canister_id: (config.backend_canister_id === "undefined"
                 ? backendCanisterId
                 : config.backend_canister_id),
-            storage_gateway_url: process.env.STORAGE_GATEWAY_URL ?? "nogateway",
+            storage_gateway_url: runtimeStorageGatewayUrl ??
+                process.env.STORAGE_GATEWAY_URL ??
+                "nogateway",
             bucket_name: DEFAULT_BUCKET_NAME,
             project_id: config.project_id !== "undefined"
                 ? config.project_id
