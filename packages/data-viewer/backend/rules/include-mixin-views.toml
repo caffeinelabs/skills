@@ -1,0 +1,16 @@
+name = "include-mixin-views"
+description = "Include the data-viewer mixin with `include MixinViews();` — auto-generated admin queries (via `--generate-view-queries`) are gated on this include"
+query = """
+(source_file (obj_dec "actor" (obj_body))) @error
+(source_file (class_dec "actor" (obj_body))) @error
+(source_file
+  (obj_dec "actor"
+   (obj_body
+    (dec_field (include_dec (identifier) @mixin))))
+   (#eq? @mixin "MixinViews")) @filter
+(source_file
+  (class_dec "actor"
+   (obj_body
+    (dec_field (include_dec (identifier) @mixin))))
+   (#eq? @mixin "MixinViews")) @filter
+"""

@@ -1,0 +1,13 @@
+[package]
+name = "caffeineai-data-viewer"
+version = "0.1.0"
+description = "Admin-only paginated viewers over stable canister state. Exposes a controller-restricted `__<var>` query for every supported stable variable when used with `--generate-view-queries`."
+license = "Apache-2.0"
+repository = "https://github.com/caffeinelabs/skills"
+keywords = ["motoko", "icp", "admin", "debug", "views"]
+
+[dependencies]
+core = "2.2.0"
+
+[toolchain]
+moc = "1.7.0"
