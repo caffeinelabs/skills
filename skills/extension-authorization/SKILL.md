@@ -1,7 +1,7 @@
 ---
 name: extension-authorization
 description: Authorization system with role-based access control. Must-have for all apps that manage personal or access-restricted data.
-version: 0.2.2
+version: 0.2.3
 compatibility:
   mops:
     caffeineai-authorization: "~0.1.1"
@@ -46,6 +46,12 @@ module {
 Initialization is handled internally by `MixinAuthorization` -- do not call `initialize` directly. The first authenticated user to log in automatically becomes admin; no token or secret is required.
 
 IMPORTANT: The `include MixinAuthorization(accessControlState)` line MUST be placed in `main.mo`, not in a custom mixin file.
+
+## Opting out / custom authentication
+
+If the user asks to replace this authorization system with custom authentication (for example username/password auth, no Internet Identity, or no `MixinAuthorization`), remove the `caffeineai-authorization` mops package from the project. This is the only supported way to remove the `include-authorization` lint requirement, because that lint rule is shipped by the package. Do not add suppression comments or leave the package installed while omitting `include MixinAuthorization(accessControlState)`.
+
+When removing the package, also remove all `mo:caffeineai-authorization/*` imports, the `accessControlState` initialization, `include MixinAuthorization(accessControlState)`, and any `AccessControl` guard calls that belonged to this component. Replace them with the custom authentication and authorization checks requested by the user.
 
 ## Setup in main.mo
 
