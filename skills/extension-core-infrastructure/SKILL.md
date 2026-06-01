@@ -1,10 +1,10 @@
 ---
 name: extension-core-infrastructure
 description: Core infrastructure providing backend connection configuration, storage client, and React app entry point.
-version: 0.3.0
+version: 1.0.0
 compatibility:
   npm:
-    "@caffeineai/core-infrastructure": "^0.3.0"
+    "@caffeineai/core-infrastructure": "^1.0.0"
 caffeineai-subscription: [none]
 ---
 
@@ -14,6 +14,13 @@ Core infrastructure extension for [Caffeine AI](https://caffeine.ai?utm_source=c
 ## Overview
 
 This component provides the foundational infrastructure for all projects: backend connection configuration, Internet Identity authentication hooks, and actor management utilities.
+
+## Requirements
+Requries 
+```
+"@icp-sdk/auth": "^7.1.0"
+"@icp-sdk/core": "^5.3.0"
+```
 
 ## Integration
 
