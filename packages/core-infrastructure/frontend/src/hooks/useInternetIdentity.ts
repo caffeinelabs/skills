@@ -1,10 +1,12 @@
 import {
 	AuthClient,
 	type AuthClientCreateOptions,
-	type AuthClientLoginOptions,
-} from "@dfinity/auth-client";
-import type { Identity } from "@icp-sdk/core/agent";
-import { DelegationIdentity, isDelegationValid } from "@icp-sdk/core/identity";
+	type AuthClientSignInOptions,
+} from "@icp-sdk/auth/client";
+import { Actor, HttpAgent, type Identity } from "@icp-sdk/core/agent";
+import type { IDL } from "@icp-sdk/core/candid";
+import { AttributesIdentity } from "@icp-sdk/core/identity";
+import { Principal } from "@icp-sdk/core/principal";
 import {
 	createContext,
 	createElement,
@@ -14,6 +16,7 @@ import {
 	useContext,
 	useEffect,
 	useMemo,
+	useRef,
 	useState,
 } from "react";
 import { loadConfig } from "../config";
@@ -65,8 +68,45 @@ export type InternetIdentityContext = {
 	loginError?: Error;
 };
 
+/**
+ * Provider-level configuration for requesting signed II attribute bundles on sign-in.
+ * Enabled by default on `InternetIdentityProvider`; `login()` runs the full
+ * nonce → signIn → requestAttributes → finish flow unless `withAttributes={false}`.
+ */
+export type AttributeProviderConfig = {
+	/** Attribute keys to request from II. Defaults to `['verified_email']`. */
+	keys?: string[];
+};
+
+// Inline Candid IDL for the two methods injected by the IdentityAttributes mixin.
+// Defined once at module level so it is not recreated on every render.
+const iiAttributesIDL: IDL.InterfaceFactory = ({ IDL: I }) =>
+	I.Service({
+		_internet_identity_sign_in_start: I.Func([], [I.Vec(I.Nat8)], []),
+		_internet_identity_sign_in_finish: I.Func(
+			[],
+			[I.Variant({ ok: I.Null, err: I.Record({}) })],
+			[],
+		),
+		_initialize_access_control: I.Func([], [], []),
+	});
+
+type IIAttributesActor = {
+	_internet_identity_sign_in_start: () => Promise<Uint8Array>;
+	_internet_identity_sign_in_finish: () => Promise<
+		{ ok: null } | { err: Record<string, unknown> }
+	>;
+	_initialize_access_control: () => Promise<void>;
+};
+
+const II_MAINNET_CANISTER_ID = "rdmx6-jaaaa-aaaaa-aaadq-cai";
+const II_SIGNER_CANISTER_ID =
+	process.env.II_CANISTER_ID ?? II_MAINNET_CANISTER_ID;
+
 const ONE_HOUR_IN_NANOSECONDS = BigInt(3_600_000_000_000);
 const DEFAULT_IDENTITY_PROVIDER = process.env.II_URL;
+
+const DEFAULT_ATTRIBUTE_KEYS = ["verified_email"];
 
 type ProviderValue = InternetIdentityContext;
 const InternetIdentityReactContext = createContext<ProviderValue | undefined>(
@@ -82,18 +122,38 @@ async function createAuthClient(
 	const config = await loadConfig();
 	const options: AuthClientCreateOptions = {
 		idleOptions: {
-			// Default behaviour of this hook is not to logout and reload window on identity expiration
 			disableDefaultIdleCallback: true,
 			disableIdle: true,
 			...createOptions?.idleOptions,
 		},
-		loginOptions: {
-			derivationOrigin: config.ii_derivation_origin,
-		},
+		identityProvider: DEFAULT_IDENTITY_PROVIDER,
+		derivationOrigin: config.ii_derivation_origin,
 		...createOptions,
 	};
-	const authClient = await AuthClient.create(options);
-	return authClient;
+	return new AuthClient(options);
+}
+
+/**
+ * Create an inline actor for the two IdentityAttributes mixin methods.
+ * Uses the same `backend_canister_id` and `backend_host` as the rest of the app.
+ */
+async function createIIAttributesActor(
+	identity?: Identity,
+): Promise<IIAttributesActor> {
+	const config = await loadConfig();
+	const agent = new HttpAgent({
+		host: config.backend_host,
+		identity,
+	});
+	if (config.backend_host?.includes("localhost")) {
+		await agent.fetchRootKey().catch(() => {
+			/* best-effort */
+		});
+	}
+	return Actor.createActor<IIAttributesActor>(iiAttributesIDL, {
+		agent,
+		canisterId: config.backend_canister_id,
+	});
 }
 
 /**
@@ -131,10 +191,19 @@ export const useInternetIdentity = (): InternetIdentityContext => {
  *   <App />
  * </InternetIdentityProvider>
  * ```
+ *
+ * Attribute verification is enabled by default (`verified_email` from Internet Identity).
+ * Pass `withAttributes={false}` to use plain sign-in only, or override keys explicitly:
+ * ```tsx
+ * <InternetIdentityProvider withAttributes={{ keys: ['email', 'verified_email'] }}>
+ *   <App />
+ * </InternetIdentityProvider>
+ * ```
  */
 export function InternetIdentityProvider({
 	children,
 	createOptions,
+	withAttributes = {},
 }: PropsWithChildren<{
 	/** The child components that the InternetIdentityProvider will wrap. This allows any child
 	 * component to access the authentication context provided by the InternetIdentityProvider. */
@@ -155,6 +224,13 @@ export function InternetIdentityProvider({
 	 * ```
 	 */
 	createOptions?: AuthClientCreateOptions;
+
+	/**
+	 * Controls the II attribute-bundle flow on login. Defaults to `{}` (enabled, requesting
+	 * `verified_email`). Pass `false` for plain sign-in only. When enabled, nonce fetch,
+	 * signIn, requestAttributes, and `_internet_identity_sign_in_finish` are handled internally.
+	 */
+	withAttributes?: AttributeProviderConfig | false;
 }>) {
 	const [authClient, setAuthClient] = useState<AuthClient | undefined>(
 		undefined,
@@ -163,20 +239,28 @@ export function InternetIdentityProvider({
 	const [loginStatus, setStatus] = useState<Status>("initializing");
 	const [loginError, setError] = useState<Error | undefined>(undefined);
 
+	// Keep withAttributes in a ref so the login callback stays stable
+	// while still reading the latest prop value on each invocation.
+	const withAttributesRef = useRef(withAttributes);
+	withAttributesRef.current = withAttributes;
+
 	const setErrorMessage = useCallback((message: string) => {
 		setStatus("loginError");
 		setError(new Error(message));
 	}, []);
 
-	const handleLoginSuccess = useCallback(() => {
-		const latestIdentity = authClient?.getIdentity();
-		if (!latestIdentity) {
-			setErrorMessage("Identity not found after successful login");
-			return;
-		}
-		setIdentity(latestIdentity);
-		setStatus("success");
-	}, [authClient, setErrorMessage]);
+	const handleLoginSuccess = useCallback(
+		async (client: AuthClient) => {
+			const latestIdentity = await client.getIdentity();
+			if (!latestIdentity) {
+				setErrorMessage("Identity not found after successful login");
+				return;
+			}
+			setIdentity(latestIdentity);
+			setStatus("success");
+		},
+		[setErrorMessage],
+	);
 
 	const handleLoginError = useCallback(
 		(maybeError?: string) => {
@@ -193,25 +277,74 @@ export function InternetIdentityProvider({
 			return;
 		}
 
-		const currentIdentity = authClient.getIdentity();
-		if (
-			!currentIdentity.getPrincipal().isAnonymous() &&
-			currentIdentity instanceof DelegationIdentity &&
-			isDelegationValid(currentIdentity.getDelegation())
-		) {
+		if (authClient.isAuthenticated()) {
 			setErrorMessage("User is already authenticated");
 			return;
 		}
 
-		const options: AuthClientLoginOptions = {
-			identityProvider: DEFAULT_IDENTITY_PROVIDER,
-			onSuccess: handleLoginSuccess,
-			onError: handleLoginError,
+		const options: AuthClientSignInOptions = {
 			maxTimeToLive: ONE_HOUR_IN_NANOSECONDS * BigInt(24 * 30), // 30 days
 		};
 
 		setStatus("logging-in");
-		void authClient.login(options);
+
+		const attrs = withAttributesRef.current;
+
+		if (attrs !== false) {
+			// Fire nonce fetch, signIn popup, and requestAttributes all in parallel.
+			// authClient.requestAttributes accepts Promise<Uint8Array> for nonce,
+			// so the II window opens immediately while the canister round-trip completes.
+			const noncePromise = createIIAttributesActor().then((actor) =>
+				actor._internet_identity_sign_in_start(),
+			);
+			const signInPromise = authClient.signIn(options);
+			const attributesPromise = authClient.requestAttributes({
+				keys: attrs.keys ?? DEFAULT_ATTRIBUTE_KEYS,
+				nonce: noncePromise,
+			});
+
+			void Promise.all([signInPromise, attributesPromise])
+				.then(async ([plainIdentity, { data, signature }]) => {
+					const actor = await createIIAttributesActor(plainIdentity);
+					if (!data || data.length === 0) {
+						await handleLoginSuccess(authClient);
+						await actor._initialize_access_control();
+						return;
+					}
+
+					const signerCanisterId = Principal.fromText(II_SIGNER_CANISTER_ID);
+					const attributedIdentity = new AttributesIdentity({
+						inner: plainIdentity,
+						attributes: { data, signature },
+						signer: { canisterId: signerCanisterId },
+					});
+					const finishActor = await createIIAttributesActor(attributedIdentity);
+					try {
+						await finishActor._internet_identity_sign_in_finish();
+					} catch (error) {
+						console.error(error);
+					}
+					await handleLoginSuccess(authClient);
+				})
+				.catch((unknownError: unknown) => {
+					handleLoginError(
+						unknownError instanceof Error ? unknownError.message : undefined,
+					);
+				});
+		} else {
+			void authClient
+				.signIn(options)
+				.then(async (plainIdentity) => {
+					const actor = await createIIAttributesActor(plainIdentity);
+					await actor._initialize_access_control();
+					handleLoginSuccess(authClient);
+				})
+				.catch((unknownError: unknown) => {
+					handleLoginError(
+						unknownError instanceof Error ? unknownError.message : undefined,
+					);
+				});
+		}
 	}, [authClient, handleLoginError, handleLoginSuccess, setErrorMessage]);
 
 	const clear = useCallback(() => {
@@ -221,7 +354,7 @@ export function InternetIdentityProvider({
 		}
 
 		void authClient
-			.logout()
+			.signOut()
 			.then(() => {
 				setIdentity(undefined);
 				setAuthClient(undefined);
@@ -249,10 +382,10 @@ export function InternetIdentityProvider({
 					if (cancelled) return;
 					setAuthClient(existingClient);
 				}
-				const isAuthenticated = await existingClient.isAuthenticated();
 				if (cancelled) return;
-				if (isAuthenticated) {
-					const loadedIdentity = existingClient.getIdentity();
+				if (existingClient.isAuthenticated()) {
+					const loadedIdentity = await existingClient.getIdentity();
+					if (cancelled) return;
 					setIdentity(loadedIdentity);
 					setStatus("success");
 				} else {

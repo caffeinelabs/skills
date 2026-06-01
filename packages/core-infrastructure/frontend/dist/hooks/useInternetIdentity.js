@@ -1,9 +1,21 @@
-import { AuthClient, } from "@dfinity/auth-client";
-import { DelegationIdentity, isDelegationValid } from "@icp-sdk/core/identity";
-import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useState, } from "react";
+import { AuthClient, } from "@icp-sdk/auth/client";
+import { Actor, HttpAgent } from "@icp-sdk/core/agent";
+import { AttributesIdentity } from "@icp-sdk/core/identity";
+import { Principal } from "@icp-sdk/core/principal";
+import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useRef, useState, } from "react";
 import { loadConfig } from "../config";
+// Inline Candid IDL for the two methods injected by the IdentityAttributes mixin.
+// Defined once at module level so it is not recreated on every render.
+const iiAttributesIDL = ({ IDL: I }) => I.Service({
+    _internet_identity_sign_in_start: I.Func([], [I.Vec(I.Nat8)], []),
+    _internet_identity_sign_in_finish: I.Func([], [I.Variant({ ok: I.Null, err: I.Record({}) })], []),
+    _initialize_access_control: I.Func([], [], []),
+});
+const II_MAINNET_CANISTER_ID = "rdmx6-jaaaa-aaaaa-aaadq-cai";
+const II_SIGNER_CANISTER_ID = process.env.II_CANISTER_ID ?? II_MAINNET_CANISTER_ID;
 const ONE_HOUR_IN_NANOSECONDS = BigInt(3_600_000_000_000);
 const DEFAULT_IDENTITY_PROVIDER = process.env.II_URL;
+const DEFAULT_ATTRIBUTE_KEYS = ["verified_email"];
 const InternetIdentityReactContext = createContext(undefined);
 /**
  * Create the auth client with default options or options provided by the user.
@@ -12,18 +24,35 @@ async function createAuthClient(createOptions) {
     const config = await loadConfig();
     const options = {
         idleOptions: {
-            // Default behaviour of this hook is not to logout and reload window on identity expiration
             disableDefaultIdleCallback: true,
             disableIdle: true,
             ...createOptions?.idleOptions,
         },
-        loginOptions: {
-            derivationOrigin: config.ii_derivation_origin,
-        },
+        identityProvider: DEFAULT_IDENTITY_PROVIDER,
+        derivationOrigin: config.ii_derivation_origin,
         ...createOptions,
     };
-    const authClient = await AuthClient.create(options);
-    return authClient;
+    return new AuthClient(options);
+}
+/**
+ * Create an inline actor for the two IdentityAttributes mixin methods.
+ * Uses the same `backend_canister_id` and `backend_host` as the rest of the app.
+ */
+async function createIIAttributesActor(identity) {
+    const config = await loadConfig();
+    const agent = new HttpAgent({
+        host: config.backend_host,
+        identity,
+    });
+    if (config.backend_host?.includes("localhost")) {
+        await agent.fetchRootKey().catch(() => {
+            /* best-effort */
+        });
+    }
+    return Actor.createActor(iiAttributesIDL, {
+        agent,
+        canisterId: config.backend_canister_id,
+    });
 }
 /**
  * Helper function to set loginError state.
@@ -54,25 +83,37 @@ export const useInternetIdentity = () => {
  *   <App />
  * </InternetIdentityProvider>
  * ```
+ *
+ * Attribute verification is enabled by default (`verified_email` from Internet Identity).
+ * Pass `withAttributes={false}` to use plain sign-in only, or override keys explicitly:
+ * ```tsx
+ * <InternetIdentityProvider withAttributes={{ keys: ['email', 'verified_email'] }}>
+ *   <App />
+ * </InternetIdentityProvider>
+ * ```
  */
-export function InternetIdentityProvider({ children, createOptions, }) {
+export function InternetIdentityProvider({ children, createOptions, withAttributes = {}, }) {
     const [authClient, setAuthClient] = useState(undefined);
     const [identity, setIdentity] = useState(undefined);
     const [loginStatus, setStatus] = useState("initializing");
     const [loginError, setError] = useState(undefined);
+    // Keep withAttributes in a ref so the login callback stays stable
+    // while still reading the latest prop value on each invocation.
+    const withAttributesRef = useRef(withAttributes);
+    withAttributesRef.current = withAttributes;
     const setErrorMessage = useCallback((message) => {
         setStatus("loginError");
         setError(new Error(message));
     }, []);
-    const handleLoginSuccess = useCallback(() => {
-        const latestIdentity = authClient?.getIdentity();
+    const handleLoginSuccess = useCallback(async (client) => {
+        const latestIdentity = await client.getIdentity();
         if (!latestIdentity) {
             setErrorMessage("Identity not found after successful login");
             return;
         }
         setIdentity(latestIdentity);
         setStatus("success");
-    }, [authClient, setErrorMessage]);
+    }, [setErrorMessage]);
     const handleLoginError = useCallback((maybeError) => {
         setErrorMessage(maybeError ?? "Login failed");
     }, [setErrorMessage]);
@@ -81,21 +122,64 @@ export function InternetIdentityProvider({ children, createOptions, }) {
             setErrorMessage("AuthClient is not initialized yet, make sure to call `login` on user interaction e.g. click.");
             return;
         }
-        const currentIdentity = authClient.getIdentity();
-        if (!currentIdentity.getPrincipal().isAnonymous() &&
-            currentIdentity instanceof DelegationIdentity &&
-            isDelegationValid(currentIdentity.getDelegation())) {
+        if (authClient.isAuthenticated()) {
             setErrorMessage("User is already authenticated");
             return;
         }
         const options = {
-            identityProvider: DEFAULT_IDENTITY_PROVIDER,
-            onSuccess: handleLoginSuccess,
-            onError: handleLoginError,
             maxTimeToLive: ONE_HOUR_IN_NANOSECONDS * BigInt(24 * 30), // 30 days
         };
         setStatus("logging-in");
-        void authClient.login(options);
+        const attrs = withAttributesRef.current;
+        if (attrs !== false) {
+            // Fire nonce fetch, signIn popup, and requestAttributes all in parallel.
+            // authClient.requestAttributes accepts Promise<Uint8Array> for nonce,
+            // so the II window opens immediately while the canister round-trip completes.
+            const noncePromise = createIIAttributesActor().then((actor) => actor._internet_identity_sign_in_start());
+            const signInPromise = authClient.signIn(options);
+            const attributesPromise = authClient.requestAttributes({
+                keys: attrs.keys ?? DEFAULT_ATTRIBUTE_KEYS,
+                nonce: noncePromise,
+            });
+            void Promise.all([signInPromise, attributesPromise])
+                .then(async ([plainIdentity, { data, signature }]) => {
+                const actor = await createIIAttributesActor(plainIdentity);
+                if (!data || data.length === 0) {
+                    await handleLoginSuccess(authClient);
+                    await actor._initialize_access_control();
+                    return;
+                }
+                const signerCanisterId = Principal.fromText(II_SIGNER_CANISTER_ID);
+                const attributedIdentity = new AttributesIdentity({
+                    inner: plainIdentity,
+                    attributes: { data, signature },
+                    signer: { canisterId: signerCanisterId },
+                });
+                const finishActor = await createIIAttributesActor(attributedIdentity);
+                try {
+                    await finishActor._internet_identity_sign_in_finish();
+                }
+                catch (error) {
+                    console.error(error);
+                }
+                await handleLoginSuccess(authClient);
+            })
+                .catch((unknownError) => {
+                handleLoginError(unknownError instanceof Error ? unknownError.message : undefined);
+            });
+        }
+        else {
+            void authClient
+                .signIn(options)
+                .then(async (plainIdentity) => {
+                const actor = await createIIAttributesActor(plainIdentity);
+                await actor._initialize_access_control();
+                handleLoginSuccess(authClient);
+            })
+                .catch((unknownError) => {
+                handleLoginError(unknownError instanceof Error ? unknownError.message : undefined);
+            });
+        }
     }, [authClient, handleLoginError, handleLoginSuccess, setErrorMessage]);
     const clear = useCallback(() => {
         if (!authClient) {
@@ -103,7 +187,7 @@ export function InternetIdentityProvider({ children, createOptions, }) {
             return;
         }
         void authClient
-            .logout()
+            .signOut()
             .then(() => {
             setIdentity(undefined);
             setAuthClient(undefined);
@@ -129,11 +213,12 @@ export function InternetIdentityProvider({ children, createOptions, }) {
                         return;
                     setAuthClient(existingClient);
                 }
-                const isAuthenticated = await existingClient.isAuthenticated();
                 if (cancelled)
                     return;
-                if (isAuthenticated) {
-                    const loadedIdentity = existingClient.getIdentity();
+                if (existingClient.isAuthenticated()) {
+                    const loadedIdentity = await existingClient.getIdentity();
+                    if (cancelled)
+                        return;
                     setIdentity(loadedIdentity);
                     setStatus("success");
                 }

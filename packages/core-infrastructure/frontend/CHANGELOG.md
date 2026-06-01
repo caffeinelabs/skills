@@ -1,5 +1,9 @@
 
 
+### Features
+
+- **authorization**: MixinAuthorization callback for II attribute bundles + email skill docs (#122)
+
 ### Bug Fixes
 
 - use isAuthenticated for UI gating instead of isLoginSuccess (#91)

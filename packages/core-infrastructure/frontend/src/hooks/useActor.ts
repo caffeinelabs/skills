@@ -4,18 +4,6 @@ import { createActorWithConfig } from "../config";
 import type { createActorFunction } from "../types";
 import { useInternetIdentity } from "./useInternetIdentity";
 
-interface WithAccessControl {
-	_initializeAccessControl(): Promise<void>;
-}
-
-function hasAccessControl(actor: unknown): actor is WithAccessControl {
-	return (
-		typeof actor === "object" &&
-		actor !== null &&
-		"_initializeAccessControl" in actor
-	);
-}
-
 const ACTOR_QUERY_KEY = "actor";
 export function useActor<T>(createActor: createActorFunction<T>) {
 	const { identity, isAuthenticated } = useInternetIdentity();
@@ -24,20 +12,12 @@ export function useActor<T>(createActor: createActorFunction<T>) {
 		queryKey: [ACTOR_QUERY_KEY, identity?.getPrincipal().toString()],
 		queryFn: async () => {
 			if (!isAuthenticated) {
-				// Return anonymous actor if not authenticated
 				return await createActorWithConfig(createActor);
 			}
 
-			const actorOptions = {
-				agentOptions: {
-					identity,
-				},
-			};
-
-			const actor = await createActorWithConfig(createActor, actorOptions);
-			if (hasAccessControl(actor)) {
-				await actor._initializeAccessControl();
-			}
+			const actor = await createActorWithConfig(createActor, {
+				agentOptions: { identity },
+			});
 			return actor;
 		},
 		// Only refetch when identity changes
@@ -46,7 +26,6 @@ export function useActor<T>(createActor: createActorFunction<T>) {
 		enabled: true,
 	});
 
-	// When the actor changes, invalidate dependent queries
 	useEffect(() => {
 		if (actorQuery.data) {
 			queryClient.invalidateQueries({

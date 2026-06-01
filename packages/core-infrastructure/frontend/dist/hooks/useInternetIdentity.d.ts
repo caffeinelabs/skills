@@ -1,5 +1,5 @@
-import { type AuthClientCreateOptions } from "@dfinity/auth-client";
-import type { Identity } from "@icp-sdk/core/agent";
+import { type AuthClientCreateOptions } from "@icp-sdk/auth/client";
+import { type Identity } from "@icp-sdk/core/agent";
 import { type PropsWithChildren, type ReactNode } from "react";
 export type Status = "initializing" | "idle" | "logging-in" | "success" | "loginError";
 export type InternetIdentityContext = {
@@ -32,6 +32,15 @@ export type InternetIdentityContext = {
     loginError?: Error;
 };
 /**
+ * Provider-level configuration for requesting signed II attribute bundles on sign-in.
+ * Enabled by default on `InternetIdentityProvider`; `login()` runs the full
+ * nonce → signIn → requestAttributes → finish flow unless `withAttributes={false}`.
+ */
+export type AttributeProviderConfig = {
+    /** Attribute keys to request from II. Defaults to `['verified_email']`. */
+    keys?: string[];
+};
+/**
  * Hook to access the internet identity as well as loginStatus along with
  * login and clear functions.
  */
@@ -48,8 +57,16 @@ export declare const useInternetIdentity: () => InternetIdentityContext;
  *   <App />
  * </InternetIdentityProvider>
  * ```
+ *
+ * Attribute verification is enabled by default (`verified_email` from Internet Identity).
+ * Pass `withAttributes={false}` to use plain sign-in only, or override keys explicitly:
+ * ```tsx
+ * <InternetIdentityProvider withAttributes={{ keys: ['email', 'verified_email'] }}>
+ *   <App />
+ * </InternetIdentityProvider>
+ * ```
  */
-export declare function InternetIdentityProvider({ children, createOptions, }: PropsWithChildren<{
+export declare function InternetIdentityProvider({ children, createOptions, withAttributes, }: PropsWithChildren<{
     /** The child components that the InternetIdentityProvider will wrap. This allows any child
      * component to access the authentication context provided by the InternetIdentityProvider. */
     children: ReactNode;
@@ -68,4 +85,10 @@ export declare function InternetIdentityProvider({ children, createOptions, }: P
      * ```
      */
     createOptions?: AuthClientCreateOptions;
+    /**
+     * Controls the II attribute-bundle flow on login. Defaults to `{}` (enabled, requesting
+     * `verified_email`). Pass `false` for plain sign-in only. When enabled, nonce fetch,
+     * signIn, requestAttributes, and `_internet_identity_sign_in_finish` are handled internally.
+     */
+    withAttributes?: AttributeProviderConfig | false;
 }>): import("react").FunctionComponentElement<import("react").ProviderProps<InternetIdentityContext | undefined>>;
