@@ -1,12 +1,12 @@
 ---
 name: extension-authorization
 description: Authorization system with role-based access control. Must-have for all apps that manage personal or access-restricted data.
-version: 0.2.3
+version: 1.0.0
 compatibility:
   mops:
-    caffeineai-authorization: "~0.1.1"
+    caffeineai-authorization: "~1.0.0"
   npm:
-    "@caffeineai/core-infrastructure": "^0.3.0"
+    "@caffeineai/core-infrastructure": "^1.0.0"
 caffeineai-subscription: [none]
 ---
 
@@ -65,7 +65,7 @@ import ProfileMixin "mixins/Profile";
 
 actor {
   let accessControlState = AccessControl.initState();
-  include MixinAuthorization(accessControlState);
+  include MixinAuthorization(accessControlState, null);
 
   let userProfiles = Map.empty<Principal, Types.UserProfile>();
 
@@ -147,6 +147,65 @@ if (not AccessControl.hasPermission(accessControlState, caller, #user)) {
 - Use `query({ caller })` for authenticated endpoints that fetch data.
 - Handle ownership verification where needed.
 - Use `Runtime.trap` for authorization failures.
+
+## Email Attributes
+
+`MixinAuthorization` can capture the user's verified Internet Identity attributes (name and email) at sign-in. Pass a callback as the second argument instead of `null`; it runs once per sign-in, after the attribute bundle has been verified.
+
+Do NOT use the `mo:identity-attributes` mixin directly -- always go through `MixinAuthorization`. The callback receives the caller principal and the verified attributes:
+
+```
+{
+  name : ?Text;   // verified display name, when present
+  email : ?Text;  // always the verified address -- sourced from II's `verified_email`, never the unverified `email` key
+  sso : ?Text;    // SSO domain when the identity came from SSO, otherwise null
+}
+```
+
+The field is named `email`, but it only ever holds II's `verified_email` value -- the unverified `email` key is never read. Use `attrs.email` in the callback (there is no `attrs.verified_email` field).
+
+Store them in your own state and expose a getter to read them back:
+
+```
+import Map "mo:core/Map";
+import Principal "mo:core/Principal";
+import AccessControl "mo:caffeineai-authorization/access-control";
+import MixinAuthorization "mo:caffeineai-authorization/MixinAuthorization";
+
+actor {
+  let accessControlState = AccessControl.initState();
+
+  let emails = Map.empty<Principal, Text>();
+
+  include MixinAuthorization(
+    accessControlState,
+    ?(func(caller : Principal, attrs : { name : ?Text; email : ?Text; sso : ?Text }) {
+      switch (attrs.email) {
+        case (?email) { emails.add(caller, email) };
+        case null {};
+      };
+    }),
+  );
+
+  public query ({ caller }) func getCallerEmail() : async ?Text {
+    emails.get(caller);
+  };
+};
+```
+
+The `trusted_attribute_signers` and `frontend_origins` canister environment variables required for attribute verification are configured automatically by the Caffeine platform -- you do not set them.
+
+### Fetching the Email on the Frontend
+
+After sign-in, query the getter like any other authenticated actor method:
+
+```typescript
+const { data: callerEmail } = useQuery<string | null>({
+  queryKey: ['callerEmail'],
+  queryFn: () => actor.getCallerEmail(),
+  enabled: !!actor && isAuthenticated,
+});
+```
 
 # Frontend
 
