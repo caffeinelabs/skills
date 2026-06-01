@@ -1,10 +1,10 @@
 ---
 name: extension-object-storage
 description: General file/object storage, such as for images, videos, files, documents and other bulk data. Perfect fit for image galleries, video galleries, and other file or object management. Supports large files beyond IC limit, with browser-cached HTTP URL access.
-version: 0.1.5
+version: 1.0.0
 compatibility:
   mops:
-    caffeineai-object-storage: "~0.1.2"
+    caffeineai-object-storage: "~1.0.0"
 caffeineai-subscription: [none]
 ---
 
@@ -14,6 +14,17 @@ Object storage extension for [Caffeine AI](https://caffeine.ai?utm_source=caffei
 ## Overview
 
 This skill adds off-chain file/object storage with on-chain references. The `MixinObjectStorage` mixin provides infrastructure for file operations; you track uploaded files in your own data structures using `Storage.ExternalBlob`.
+
+## Required Setup Checklist
+
+All four steps are mandatory. Skipping any one causes `403 Forbidden: Invalid payload` at upload time.
+
+1. **mops dependency** — add `caffeineai-object-storage` to `mops.toml` under `[dependencies]`.
+2. **Mixin invocation** — `include MixinObjectStorage()` in `main.mo` (imported from `"mo:caffeineai-object-storage/Mixin"`).
+3. **Storage.ExternalBlob types** — every data field that represents a file MUST use `Storage.ExternalBlob`, never `Text`.
+4. **Frontend npm package** — `@caffeineai/object-storage` installed and `ExternalBlob.fromBytes()` used at the call site.
+
+CRITICAL: The frontend package (`@caffeineai/object-storage`) does NOT work without the backend mops package (`caffeineai-object-storage`). Installing only the npm package and not the mops package causes silent upload failures (403 from the storage gateway). You MUST install both together.
 
 # Backend
 
@@ -57,6 +68,35 @@ actor {
     };
 };
 ```
+
+## Wrong: Do NOT Implement Storage Methods Yourself
+
+NEVER create your own implementation of `_immutableObjectStorageCreateCertificate` or any other `_immutableObjectStorage*` method. These are platform-reserved method names provided exclusively by the `MixinObjectStorage` mixin from the mops package. Hand-written implementations produce wrong return types and cause `403 Forbidden: Invalid payload` at upload time.
+
+Wrong — inline stub in main.mo:
+```motoko filepath=wrong.mo
+// WRONG: Do not write this yourself
+public shared func _immutableObjectStorageCreateCertificate(fileHash : Text) : async Blob {
+  CertifiedData.set(Blob.fromArray(hashBytes));
+  Blob.fromArray([])
+};
+```
+
+Wrong — custom mixin file mimicking the platform shape:
+```motoko filepath=wrong-mixin.mo
+// WRONG: Do not create src/backend/mixins/object-storage-api.mo
+import ObjectStorageMixin "mixins/object-storage-api";
+include ObjectStorageMixin();
+```
+
+The correct import path is ALWAYS `"mo:caffeineai-object-storage/Mixin"` — a mops package, never a relative path. Any relative import like `"mixins/object-storage-api"` or `"./ObjectStorage"` is wrong.
+
+The correct signature produced by the platform mixin is:
+```
+_immutableObjectStorageCreateCertificate : (blobHash : Text) -> async record { method : Text; blob_hash : Text }
+```
+
+Any other return type (`Blob`, `()`, `Text`, etc.) will fail gateway validation.
 
 # Frontend
 
@@ -156,3 +196,23 @@ Use `getDirectURL()` for inline display, `getBytes()` for save-as downloads.
 | Download with filename | `blob.getBytes()` | Wrap in Blob + anchor |
 | Upload from browser | `ExternalBlob.fromBytes(bytes)` | Pair with `.withUploadProgress()` |
 | Detect file type | `filename` or `mimeType` field | NEVER inspect the URL |
+
+# Verifying the Setup
+
+Confirm the backend has the mops dependency installed. Check `src/backend/mops.toml`:
+
+```toml
+[dependencies]
+caffeineai-object-storage = "0.1.2"
+```
+
+If `caffeineai-object-storage` is missing from `[dependencies]`, object storage will not work regardless of what the frontend does. Add it, run `mops install`, and rebuild.
+
+# Troubleshooting
+
+| Error | Cause | Fix |
+|---|---|---|
+| `403 Forbidden: Invalid payload` on `PUT /v1/blob-tree/` | Backend canister missing `_immutableObjectStorageCreateCertificate` or returning wrong type | Install `caffeineai-object-storage` in mops.toml, add `include MixinObjectStorage()` in main.mo, redeploy |
+| `403 Forbidden: Invalid payload` (all files) | `@caffeineai/object-storage` npm installed but `caffeineai-object-storage` mops NOT installed | Add the mops dependency and rebuild backend |
+| Method exists but still 403 | Hand-written stub returns wrong type (e.g. `Blob` or `()` instead of `record { method; blob_hash }`) | Remove the custom implementation, use the platform mixin instead |
+| `Forbidden: Owner does not have an account with the cashier` | Cashier registration issue (unrelated to this skill) | Redeploy the backend canister to trigger self-healing registration |
