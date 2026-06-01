@@ -1,0 +1,18 @@
+name = "no-redeclare-internet-identity-sign-in-start"
+description = "Do NOT redeclare _internet_identity_sign_in_start — it is provided by MixinIdentityAttributes"
+query = """
+(source_file
+  (obj_dec "actor"
+    (obj_body
+      (dec_field
+        (func_dec
+          (_) @error
+          (#eq? @error "_internet_identity_sign_in_start"))))))
+(source_file
+  (class_dec "actor"
+    (obj_body
+      (dec_field
+        (func_dec
+          (_) @error
+          (#eq? @error "_internet_identity_sign_in_start"))))))
+"""
