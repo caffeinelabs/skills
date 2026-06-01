@@ -1,4 +1,4 @@
-import { isV3ResponseBody } from "@icp-sdk/core/agent";
+import { isV4ResponseBody } from "@icp-sdk/core/agent";
 import { IDL } from "@icp-sdk/core/candid";
 const MAXIMUM_CONCURRENT_UPLOADS = 10;
 const MAX_RETRIES = 3;
@@ -337,13 +337,14 @@ export class StorageClient {
         const result = await this.agent.call(this.backendCanisterId, {
             methodName: "_immutableObjectStorageCreateCertificate",
             arg: args,
+            effectiveCanisterId: this.backendCanisterId,
         });
         const respone = result.response.body;
-        if (isV3ResponseBody(respone)) {
+        if (isV4ResponseBody(respone)) {
             console.log("Certificate:", respone.certificate);
             return respone.certificate;
         }
-        throw new Error("Expected v3 response body");
+        throw new Error("Expected v4 response body");
     }
     async putFile(blobBytes, onProgress) {
         // HTTP headers for fetch requests (used for the PUT request to gateway)
