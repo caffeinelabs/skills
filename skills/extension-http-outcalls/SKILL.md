@@ -1,10 +1,10 @@
 ---
 name: extension-http-outcalls
 description: HTTP outcalls performed by the backend canister (not in the frontend).
-version: 0.1.5
+version: 0.1.6
 compatibility:
   mops:
-    caffeineai-http-outcalls: "~0.1.1"
+    caffeineai-http-outcalls: "~0.1.2"
 caffeineai-subscription: [none]
 ---
 
@@ -25,9 +25,9 @@ There is the prefabricated module `mo:caffeineai-http-outcalls/outcall.mo` that 
 module {
   public type TransformationInput = {
     context : Blob;
-    response : IC.http_request_result;
+    response : IC.HttpRequestResult;
   };
-  public type TransformationOutput = IC.http_request_result;
+  public type TransformationOutput = IC.HttpRequestResult;
   public type Transform = query TransformationInput -> async TransformationOutput;
   public type Header = {
     name: Text;
