@@ -4,7 +4,8 @@ import Runtime "mo:core/Runtime";
 import Int "mo:core/Int";
 import Time "mo:core/Time";
 import Array "mo:core/Array";
-import IC "ic:aaaaa-aa";
+import IC "mo:ic/Types";
+import Call "mo:ic/Call";
 
 module {
   public func transform(input : TransformationInput) : TransformationOutput {
@@ -16,23 +17,21 @@ module {
 
   public type TransformationInput = {
     context : Blob;
-    response : IC.http_request_result;
+    response : IC.HttpRequestResult;
   };
-  public type TransformationOutput = IC.http_request_result;
+  public type TransformationOutput = IC.HttpRequestResult;
   public type Transform = query TransformationInput -> async TransformationOutput;
   public type Header = {
     name : Text;
     value : Text;
   };
 
-  let httpRequestCycles = 231_000_000_000;
-
   public func httpGetRequest(url : Text, extraHeaders : [Header], transform : Transform) : async Text {
     let headers = extraHeaders.concat([{
       name = "User-Agent";
       value = "caffeine.ai";
     }]);
-    let http_request : IC.http_request_args = {
+    let args : IC.HttpRequestArgs = {
       url;
       max_response_bytes = null;
       headers;
@@ -44,7 +43,7 @@ module {
       };
       is_replicated = ?false;
     };
-    let httpResponse = await (with cycles = httpRequestCycles) IC.http_request(http_request);
+    let httpResponse = await Call.httpRequest(args);
     switch (httpResponse.body.decodeUtf8()) {
       case (null) { Runtime.trap("empty HTTP response") };
       case (?decodedResponse) { decodedResponse };
@@ -57,7 +56,7 @@ module {
       { name = "Idempotency-Key"; value = "Time-" # Time.now().toText() },
     ]);
     let requestBody = body.encodeUtf8();
-    let httpRequest : IC.http_request_args = {
+    let args : IC.HttpRequestArgs = {
       url;
       max_response_bytes = null;
       headers;
@@ -69,7 +68,7 @@ module {
       };
       is_replicated = ?false;
     };
-    let httpResponse = await (with cycles = httpRequestCycles) IC.http_request(httpRequest);
+    let httpResponse = await Call.httpRequest(args);
     switch (httpResponse.body.decodeUtf8()) {
       case (null) { Runtime.trap("empty HTTP response") };
       case (?decodedResponse) { decodedResponse };
