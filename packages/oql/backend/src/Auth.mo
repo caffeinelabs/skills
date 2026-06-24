@@ -1,16 +1,25 @@
-/// Pre-built policies for `Expose`'s auth functions, plus the `Access`
-/// decision they return. Each config field accepts any function of the
-/// right shape; these are just the common cases spelled once.
+/// Per-table authorization. Each entity declares a `TableAuth` level; at
+/// query time `resolve(level, caller)` turns it into the read `Access` for
+/// that caller:
 ///
-/// `Access` carries both the allow/deny decision AND the read scope:
+///   #deny          — this caller may not read the entity at all
+///   #unrestricted  — read every row of the entity
+///   #scoped p      — read, but only rows the entity's owner check admits
+///                    for principal `p` (see Entity.ownedBy/ownedByWith)
 ///
-///   #deny          — the check does not authorize this caller/token
-///   #unrestricted  — authorized to read every row of every entity
-///   #scoped p      — authorized, but `#owner`-scoped entities yield
-///                    only rows owned by principal `p`
+/// The levels:
 ///
-/// A read is allowed when any configured check returns a non-`#deny`
-/// `Access`. The resolved scope threads into the executor (see Expose).
+///   #public_            — everyone (anonymous included) reads every row
+///   #controllerOnly     — controllers read every row; everyone else denied
+///   #scopedPerUser      — every non-anonymous caller (controllers included)
+///                         is scoped to its own rows; anonymous denied
+///   #controllerOrScoped — controllers read every row; other non-anonymous
+///                         callers are scoped to their own rows; anonymous
+///                         denied
+///
+/// The resolved scope threads per-entity into the executor and the schema
+/// projection, so a caller never sees — directly or through a join — rows
+/// an entity's level denies them.
 
 import Principal "mo:core/Principal";
 
@@ -22,25 +31,29 @@ module {
     #scoped : Principal;
   };
 
-  /// `authorizeUser` preset: controllers read everything, nobody else
-  /// passes on the principal path. Sensible default for production
-  /// canisters exposing private state.
-  public func controllerOnly(p : Principal) : Access =
-    if (p.isController()) #unrestricted else #deny;
+  /// The authorization level an entity is exposed at.
+  public type TableAuth = {
+    #public_;
+    #controllerOnly;
+    #scopedPerUser;
+    #controllerOrScoped;
+  };
 
-  /// `authorizeUser` preset: every non-anonymous caller is authorized but
-  /// scoped to its own rows (rows of `#owner`-tagged entities whose owner
-  /// equals the caller). The per-user default for end-user-facing apps.
-  public func selfScoped(p : Principal) : Access =
-    if (p.isAnonymous()) #deny else #scoped p;
-
-  /// `authorizeUser` preset: no principal is special — combine with
-  /// `isPublic` or token policies.
-  public func noUsers(_ : Principal) : Access = #deny;
-
-  /// `authorizeToken` preset: no author-side token scheme. Tokens minted
-  /// via `oqlMintToken` keep working — the mixin checks its own store
-  /// before this function.
-  public func noExternalTokens(_ : Text) : Access = #deny;
+  /// Resolve an entity's level against a caller into a read `Access`.
+  public func resolve(level : TableAuth, caller : Principal) : Access =
+    switch level {
+      case (#public_) { #unrestricted };
+      case (#controllerOnly) {
+        if (caller.isController()) #unrestricted else #deny;
+      };
+      case (#scopedPerUser) {
+        if (caller.isAnonymous()) #deny else #scoped caller;
+      };
+      case (#controllerOrScoped) {
+        if (caller.isController()) #unrestricted
+        else if (caller.isAnonymous()) #deny
+        else #scoped caller;
+      };
+    };
 
 };

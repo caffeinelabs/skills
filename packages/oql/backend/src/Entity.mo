@@ -13,15 +13,17 @@ import Nat       "mo:core/Nat";
 import Principal "mo:core/Principal";
 import Runtime   "mo:core/Runtime";
 import Text      "mo:core/Text";
+import Auth      "Auth";
 import Predicate "Predicate";
 import Schema    "Schema";
 import Types     "Types";
 
 module {
 
-  type Value = Types.Value;
-  type Path  = Types.Path;
-  type Role  = Types.FieldRole;
+  type Value     = Types.Value;
+  type Path      = Types.Path;
+  type Role      = Types.FieldRole;
+  type TableAuth = Auth.TableAuth;
 
   /// What the derived `_toRow` wrapper produces: one entry per record
   /// field, in lexicographic order (Motoko's canonical record form).
@@ -49,32 +51,41 @@ module {
   /// subject: `null` is an unrestricted read (every row), `?p` is a read
   /// scoped to principal `p`. Non-scoped sources (`new`/`manual`/the
   /// container shortcuts) ignore the argument; `newScoped` honours it.
+  ///
+  /// `auth` is the entity's authorization level (default `#controllerOnly`);
+  /// `scopedSource` records whether `source` honours the subject argument
+  /// (only `newScoped`), which — together with an owner column — is what
+  /// makes a scoped level safe to expose.
   public type Builder<T> = {
-    name       : Text;
-    typeName   : Text;
-    source     : ?Principal -> Iter.Iter<T>;
-    primaryKey : Text;
-    toRow      : T -> Row;
+    name         : Text;
+    typeName     : Text;
+    source       : ?Principal -> Iter.Iter<T>;
+    primaryKey   : Text;
+    toRow        : T -> Row;
     // Each extra contributes zero-or-more cells to a row. `.payload`
     // yields a singleton; `.flatten` splices a nested record's sub-row.
-    extras     : List.List<T -> Row>;
-    edges      : List.List<{ name : Text; to : Text }>;
-    hidden     : List.List<Text>;
-    domains    : List.List<{ name : Text; values : [Value] }>;
-    owner      : List.List<OwnerSpec>;  // at most one entry: the owner column + its check
-    sample     : List.List<T>;     // at most one entry; List used for mutability
+    extras       : List.List<T -> Row>;
+    edges        : List.List<{ name : Text; to : Text }>;
+    hidden       : List.List<Text>;
+    domains      : List.List<{ name : Text; values : [Value] }>;
+    owner        : List.List<OwnerSpec>;  // at most one entry: the owner column + its check
+    sample       : List.List<T>;     // at most one entry; List used for mutability
+    auth         : List.List<TableAuth>;  // at most one entry; default applied in build()
+    scopedSource : Bool;
   };
 
   /// Type-erased entity descriptor stored in the registry. The `rows`
   /// closure iterates the underlying collection for a given query subject
   /// (`null` = unrestricted, `?p` = scoped to `p`), producing each row as
   /// a `Predicate.Row` that knows how to look up its own fields by path.
+  /// `auth` is the entity's authorization level, resolved per caller.
   public type Decl = {
     name       : Text;
     typeName   : Text;
     primaryKey : Text;
     fields     : [Schema.FieldDecl];
     rows       : ?Principal -> Iter.Iter<Predicate.Row>;
+    auth       : TableAuth;
   };
 
   public func new<T>(
@@ -93,6 +104,8 @@ module {
     domains = List.empty();
     owner   = List.empty();
     sample  = List.empty();
+    auth    = List.empty();
+    scopedSource = false;
   };
 
   /// Auto-derive over a subject-scoped row source. `scopedIter` receives
@@ -118,6 +131,8 @@ module {
     domains = List.empty();
     owner   = List.empty();
     sample  = List.empty();
+    auth    = List.empty();
+    scopedSource = true;
   };
 
 
@@ -139,6 +154,8 @@ module {
     domains = List.empty();
     owner   = List.empty();
     sample  = List.empty();
+    auth    = List.empty();
+    scopedSource = false;
   };
 
   /// Seed value for schema discovery. Required when the iter may be
@@ -214,6 +231,31 @@ module {
     self
   };
 
+  /// Set the entity's authorization level. The default (when no level is
+  /// set) is `#controllerOnly`. Scoped levels (`#scopedPerUser`,
+  /// `#controllerOrScoped`) require either an owner column (`.ownedBy` /
+  /// `.ownedByWith`) or a subject-honouring source (`newScoped`), enforced
+  /// at `build()`.
+  public func auth<T>(self : Builder<T>, level : TableAuth) : Builder<T> {
+    self.auth.clear();
+    self.auth.add(level);
+    self
+  };
+
+  /// Everyone (anonymous included) reads every row.
+  public func public_<T>(self : Builder<T>) : Builder<T> = auth<T>(self, #public_);
+
+  /// Controllers read every row; everyone else is denied.
+  public func controllerOnly<T>(self : Builder<T>) : Builder<T> = auth<T>(self, #controllerOnly);
+
+  /// Every non-anonymous caller (controllers included) is scoped to its
+  /// own rows; anonymous denied.
+  public func scopedPerUser<T>(self : Builder<T>) : Builder<T> = auth<T>(self, #scopedPerUser);
+
+  /// Controllers read every row; other non-anonymous callers are scoped to
+  /// their own rows; anonymous denied.
+  public func controllerOrScoped<T>(self : Builder<T>) : Builder<T> = auth<T>(self, #controllerOrScoped);
+
   /// Declare the distinct values a field can hold (e.g. the arms of a
   /// variant rendered as text). Surfaced in `schema()` as the field's
   /// `values` array, so clients filter with exact literals instead of
@@ -244,6 +286,35 @@ module {
 
     let ownerSpec : ?OwnerSpec = self.owner.first();
     let ownerField : ?Text = switch ownerSpec { case (?s) ?s.field; case null null };
+
+    let level : TableAuth = switch (self.auth.first()) { case (?l) l; case null #controllerOnly };
+
+    // A scoped level only filters when the entity can honour a subject:
+    // either an owner column (`.ownedBy`/`.ownedByWith`) or a
+    // subject-honouring source (`newScoped`). Without one, scoping would
+    // silently never apply and every caller would see every row.
+    let hasOwner : Bool = switch ownerSpec { case (?_) true; case null false };
+    switch level {
+      case (#scopedPerUser or #controllerOrScoped) {
+        if (not hasOwner and not self.scopedSource)
+          Runtime.trap("OQL: entity '" # self.name
+            # "' is scoped (scopedPerUser/controllerOrScoped) but has no owner column"
+            # " (.ownedBy/.ownedByWith) or subject-honouring source (newScoped)");
+      };
+      case _ {};
+    };
+
+    // A custom owner check paired with `#public_` would be silently
+    // bypassed — every caller resolves to `#unrestricted`, so `canSee`
+    // never runs. Reject the contradiction rather than leak.
+    switch (ownerSpec, level) {
+      case (?_, #public_) {
+        Runtime.trap("OQL: entity '" # self.name
+          # "' declares an owner column but is exposed #public_ — the ownership"
+          # " check would never run; use a scoped level or drop .ownedBy");
+      };
+      case _ {};
+    };
 
     let extras = self.extras.toArray();
 
@@ -293,6 +364,7 @@ module {
       primaryKey = self.primaryKey;
       fields     = schemaFields;
       rows       = makeRows(self.source, fullRow, hiddenSet, ownerSpec);
+      auth       = level;
     }
   };
 

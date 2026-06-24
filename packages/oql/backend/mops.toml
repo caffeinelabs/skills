@@ -1,6 +1,6 @@
 [package]
 name = "caffeineai-oql"
-version = "0.1.0"
+version = "0.2.0"
 description = "Object Query Layer — expose a canister's data shape via schema() and answer JSON queries via execute(), with filters, aggregation, and edge traversal."
 license = "Apache-2.0"
 repository = "https://github.com/caffeinelabs/skills"
@@ -10,13 +10,18 @@ keywords = ["motoko", "icp", "query", "schema", "data"]
 core = "2.2.0"
 json = "1.4.0"
 
+[dev-dependencies]
+test = "2.1.2"
+
 [toolchain]
 moc = "1.9.0"
+pocket-ic = "14.0.0"
 
 [moc]
 args = [
   "--default-persistent-actors",
   "--implicit-package=core",
+  "-fshared-code",
   "-W",
   "M0236",
 ]

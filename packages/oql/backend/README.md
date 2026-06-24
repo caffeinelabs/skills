@@ -8,18 +8,22 @@ an actor via the `Expose` mixin:
   aggregation, and dotted-path edge traversal) and returns typed Candid rows.
 
 You declare entities over data you already keep in memory; no storage
-restructuring, no per-question getters. See the `extension-oql` skill for the
-authoring recipe.
+restructuring, no per-question getters. Authorization is **per entity** — each
+entity carries a level (`.public_()`, `.controllerOnly()` (default),
+`.scopedPerUser()`, `.controllerOrScoped()`) resolved against the caller. See
+the `extension-oql` skill for the authoring recipe.
 
 ```motoko
-import OQL    "mo:caffeineai-oql";
 import Expose "mo:caffeineai-oql/Expose";
 
 actor {
   // ... your storage ...
   include Expose({
-    entities = [ /* customers.toEntity(...).build(), ... */ ];
-    auth     = OQL.Auth.controllerOnly;
+    entities = [
+      // default level is #controllerOnly when none is set
+      customers.toEntity("customer", "Customer", "id").public_().build(),
+      notes.toEntity("note", "Note", "id").ownedBy("owner").scopedPerUser().build(),
+    ];
   });
 }
 ```

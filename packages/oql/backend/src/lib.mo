@@ -2,16 +2,18 @@
 ///
 /// Typical usage in an actor:
 ///
-///   import OQL    "mo:oql";
-///   import Expose "mo:oql/Expose";
+///   import OQL    "mo:caffeineai-oql";
+///   import Expose "mo:caffeineai-oql/Expose";
 ///
 ///   actor {
 ///     // ... domain types and storage ...
 ///     include Expose({
-///       entities = [ /* OQL.Entity.new(...).payload(...) */ ];
-///       isPublic          = func () : Bool = false;
-///       isUserAuthorized  = OQL.Auth.controllerOnly;
-///       isTokenAuthorized = OQL.Auth.noExternalTokens;
+///       entities = [
+///         // each entity declares its own authorization level; default
+///         // is #controllerOnly when none is set.
+///         notes.toEntity("note", "Note", "id").ownedBy("owner").scopedPerUser().build(),
+///         tags.toEntity("tag", "Tag", "id").public_().build(),
+///       ];
 ///     });
 ///   };
 
@@ -88,6 +90,8 @@ module {
   public type Decl      = _Entity.Decl;
   public type Result    = _Executor.Result;
   public type Access    = _Auth.Access;
+  /// Per-entity authorization level — see Auth / Entity.auth.
+  public type TableAuth = _Auth.TableAuth;
   /// App-defined ownership predicate for `.ownedByWith` — see Entity.
   public type OwnerCheck = _Entity.OwnerCheck;
 

@@ -20,6 +20,7 @@ import Option    "mo:core/Option";
 import Order     "mo:core/Order";
 import Principal "mo:core/Principal";
 import Runtime   "mo:core/Runtime";
+import Auth      "Auth";
 import Entity    "Entity";
 import Predicate "Predicate";
 import Query     "Query";
@@ -40,23 +41,39 @@ module {
     hasMore : Bool;
   };
 
-  /// Unrestricted run — every row of every entity. Equivalent to
-  /// `runScoped(r, q, null)`. Kept for callers that don't carry a subject.
-  public func run(r : Registry.Registry, q : Query.Query) : Result =
-    runScoped(r, q, null);
+  /// The per-entity read decision for one query. Resolving access per
+  /// `Entity.Decl` (rather than a single subject) is what lets entities
+  /// carry different authorization levels: the mixin supplies
+  /// `func d = Auth.resolve(d.auth, caller)`. There is deliberately no
+  /// auth-bypassing convenience entry point — every run goes through
+  /// `runWith` with an explicit resolver, so authorization can never be
+  /// skipped by accident.
+  public type Access = Entity.Decl -> Auth.Access;
 
-  /// Subject-scoped run. `subject = null` reads everything; `?p` restricts
-  /// every `#owner`-tagged entity — start AND join targets — to rows owned
-  /// by `p`, so edge traversal can't surface another owner's rows.
-  public func runScoped(r : Registry.Registry, q : Query.Query, subject : ?Principal) : Result {
+  /// The query subject an `Access` scopes to: a concrete principal for
+  /// `#scoped`, `null` (unrestricted) otherwise.
+  func subjectOf(a : Auth.Access) : ?Principal =
+    switch a { case (#scoped p) { ?p }; case _ { null } };
+
+  /// Authorization-aware run. `access` decides, per entity, whether the
+  /// caller may read it and at what scope. A denied start entity traps; a
+  /// denied join target contributes an empty index, so traversal into it is
+  /// a left-join null (no leak). Scoped entities — start AND join targets —
+  /// yield only the rows their owner check admits for the resolved subject.
+  public func runWith(r : Registry.Registry, q : Query.Query, access : Access) : Result {
     let entity = switch (Registry.lookup(r, q.start)) {
       case null { Runtime.trap("OQL: unknown entity '" # q.start # "'") };
       case (?d) { d };
     };
 
-    let hops = collectHops(r, entity, q, subject);
+    let startSubject = switch (access(entity)) {
+      case (#deny) { Runtime.trap("OQL: caller not allowed to read '" # entity.name # "'") };
+      case (a) { subjectOf(a) };
+    };
+
+    let hops = collectHops(r, entity, q, access);
     let kept = filter(
-      entity.rows(subject).map(func (row : Row) : Row = wrapRow(row, entity.name, hops)),
+      entity.rows(startSubject).map(func (row : Row) : Row = wrapRow(row, entity.name, hops)),
       q.where_,
     );
 
@@ -97,8 +114,11 @@ module {
   };
 
   /// Collect every dotted path in the query, validate each hop against the
-  /// schema, and build one PK index per distinct target entity.
-  func collectHops(r : Registry.Registry, start : Entity.Decl, q : Query.Query, subject : ?Principal) : Hops {
+  /// schema, and build one PK index per distinct target entity. Each
+  /// target's index is built at its OWN resolved access: a denied target
+  /// gets an empty index (every traversal into it is a left-join null), a
+  /// scoped target only its caller-owned rows.
+  func collectHops(r : Registry.Registry, start : Entity.Decl, q : Query.Query, access : Access) : Hops {
     let edges  = Map.empty<Text, Text>();
     let seen   = Map.empty<Text, ()>();
     let needed = List.empty<Entity.Decl>();
@@ -122,7 +142,13 @@ module {
     };
 
     let indexes = Map.empty<Text, Map.Map<Text, Row>>();
-    for (decl in needed.values()) indexes.add(decl.name, buildIndex(decl, subject));
+    for (decl in needed.values()) {
+      let idx = switch (access(decl)) {
+        case (#deny) { Map.empty<Text, Row>() };  // denied target -> left-join null
+        case (a)     { buildIndex(decl, subjectOf(a)) };
+      };
+      indexes.add(decl.name, idx);
+    };
     { edges; indexes }
   };
 
