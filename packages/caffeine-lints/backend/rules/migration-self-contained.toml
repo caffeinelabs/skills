@@ -1,0 +1,7 @@
+name = "migration-self-contained"
+description = "Migration files must be self-contained. @path is a relative import — if that module changes after this migration is frozen, it will break the migration chain and agents cannot fix it. Inline the type or value directly in the migration file."
+includes = ["**/src/backend/migrations/*.mo"]
+query = '''
+(import (text_literal) @path @error
+  (#match? @path "^\"[^:]*\"$"))
+'''
