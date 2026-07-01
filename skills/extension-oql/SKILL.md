@@ -1,10 +1,10 @@
 ---
 name: extension-oql
 description: Make a canister's data queryable by the Caffeine Data Intelligence agent. Use whenever an app stores structured data (Maps/Lists/arrays of records) that should be answerable in natural language — "top customers", "revenue by region", "active projects". Adds a discoverable `schema()` and a JSON `execute()` query endpoint via the `caffeineai-oql` mops package's `Expose` mixin.
-version: 0.2.0
+version: 0.3.0
 compatibility:
   mops:
-    caffeineai-oql: "~0.2.0"
+    caffeineai-oql: "~0.3.0"
 caffeineai-subscription: [none]
 ---
 
