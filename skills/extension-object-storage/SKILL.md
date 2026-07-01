@@ -1,10 +1,10 @@
 ---
 name: extension-object-storage
 description: General file/object storage, such as for images, videos, files, documents and other bulk data. Perfect fit for image galleries, video galleries, and other file or object management. Supports large files beyond IC limit, with browser-cached HTTP URL access.
-version: 1.0.0
+version: 1.1.0
 compatibility:
   mops:
-    caffeineai-object-storage: "~1.0.0"
+    caffeineai-object-storage: "~1.1.0"
 caffeineai-subscription: [none]
 ---
 
@@ -22,7 +22,7 @@ All four steps are mandatory. Skipping any one causes `403 Forbidden: Invalid pa
 1. **mops dependency** — add `caffeineai-object-storage` to `mops.toml` under `[dependencies]`.
 2. **Mixin invocation** — `include MixinObjectStorage()` in `main.mo` (imported from `"mo:caffeineai-object-storage/Mixin"`).
 3. **Storage.ExternalBlob types** — every data field that represents a file MUST use `Storage.ExternalBlob`, never `Text`.
-4. **Frontend npm package** — `@caffeineai/object-storage` installed and `ExternalBlob.fromBytes()` used at the call site.
+4. **Frontend npm package** — `@caffeineai/object-storage` installed and `ExternalBlob.fromBytes(bytes, file.type, file.name)` used at the call site.
 
 CRITICAL: The frontend package (`@caffeineai/object-storage`) does NOT work without the backend mops package (`caffeineai-object-storage`). Installing only the npm package and not the mops package causes silent upload failures (403 from the storage gateway). You MUST install both together.
 
@@ -115,19 +115,23 @@ class ExternalBlob {
   getBytes(): Promise<Uint8Array<ArrayBuffer>>;
   getDirectURL(): string;
   static fromURL(url: string): ExternalBlob;
-  static fromBytes(blob: Uint8Array<ArrayBuffer>): ExternalBlob;
+  static fromBytes(
+    blob: Uint8Array<ArrayBuffer>,
+    contentType?: string,
+    filename?: string,
+  ): ExternalBlob;
   withUploadProgress(onProgress: (percentage: number) => void): ExternalBlob;
 }
 ```
 
 ## Uploading Files
 
-Convert the browser `File` object to `ExternalBlob` and pass the original filename alongside:
+Pass the browser `File` type and name into `fromBytes` so the gateway blob tree stores `Content-Type` and `Content-Disposition` (original filename). Also pass `file.name` to the backend so app records keep the filename for lists and UI.
 
 ```typescript
 const handleUpload = async (file: File) => {
   const bytes = new Uint8Array(await file.arrayBuffer());
-  const blob = ExternalBlob.fromBytes(bytes).withUploadProgress((pct) => {
+  const blob = ExternalBlob.fromBytes(bytes, file.type, file.name).withUploadProgress((pct) => {
     setProgress(pct);
   });
 
@@ -135,7 +139,7 @@ const handleUpload = async (file: File) => {
 };
 ```
 
-Always send `file.name` so the backend stores the original filename.
+Gateway GET/HEAD responses echo the stored filename via `Content-Disposition`. Keep the backend `filename` field for queries and display without hitting the gateway.
 
 ## Displaying Files
 
@@ -194,7 +198,7 @@ Use `getDirectURL()` for inline display, `getBytes()` for save-as downloads.
 |---|---|---|
 | Display image/video | `blob.getDirectURL()` | Streaming, cached |
 | Download with filename | `blob.getBytes()` | Wrap in Blob + anchor |
-| Upload from browser | `ExternalBlob.fromBytes(bytes)` | Pair with `.withUploadProgress()` |
+| Upload from browser | `ExternalBlob.fromBytes(bytes, file.type, file.name)` | MIME + filename in gateway headers |
 | Detect file type | `filename` or `mimeType` field | NEVER inspect the URL |
 
 # Verifying the Setup
