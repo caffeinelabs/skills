@@ -3,6 +3,7 @@
 /// parameter is the compiler's structural decomposition contract:
 /// it arrives as a list of `(fieldName, () -> Value)` thunks.
 
+import Array "mo:core/Array";
 import Types "Types";
 
 module {

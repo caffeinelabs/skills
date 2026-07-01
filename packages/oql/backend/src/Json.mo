@@ -30,8 +30,10 @@
 /// final segment crosses a declared edge to the target entity.
 
 import Json      "mo:json";
+import Iter      "mo:core/Iter";
 import List      "mo:core/List";
 import Nat       "mo:core/Nat";
+import Text      "mo:core/Text";
 import Predicate "Predicate";
 import Query     "Query";
 import Types     "Types";

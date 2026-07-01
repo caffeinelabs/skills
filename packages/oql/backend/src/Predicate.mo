@@ -78,14 +78,26 @@ module {
       case _ { false };
     };
 
-  /// Total ordering on `Value`. Type-mixed comparisons (`#nat` vs `#text`)
-  /// are deterministic but meaningless — callers compare like with like.
-  /// `Nat`/`Int`/`Float` bridge each other: numeric values compare
-  /// across these three regardless of which wire form they arrived in,
-  /// so `gt(price, 10)` matches a row whose `price` is the Float 12.5.
-  /// `Nat`/`Int`/`Float` go through `Nat.compare`/`Int.compare`/
-  /// `Float.compare` because mo:core names those parameters `x`/`y`,
-  /// not `self`, so contextual dot is unavailable.
+  /// A genuine total order on `Value` — antisymmetric and transitive over
+  /// every pair, which `orderBy`/`min`/`max` rely on (an inconsistent
+  /// comparator silently corrupts sorts).
+  ///
+  /// `Nat`/`Int`/`Float` bridge each other: numeric values compare across
+  /// these three regardless of which wire form they arrived in, so
+  /// `gt(price, 10)` matches a row whose `price` is the Float 12.5.
+  ///
+  /// Cross-*kind* pairs (`#nat` vs `#text`, or anything vs `#null_`) order
+  /// by a fixed kind rank — `null < bool < number < text` — so the answer
+  /// is deterministic and self-consistent. (Meaningful queries still
+  /// compare like with like; this just guarantees a stable sort when a
+  /// column mixes kinds, e.g. a left-joined edge path yielding `null`.)
+  ///
+  /// Numeric pairs go through `Nat.compare`/`Int.compare`/`Float.compare`
+  /// (mo:core names those parameters `x`/`y`, not `self`, so contextual dot
+  /// is unavailable). `Float.compare` is itself already a total order across
+  /// the float edge cases — NaN sorts greatest and equals only itself,
+  /// `-0.0` equals `+0.0` — so no NaN special-casing is needed here. (Both
+  /// properties are pinned by the test suite.)
   public func compare(a : Value, b : Value) : Order.Order =
     switch (a, b) {
       case (#null_,  #null_ ) { #equal };
@@ -100,7 +112,19 @@ module {
       case (#float x, #int   y) { Float.compare(x, Float.fromInt(y)) };
       case (#int   x, #float y) { Float.compare(Float.fromInt(x), y) };
       case (#text x, #text y) { x.compare(y) };
-      case _ { #less };
+      // Different kinds: order by kind rank. (Same-kind pairs — including
+      // every numeric combination — are all handled above, so this only
+      // ever sees distinct ranks and is therefore strictly ±.)
+      case _ { Nat.compare(rank(a), rank(b)) };
     };
+
+  /// Fixed kind ordering for cross-kind comparisons. Numbers share a rank
+  /// so the bridge cases above stay authoritative for numeric pairs.
+  func rank(v : Value) : Nat = switch v {
+    case (#null_) { 0 };
+    case (#bool _) { 1 };
+    case (#nat _ or #int _ or #float _) { 2 };
+    case (#text _) { 3 };
+  };
 
 };

@@ -20,6 +20,7 @@ import Option    "mo:core/Option";
 import Order     "mo:core/Order";
 import Principal "mo:core/Principal";
 import Runtime   "mo:core/Runtime";
+import Text      "mo:core/Text";
 import Auth      "Auth";
 import Entity    "Entity";
 import Predicate "Predicate";
@@ -72,9 +73,21 @@ module {
     };
 
     let hops = collectHops(r, entity, q, access);
+
+    // With no ordering or aggregation, the result is just the first
+    // `offset+limit` survivors in scan order — so stop scanning there instead
+    // of materialising the whole table (+1 to still detect `hasMore`). With no
+    // limit, or when orderBy/aggregate is present, every row is needed. The
+    // window/`hasMore` logic below is unchanged and yields identical results.
+    let scanCap : ?Nat =
+      if (q.orderBy.size() == 0 and q.aggregate.size() == 0 and q.groupBy.size() == 0) {
+        switch (q.limit) { case (?lim) { ?(q.offset.get(0) + lim + 1) }; case null { null } };
+      } else { null };
+
     let kept = filter(
       entity.rows(startSubject).map(func (row : Row) : Row = wrapRow(row, entity.name, hops)),
       q.where_,
+      scanCap,
     );
 
     // Aggregation stage: when grouping or aggregates are requested, collapse
@@ -90,7 +103,7 @@ module {
       };
 
     let sorted = if (q.orderBy.size() == 0) { workRows }
-                 else { workRows.sort(makeComparator(q.orderBy)) };
+                 else { sortByKeys(workRows, q.orderBy) };
 
     let offset  = q.offset.get(0);
     let limit   = q.limit.get(sorted.size());
@@ -131,9 +144,9 @@ module {
       var i = 0;
       while (i + 1 < path.size()) {
         let target = validateHop(r, entity, path[i]);
-        edges.add(entity.name # "\u{1f}" # path[i], target.name);
-        if (seen.get(target.name) == null) {
-          seen.add(target.name, ());
+        edges.add(Text.compare, entity.name # "\u{1f}" # path[i], target.name);
+        if (seen.get(Text.compare, target.name) == null) {
+          seen.add(Text.compare, target.name, ());
           needed.add(target);
         };
         entity := target;
@@ -147,7 +160,7 @@ module {
         case (#deny) { Map.empty<Text, Row>() };  // denied target -> left-join null
         case (a)     { buildIndex(decl, subjectOf(a)) };
       };
-      indexes.add(decl.name, idx);
+      indexes.add(Text.compare, decl.name, idx);
     };
     { edges; indexes }
   };
@@ -244,7 +257,7 @@ module {
     let idx = Map.empty<Text, Row>();
     for (row in decl.rows(subject)) {
       switch (joinKey(row.get([decl.primaryKey]).get(#null_))) {
-        case (?k) { idx.add(k, row) };
+        case (?k) { idx.add(Text.compare, k, row) };
         case null {
           Runtime.trap("OQL: row of '" # decl.name # "' has no joinable primary key '"
             # decl.primaryKey # "'")
@@ -264,11 +277,11 @@ module {
         case (?v) { ?v };
         case null {
           if (path.size() < 2) return null;
-          let target = switch (hops.edges.get(entityName # "\u{1f}" # path[0])) {
+          let target = switch (hops.edges.get(Text.compare, entityName # "\u{1f}" # path[0])) {
             case (?t) { t };
             case null { return null };
           };
-          let idx = switch (hops.indexes.get(target)) {
+          let idx = switch (hops.indexes.get(Text.compare, target)) {
             case (?i) { i };
             case null { return null };
           };
@@ -279,7 +292,7 @@ module {
           switch (joinKey(fk)) {
             case null { null };                 // null FK -> left-join null
             case (?k) {
-              switch (idx.get(k)) {
+              switch (idx.get(Text.compare, k)) {
                 case null { null };             // dangling FK -> left-join null
                 case (?t) { wrapRow(t, target, hops).get(path.sliceToArray(1, path.size())) };
               };
@@ -290,11 +303,27 @@ module {
     };
   };
 
-  func filter(it : Iter.Iter<Row>, where_ : ?Predicate.Predicate) : [Row] =
-    switch where_ {
-      case null { it.toArray() };
-      case (?p) { it.filter(func row = Predicate.eval(p, row)).toArray() };
+  /// Filter the row iterator by the predicate. `cap` bounds how many survivors
+  /// to collect (lazy: the scan stops once `cap` is reached); `null` collects
+  /// all. Bounding is only passed when ordering/aggregation are absent, where
+  /// scan order is the result order.
+  func filter(it : Iter.Iter<Row>, where_ : ?Predicate.Predicate, cap : ?Nat) : [Row] {
+    let matched = switch where_ {
+      case null    { it };
+      case (?p)    { it.filter(func row = Predicate.eval(p, row)) };
     };
+    switch cap {
+      case null { matched.toArray() };
+      case (?n) {
+        let acc = List.empty<Row>();
+        label scan for (row in matched) {
+          if (acc.size() >= n) break scan;
+          acc.add(row);
+        };
+        acc.toArray()
+      };
+    };
+  };
 
   func project(row : Row, paths : [Path]) : [Cell] =
     paths.map(func (p : Path) : Cell = {
@@ -320,18 +349,33 @@ module {
       };
     };
 
-  func makeComparator(clauses : [Query.OrderBy]) : (Row, Row) -> Order.Order =
-    func (a, b) {
-      for (c in clauses.values()) {
-        let raw = Predicate.compare(
-          a.get(c.field).get(#null_),
-          b.get(c.field).get(#null_),
-        );
-        let oriented = switch (c.dir) { case (#asc) raw; case (#desc) flip(raw) };
-        if (oriented != #equal) return oriented;
-      };
-      #equal
+  /// Decorate-sort. The naive approach calls `row.get(c.field)` inside every
+  /// comparison; for a dotted path that re-traverses the join O(n log n) times.
+  /// Instead, extract each row's orderBy key ONCE (n traversals), then sort the
+  /// (key, row) pairs comparing the precomputed keys. `Array.sort` is stable and
+  /// `compareKeys` mirrors the old comparator exactly (same `Predicate.compare`,
+  /// same asc/desc, same null handling), so the result is identical.
+  func sortByKeys(rows : [Row], clauses : [Query.OrderBy]) : [Row] {
+    func keyOf(r : Row) : [Value] =
+      Array.map<Query.OrderBy, Value>(clauses, func c = r.get(c.field).get(#null_));
+    let decorated = Array.map<Row, ([Value], Row)>(rows, func r = (keyOf(r), r));
+    let ordered = Array.sort<([Value], Row)>(
+      decorated, func ((ka, _), (kb, _)) = compareKeys(ka, kb, clauses));
+    Array.map<([Value], Row), Row>(ordered, func ((_, r)) = r)
+  };
+
+  /// Compare two precomputed orderBy keys (aligned to `clauses`), applying each
+  /// clause's direction. Same semantics as the former per-row comparator.
+  func compareKeys(ka : [Value], kb : [Value], clauses : [Query.OrderBy]) : Order.Order {
+    var i = 0;
+    while (i < clauses.size()) {
+      let raw = Predicate.compare(ka[i], kb[i]);
+      let oriented = switch (clauses[i].dir) { case (#asc) raw; case (#desc) flip(raw) };
+      if (oriented != #equal) return oriented;
+      i += 1;
     };
+    #equal
+  };
 
   func flip(o : Order.Order) : Order.Order = switch o {
     case (#less)    { #greater };
@@ -365,7 +409,7 @@ module {
     for (row in rows.values()) {
       let keyVals = groupBy.map(func (p : Path) : Value = row.get(p).get(#null_));
       let key = groupKey(keyVals);
-      switch (groups.get(key)) {
+      switch (groups.get(Text.compare, key)) {
         case (?g) { g.members.add(row) };
         case null {
           let keyCells = Array.tabulate<(Text, Value)>(
@@ -374,7 +418,7 @@ module {
           );
           let g : Group = { keyCells; members = List.empty<Row>() };
           g.members.add(row);
-          groups.add(key, g);
+          groups.add(Text.compare, key, g);
           order.add(key);
         };
       };
@@ -382,7 +426,7 @@ module {
 
     let out = List.empty<Row>();
     for (key in order.values()) {
-      let g = switch (groups.get(key)) { case (?x) x; case null { Runtime.trap("OQL: group vanished") } };
+      let g = switch (groups.get(Text.compare, key)) { case (?x) x; case null { Runtime.trap("OQL: group vanished") } };
       out.add(aggRow(g.keyCells, g.members.toArray()));
     };
     { rows = out.toArray(); columns };
@@ -478,8 +522,8 @@ module {
   /// `["dept","name"]` from orderBy/select.
   func rowOf(cells : [(Text, Value)]) : Row {
     let m = Map.empty<Text, Value>();
-    for ((k, v) in cells.values()) m.add(k, v);
-    { get = func (p : Path) : ?Value = if (p.size() == 0) null else m.get(Types.pathToText(p)) }
+    for ((k, v) in cells.values()) m.add(Text.compare, k, v);
+    { get = func (p : Path) : ?Value = if (p.size() == 0) null else m.get(Text.compare, Types.pathToText(p)) }
   };
 
   /// Type-tagged serialisation of the group-key tuple, so distinct values

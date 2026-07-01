@@ -184,3 +184,56 @@ test("Float predicate eval covers comparison + bridging", func () {
   // in_ matches across Float / Nat element types.
   assert     Predicate.eval(#in_(["ratio"], [#float(0.0), #float(0.42)]), r);
 });
+
+// ── compare is a *genuine* total order across kinds, incl. float edges ──
+
+test("compare orders across kinds by fixed rank (null < bool < number < text)", func () {
+  // null sorts before everything; numbers (any of nat/int/float) before text.
+  assert Predicate.compare(#null_, #bool(false))  == #less;
+  assert Predicate.compare(#bool(true), #nat(0))  == #less;
+  assert Predicate.compare(#int(99), #text(""))   == #less;
+  assert Predicate.compare(#float(1.0), #text("0")) == #less;
+  // ...and the mirror is strictly the opposite (the old bug: both were #less).
+  assert Predicate.compare(#bool(false), #null_)  == #greater;
+  assert Predicate.compare(#text(""), #int(99))   == #greater;
+});
+
+test("compare puts NaN after all floats and equal only to itself", func () {
+  let nan = 0.0 / 0.0;
+  let inf = 1.0 / 0.0;
+  assert Predicate.compare(#float(nan), #float(1.0)) == #greater;
+  assert Predicate.compare(#float(1.0), #float(nan)) == #less;
+  assert Predicate.compare(#float(nan), #float(inf)) == #greater;
+  assert Predicate.compare(#float(nan), #float(nan)) == #equal;
+});
+
+// Representative sample spanning every kind + every float edge case.
+let sample : [Value] = [
+  #null_, #bool(false), #bool(true), #nat(0), #nat(5), #int(-3), #int(5),
+  #float(2.5), #float(5.0), #float(0.0), #float(-0.0),
+  #float(1.0 / 0.0), #float(-1.0 / 0.0), #float(0.0 / 0.0),
+  #text("a"), #text("b"),
+];
+
+func flip(o : { #less; #equal; #greater }) : { #less; #equal; #greater } =
+  switch o { case (#less) #greater; case (#greater) #less; case (#equal) #equal };
+
+test("compare is antisymmetric over the full sample", func () {
+  for (a in sample.values()) {
+    for (b in sample.values()) {
+      // compare(a,b) must be the exact opposite of compare(b,a).
+      assert flip(Predicate.compare(a, b)) == Predicate.compare(b, a);
+    };
+  };
+});
+
+test("compare is transitive over the full sample", func () {
+  func leq(a : Value, b : Value) : Bool = Predicate.compare(a, b) != #greater;
+  for (a in sample.values()) {
+    for (b in sample.values()) {
+      for (c in sample.values()) {
+        if (leq(a, b) and leq(b, c)) assert leq(a, c);
+      };
+    };
+  };
+});

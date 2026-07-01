@@ -6,6 +6,7 @@
 /// `manual` is the escape hatch for non-record `T`, nested records,
 /// variants, collections, or computed fields.
 
+import Array     "mo:core/Array";
 import Iter      "mo:core/Iter";
 import List      "mo:core/List";
 import Map       "mo:core/Map";
@@ -276,13 +277,13 @@ module {
   /// Hidden fields are dropped here, once and for all.
   public func build<T>(self : Builder<T>) : Decl {
     let edgeLookup = Map.empty<Text, Text>();
-    for (e in self.edges.values()) edgeLookup.add(e.name, e.to);
+    for (e in self.edges.values()) edgeLookup.add(Text.compare, e.name, e.to);
 
     let hiddenSet = Map.empty<Text, ()>();
-    for (h in self.hidden.values()) hiddenSet.add(h, ());
+    for (h in self.hidden.values()) hiddenSet.add(Text.compare, h, ());
 
     let domainLookup = Map.empty<Text, [Value]>();
-    for (d in self.domains.values()) domainLookup.add(d.name, d.values);
+    for (d in self.domains.values()) domainLookup.add(Text.compare, d.name, d.values);
 
     let ownerSpec : ?OwnerSpec = self.owner.first();
     let ownerField : ?Text = switch ownerSpec { case (?s) ?s.field; case null null };
@@ -318,14 +319,19 @@ module {
 
     let extras = self.extras.toArray();
 
-    func fullRow(v : T) : Row {
+    // Raw (un-deduped) cells for a row, in declaration order. Column names
+    // are fixed per entity (record fields / literal `.payload` / `.flatten`),
+    // so this order and length are identical for every row — the invariant
+    // both the fast path below and schema derivation rely on.
+    func rawCellList(v : T) : List.List<(Text, Value)> {
       let cells = List.empty<(Text, Value)>();
       for (cell in self.toRow(v).values()) cells.add(cell);
       for (extra in extras.values()) {
         for (cell in extra(v).values()) cells.add(cell);
       };
-      dedupeNames(cells)
+      cells
     };
+    func fullRow(v : T) : Row = dedupeNames(rawCellList(v));
 
     // Schema derivation is caller-independent: prefer the explicit
     // `.sample`, otherwise take the first row of the unrestricted view.
@@ -343,9 +349,9 @@ module {
     // a hidden field — otherwise scoping would silently never filter.
     switch ownerField {
       case (?o) {
-        if (edgeLookup.get(o) != null)
+        if (edgeLookup.get(Text.compare, o) != null)
           Runtime.trap("OQL: owner field '" # o # "' of '" # self.name # "' is also an edge");
-        if (hiddenSet.get(o) != null)
+        if (hiddenSet.get(Text.compare, o) != null)
           Runtime.trap("OQL: owner field '" # o # "' of '" # self.name # "' is hidden");
         // Existence can only be checked when a seed row materialised the
         // field list; an empty (seed-less) schema defers the check.
@@ -358,12 +364,42 @@ module {
       case null {};
     };
 
+    // Per-row materialisation. Names, collisions, and hidden columns are all
+    // fixed by the declaration, so resolve them ONCE from the seed: the kept
+    // (non-hidden) source positions and a shared name->index map. Each row is
+    // then a flat `[Value]` whose `get` does one lookup on the shared map — no
+    // per-row dedupe pass and no per-row `Map`. Seed-less entities (empty at
+    // build with no `.sample`) fall back to the original per-row path so a
+    // row arriving after build still materialises correctly.
+    let toPredRow : T -> Predicate.Row = switch seed {
+      case (?s) {
+        let names = dedupeNames(rawCellList(s)).map(func ((k, _) : (Text, Value)) : Text = k);
+        let keptIdx = do {
+          let acc = List.empty<Nat>();
+          for (i in names.keys()) { if (hiddenSet.get(Text.compare, names[i]) == null) acc.add(i) };
+          acc.toArray()
+        };
+        let nameIndex = Map.empty<Text, Nat>();
+        for (j in keptIdx.keys()) { nameIndex.add(Text.compare, names[keptIdx[j]], j) };
+        func (v : T) : Predicate.Row {
+          let raw = rawCellList(v).toArray();
+          let values = Array.tabulate<Value>(keptIdx.size(), func j = raw[keptIdx[j]].1);
+          {
+            get = func (path : Path) : ?Value =
+              if (path.size() != 1) null
+              else switch (nameIndex.get(Text.compare, path[0])) { case (?i) ?values[i]; case null null };
+          };
+        };
+      };
+      case null { makeRow(fullRow, hiddenSet) };
+    };
+
     {
       name       = self.name;
       typeName   = self.typeName;
       primaryKey = self.primaryKey;
       fields     = schemaFields;
-      rows       = makeRows(self.source, fullRow, hiddenSet, ownerSpec);
+      rows       = makeRows(self.source, toPredRow, ownerSpec);
       auth       = level;
     }
   };
@@ -375,12 +411,11 @@ module {
   /// callers (`null`) and owner-less entities pass every row through.
   func makeRows<T>(
     source    : ?Principal -> Iter.Iter<T>,
-    fullRow   : T -> Row,
-    hiddenSet : Map.Map<Text, ()>,
+    toPredRow : T -> Predicate.Row,
     ownerSpec : ?OwnerSpec,
   ) : ?Principal -> Iter.Iter<Predicate.Row> =
     func (subject : ?Principal) : Iter.Iter<Predicate.Row> {
-      let base = source(subject).map(makeRow(fullRow, hiddenSet));
+      let base = source(subject).map(toPredRow);
       switch (ownerSpec, subject) {
         case (?spec, ?p) {
           base.filter(func (r : Predicate.Row) : Bool =
@@ -399,9 +434,9 @@ module {
     let seen = Map.empty<Text, Nat>();
     let out  = List.empty<(Text, Value)>();
     for ((k, v) in cells.values()) {
-      let name = switch (seen.get(k)) {
-        case null { seen.add(k, 0); k };
-        case (?n) { let next = n + 1; seen.add(k, next); k # "__" # Nat.toText(next) };
+      let name = switch (seen.get(Text.compare, k)) {
+        case null { seen.add(Text.compare, k, 0); k };
+        case (?n) { let next = n + 1; seen.add(Text.compare, k, next); k # "__" # Nat.toText(next) };
       };
       out.add((name, v));
     };
@@ -415,13 +450,13 @@ module {
     domainLookup : Map.Map<Text, [Value]>,
     ownerField : ?Text,
   ) : [Schema.FieldDecl] {
-    row.filter(func ((k, _)) = hiddenSet.get(k) == null).map(
+    row.filter(func ((k, _)) = hiddenSet.get(Text.compare, k) == null).map(
       func ((k, v)) : Schema.FieldDecl {
-        let role : Role = switch (edgeLookup.get(k)) {
+        let role : Role = switch (edgeLookup.get(Text.compare, k)) {
           case (?to) #edge({ to });
           case null  { if (ownerField == ?k) #owner else #payload };
         };
-        { name = k; typeName = typeOfValue(v); role; domain = domainLookup.get(k) }
+        { name = k; typeName = typeOfValue(v); role; domain = domainLookup.get(Text.compare, k) }
       },
     )
   };
@@ -434,11 +469,11 @@ module {
     func (v : T) : Predicate.Row {
       let cells = Map.empty<Text, Value>();
       for ((k, val) in toRow(v).vals()) {
-        if (hiddenSet.get(k) == null) cells.add(k, val);
+        if (hiddenSet.get(Text.compare, k) == null) cells.add(Text.compare, k, val);
       };
       {
         get = func (path : Path) : ?Value =
-          if (path.size() != 1) null else cells.get(path[0]);
+          if (path.size() != 1) null else cells.get(Text.compare, path[0]);
       };
     };
 

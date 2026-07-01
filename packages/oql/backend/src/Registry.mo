@@ -2,6 +2,7 @@
 /// array at actor init (and again on every upgrade — entity decls capture
 /// closures over actor state and can't be persisted).
 
+import Array "mo:core/Array";
 import Iter   "mo:core/Iter";
 import List   "mo:core/List";
 import Map    "mo:core/Map";
@@ -20,12 +21,12 @@ module {
 
   public func build(decls : [Entity.Decl]) : Registry {
     let byName = Map.empty<Text, Entity.Decl>();
-    for (d in decls.values()) { byName.add(d.name, d) };
+    for (d in decls.values()) { byName.add(Text.compare, d.name, d) };
     { byName }
   };
 
   public func lookup(r : Registry, name : Text) : ?Entity.Decl =
-    r.byName.get(name);
+    r.byName.get(Text.compare, name);
 
   /// Project the registry into the schema document `schema()` returns,
   /// filtered to what `access` permits this caller: entities the caller is
@@ -40,7 +41,7 @@ module {
     func keepField(f : Schema.FieldDecl) : Bool =
       switch (f.role) {
         case (#edge { to }) {
-          switch (r.byName.get(to)) { case (?t) { visible(t) }; case null { false } };
+          switch (r.byName.get(Text.compare, to)) { case (?t) { visible(t) }; case null { false } };
         };
         case _ { true };
       };
