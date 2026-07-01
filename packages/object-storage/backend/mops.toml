@@ -1,6 +1,6 @@
 [package]
 name = "caffeineai-object-storage"
-version = "1.0.0"
+version = "1.1.0"
 description = "Object storage integration for Caffeine"
 license = "Apache-2.0"
 repository = "https://github.com/caffeinelabs/skills"
