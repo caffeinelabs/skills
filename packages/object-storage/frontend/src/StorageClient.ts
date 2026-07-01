@@ -1,6 +1,9 @@
 import { type HttpAgent, isV4ResponseBody } from "@icp-sdk/core/agent";
 import { IDL } from "@icp-sdk/core/candid";
 
+import { formatBlobContentDisposition } from "./formatBlobContentDisposition";
+import { resolveBlobContentType } from "./resolveBlobContentType";
+
 type Headers = Record<string, string>;
 
 const MAXIMUM_CONCURRENT_UPLOADS = 10;
@@ -499,20 +502,28 @@ export class StorageClient {
 	public async putFile(
 		blobBytes: Uint8Array,
 		onProgress?: (percentage: number) => void,
+		contentTypeHint?: string,
+		filenameHint?: string,
 	): Promise<{ hash: string }> {
 		// HTTP headers for fetch requests (used for the PUT request to gateway)
 		const httpHeaders: Headers = {
 			"Content-Type": "application/json",
 		};
-		// Create a Blob from the bytes
+		const contentType = await resolveBlobContentType(
+			blobBytes,
+			contentTypeHint,
+		);
 		const file = new Blob([new Uint8Array(blobBytes)], {
-			type: "application/octet-stream",
+			type: contentType,
 		});
-		// File metadata headers that will be stored with the blob tree
 		const fileHeaders: Headers = {
-			"Content-Type": "application/octet-stream",
+			"Content-Type": contentType,
 			"Content-Length": file.size.toString(),
 		};
+		const contentDisposition = formatBlobContentDisposition(filenameHint);
+		if (contentDisposition) {
+			fileHeaders["Content-Disposition"] = contentDisposition;
+		}
 
 		const { chunks, chunkHashes, blobHashTree } =
 			await this.processFileForUpload(file, fileHeaders);

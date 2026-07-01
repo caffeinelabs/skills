@@ -1,6 +1,6 @@
 {
 	"name": "@caffeineai/object-storage",
-	"version": "1.0.0",
+	"version": "1.1.0",
 	"type": "module",
 	"license": "Apache-2.0",
 	"author": "Caffeine Labs AG",
@@ -27,13 +27,16 @@
 		"build": "tsc",
 		"type-check": "tsc --noEmit",
 		"biome:check": "biome check --error-on-warnings .",
-		"biome:check:fix": "biome check --write --error-on-warnings ."
+		"biome:check:fix": "biome check --write --error-on-warnings .",
+		"test": "node --import tsx --test src/**/*.test.ts"
 	},
 	"devDependencies": {
-		"@types/node": "^25.5.0"
+		"@types/node": "^25.5.0",
+		"tsx": "^4.21.0"
 	},
 	"dependencies": {
-		"@icp-sdk/core": "^5.3.0"
+		"@icp-sdk/core": "^5.3.0",
+		"file-type": "^21.3.4"
 	},
 	"publishConfig": {
 		"access": "public"

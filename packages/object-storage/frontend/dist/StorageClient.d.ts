@@ -7,7 +7,7 @@ export declare class StorageClient {
     private readonly storageGatewayClient;
     constructor(bucket: string, storageGatewayUrl: string, backendCanisterId: string, projectId: string, agent: HttpAgent);
     private getCertificate;
-    putFile(blobBytes: Uint8Array, onProgress?: (percentage: number) => void): Promise<{
+    putFile(blobBytes: Uint8Array, onProgress?: (percentage: number) => void, contentTypeHint?: string, filenameHint?: string): Promise<{
         hash: string;
     }>;
     getDirectURL(hash: string): Promise<string>;

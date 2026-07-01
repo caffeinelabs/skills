@@ -1,6 +1,8 @@
 export class ExternalBlob {
 	_blob?: Uint8Array<ArrayBuffer> | null;
 	directURL: string;
+	contentType?: string;
+	filename?: string;
 	onProgress?: (percentage: number) => void = undefined;
 	private constructor(directURL: string, blob: Uint8Array<ArrayBuffer> | null) {
 		if (blob) {
@@ -11,13 +13,24 @@ export class ExternalBlob {
 	static fromURL(url: string): ExternalBlob {
 		return new ExternalBlob(url, null);
 	}
-	static fromBytes(blob: Uint8Array<ArrayBuffer>): ExternalBlob {
+	static fromBytes(
+		blob: Uint8Array<ArrayBuffer>,
+		contentType?: string,
+		filename?: string,
+	): ExternalBlob {
 		const url = URL.createObjectURL(
 			new Blob([new Uint8Array(blob)], {
-				type: "application/octet-stream",
+				type: contentType?.trim() || "application/octet-stream",
 			}),
 		);
-		return new ExternalBlob(url, blob);
+		const externalBlob = new ExternalBlob(url, blob);
+		if (contentType?.trim()) {
+			externalBlob.contentType = contentType.trim();
+		}
+		if (filename?.trim()) {
+			externalBlob.filename = filename.trim();
+		}
+		return externalBlob;
 	}
 	public async getBytes(): Promise<Uint8Array<ArrayBuffer>> {
 		if (this._blob) {

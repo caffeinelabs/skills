@@ -1,5 +1,7 @@
 import { isV4ResponseBody } from "@icp-sdk/core/agent";
 import { IDL } from "@icp-sdk/core/candid";
+import { formatBlobContentDisposition } from "./formatBlobContentDisposition";
+import { resolveBlobContentType } from "./resolveBlobContentType";
 const MAXIMUM_CONCURRENT_UPLOADS = 10;
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 1000;
@@ -346,20 +348,23 @@ export class StorageClient {
         }
         throw new Error("Expected v4 response body");
     }
-    async putFile(blobBytes, onProgress) {
+    async putFile(blobBytes, onProgress, contentTypeHint, filenameHint) {
         // HTTP headers for fetch requests (used for the PUT request to gateway)
         const httpHeaders = {
             "Content-Type": "application/json",
         };
-        // Create a Blob from the bytes
+        const contentType = await resolveBlobContentType(blobBytes, contentTypeHint);
         const file = new Blob([new Uint8Array(blobBytes)], {
-            type: "application/octet-stream",
+            type: contentType,
         });
-        // File metadata headers that will be stored with the blob tree
         const fileHeaders = {
-            "Content-Type": "application/octet-stream",
+            "Content-Type": contentType,
             "Content-Length": file.size.toString(),
         };
+        const contentDisposition = formatBlobContentDisposition(filenameHint);
+        if (contentDisposition) {
+            fileHeaders["Content-Disposition"] = contentDisposition;
+        }
         const { chunks, chunkHashes, blobHashTree } = await this.processFileForUpload(file, fileHeaders);
         const blobRootHash = blobHashTree.tree.hash;
         const hashString = blobRootHash.toShaString();
