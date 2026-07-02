@@ -1,0 +1,1 @@
+{"version":3,"file":"index.js","sourceRoot":"","sources":["../src/index.ts"],"names":[],"mappings":"AAAA,OAAO,EAGN,YAAY,GACZ,MAAM,sBAAsB,CAAC","sourcesContent":["export {\n\ttype QRResult,\n\ttype QRScannerConfig,\n\tuseQRScanner,\n} from \"./hooks/useQRScanner\";\n"]}
