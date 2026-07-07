@@ -164,6 +164,8 @@ export async function createActorWithConfig<T>(
 		const { hash } = await storageClient.putFile(
 			await file.getBytes(),
 			file.onProgress,
+			file.contentType,
+			file.filename,
 		);
 		return new TextEncoder().encode(MOTOKO_DEDUPLICATION_SENTINEL + hash);
 	};

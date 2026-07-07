@@ -111,7 +111,7 @@ export async function createActorWithConfig(createActor, options) {
     const storageClient = new StorageClient(config.bucket_name, config.storage_gateway_url, config.backend_canister_id, config.project_id, agent);
     const MOTOKO_DEDUPLICATION_SENTINEL = "!caf!";
     const uploadFile = async (file) => {
-        const { hash } = await storageClient.putFile(await file.getBytes(), file.onProgress);
+        const { hash } = await storageClient.putFile(await file.getBytes(), file.onProgress, file.contentType, file.filename);
         return new TextEncoder().encode(MOTOKO_DEDUPLICATION_SENTINEL + hash);
     };
     const downloadFile = async (bytes) => {

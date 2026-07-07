@@ -6,8 +6,10 @@ Core infrastructure hooks (actors, Internet Identity) for Caffeine apps on the I
 ## Install
 
 ```bash
-pnpm add @caffeineai/core-infrastructure
+pnpm add @caffeineai/core-infrastructure @caffeineai/object-storage
 ```
+
+`@caffeineai/object-storage` is a peer dependency — install it alongside core-infrastructure so both packages share one copy.
 
 ## Documentation
 

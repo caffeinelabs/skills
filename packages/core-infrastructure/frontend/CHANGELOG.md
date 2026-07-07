@@ -1,5 +1,13 @@
 
 
+### Bug Fixes
+
+- **core-infrastructure**: peer-dep object-storage to dedupe installs (#159)
+
+### Bug Fixes
+
+- **object-storage**: restore MIME and filename in gateway blob-tree headers (#144)
+
 ### Features
 
 - **authorization**: MixinAuthorization callback for II attribute bundles + email skill docs (#122)
