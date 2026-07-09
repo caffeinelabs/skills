@@ -166,3 +166,103 @@ test("R5 join filter+project: joined fields match the source customer", func () 
     };
   };
 });
+
+// ── Nat<->Int join bridge ─────────────────────────────────────────────────
+// The PK index is keyed on `Value` via `Predicate.compare`, which bridges
+// `#nat`/`#int`. A Nat FK must join an Int PK of the same value (and vice
+// versa), or the join silently left-joins to null. Predicate-level bridging is
+// covered in Predicate.test.mo; these lock it at the join level.
+
+type NatPk = { id : Nat; tag : Text };
+type IntPk = { id : Int; tag : Text };
+type OrderI = { id : Nat; custId : Int };   // Int FK -> Nat PK
+type OrderN = { id : Nat; custId : Nat };   // Nat FK -> Int PK
+
+func natPkRow(r : NatPk) : OQL.Entity.Row = [("id", #nat(r.id)), ("tag", #text(r.tag))];
+func intPkRow(r : IntPk) : OQL.Entity.Row = [("id", #int(r.id)), ("tag", #text(r.tag))];
+func orderIRow(o : OrderI) : OQL.Entity.Row = [("id", #nat(o.id)), ("custId", #int(o.custId))];
+func orderNRow(o : OrderN) : OQL.Entity.Row = [("id", #nat(o.id)), ("custId", #nat(o.custId))];
+
+let natPks = Array.tabulate<NatPk>(3, func k = { id = k; tag = "n" # Nat.toText(k) });
+let intPks = Array.tabulate<IntPk>(3, func k = { id = k; tag = "i" # Nat.toText(k) });
+let ordsI = Array.tabulate<OrderI>(3, func k = { id = k; custId = k });
+let ordsN = Array.tabulate<OrderN>(3, func k = { id = k; custId = k });
+
+let regI2N = Registry.build([
+  OQL.Entity.new<NatPk>("natpk", func () = natPks.values(), "NatPk", "id", natPkRow).build(),
+  OQL.Entity.new<OrderI>("ordI", func () = ordsI.values(), "OrderI", "id", orderIRow)
+    .edge("custId", "natpk").build(),
+]);
+let regN2I = Registry.build([
+  OQL.Entity.new<IntPk>("intpk", func () = intPks.values(), "IntPk", "id", intPkRow).build(),
+  OQL.Entity.new<OrderN>("ordN", func () = ordsN.values(), "OrderN", "id", orderNRow)
+    .edge("custId", "intpk").build(),
+]);
+
+func joinQuery(start : Text, edge : Text) : Query.Query = {
+  start; where_ = null; groupBy = []; aggregate = [];
+  orderBy = []; offset = null; limit = null; select = ?[["id"], [edge, "tag"]];
+};
+
+test("join bridges Int FK to Nat PK", func () {
+  let r = Executor.runWith(regI2N, joinQuery("ordI", "custId"), unrestricted);
+  assert r.rows.size() == 3;
+  for (row in r.rows.values()) {
+    switch (cell(row, "id"), cell(row, "custId.tag")) {
+      case (?#nat(id), ?#text(l)) { assert l == ("n" # Nat.toText(id)) };
+      case _ { assert false };
+    };
+  };
+});
+
+test("join bridges Nat FK to Int PK", func () {
+  let r = Executor.runWith(regN2I, joinQuery("ordN", "custId"), unrestricted);
+  assert r.rows.size() == 3;
+  for (row in r.rows.values()) {
+    switch (cell(row, "id"), cell(row, "custId.tag")) {
+      case (?#nat(id), ?#text(l)) { assert l == ("i" # Nat.toText(id)) };
+      case _ { assert false };
+    };
+  };
+});
+
+test("dangling FK left-joins to null", func () {
+  let dangling = [{ id = 0; custId = 99 : Int }];
+  let regD = Registry.build([
+    OQL.Entity.new<NatPk>("natpk", func () = natPks.values(), "NatPk", "id", natPkRow).build(),
+    OQL.Entity.new<OrderI>("ordI", func () = dangling.values(), "OrderI", "id", orderIRow)
+      .edge("custId", "natpk").build(),
+  ]);
+  let r = Executor.runWith(regD, joinQuery("ordI", "custId"), unrestricted);
+  assert r.rows.size() == 1;
+  assert cell(r.rows[0], "custId.tag") == ?(#null_);   // dangling FK -> left-join null
+});
+
+// ── Float-valued FK is unjoinable at runtime ─────────────────────────────
+// A declared-Float FK is rejected at plan time by `validateHop`'s `joinable`
+// type check, so it never reaches the probe. This covers the divergence case:
+// the seed (first) row emits #nat, so the plan-time check sees "Nat" and passes,
+// but a later row emits #float for the same FK. That #float reaches the probe,
+// where `joinableValue` must reject it (left-join null) rather than let
+// Predicate.compare bridge #float 2.0 into the numerically-equal #nat 2 PK.
+
+type OrderMix = { id : Nat; custId : Nat };
+func orderMixRow(o : OrderMix) : OQL.Entity.Row = [
+  ("id", #nat(o.id)),
+  ("custId", if (o.id == 2) #float(2.0) else #nat(o.custId)),
+];
+let ordsMix = [{ id = 0; custId = 0 }, { id = 1; custId = 1 }, { id = 2; custId = 2 }];
+
+let regMix = Registry.build([
+  OQL.Entity.new<NatPk>("natpk", func () = natPks.values(), "NatPk", "id", natPkRow).build(),
+  OQL.Entity.new<OrderMix>("ordMix", func () = ordsMix.values(), "OrderMix", "id", orderMixRow)
+    .edge("custId", "natpk").build(),
+]);
+
+test("float-valued FK left-joins to null (seed was Nat)", func () {
+  let r = Executor.runWith(regMix, joinQuery("ordMix", "custId"), unrestricted);
+  assert r.rows.size() == 3;
+  assert cell(r.rows[0], "custId.tag") == ?(#text "n0");   // Nat FK -> joins
+  assert cell(r.rows[1], "custId.tag") == ?(#text "n1");   // Nat FK -> joins
+  assert cell(r.rows[2], "custId.tag") == ?(#null_);       // Float FK -> unjoinable -> null
+});

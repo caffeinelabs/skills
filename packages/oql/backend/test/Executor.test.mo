@@ -10,6 +10,7 @@
 import {test} "mo:test";
 import Iter      "mo:core/Iter";
 import Principal "mo:core/Principal";
+import Text      "mo:core/Text";
 import OQL      "../src";
 import Executor "../src/Executor";
 import Query    "../src/Query";
@@ -243,6 +244,35 @@ test("auto-derives Principal and sized Nat/Int widths onto scalar variants", fun
   assert cell(r.rows[0], "small") == ?(#nat(7));
   assert cell(r.rows[0], "big")   == ?(#nat(9_000_000_000));
   assert cell(r.rows[0], "delta") == ?(#int(-5));
+});
+
+// A record carrying a Blob field auto-derives via BlobValue, rendering
+// through #text. This is the case that previously had no `_toRow` instance,
+// forcing Entity.manual (empty toRow) and collapsing the entity to
+// `record {}` with empty rows. An ExternalBlob reference is UTF-8, so it
+// decodes back to the readable reference string.
+type WithBlob = { id : Nat; ref : Blob };
+
+let withBlobs : [WithBlob] = [
+  { id = 1; ref = Text.encodeUtf8("!caf!sha256:deadbeef") },
+];
+
+func blobRegistry() : Registry.Registry = Registry.build([
+  OQL.Entity.new<WithBlob>("wb", func () = withBlobs.values(), "WithBlob", "id").build(),
+]);
+
+test("auto-derives a Blob field, rendering through #text", func () {
+  let e = (Registry.schema(blobRegistry(), unrestricted)).entities[0];
+  func typeOf(name : Text) : Text {
+    for (f in e.fields.values()) { if (f.name == name) return f.typeName };
+    "?"
+  };
+  assert typeOf("ref") == "Text";   // no #blob arm — renders as Text
+  assert e.fields.size() == 2;      // id + ref, NOT empty
+
+  let r = run(blobRegistry(), emptyQuery("wb"));
+  assert r.rows.size() == 1;
+  assert cell(r.rows[0], "ref") == ?(#text("!caf!sha256:deadbeef"));
 });
 
 test("count aggregate over all rows returns a single tally row", func () {

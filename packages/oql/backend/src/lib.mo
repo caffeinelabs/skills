@@ -39,6 +39,7 @@ import _Int16Value     "Int16Value";
 import _Int32Value     "Int32Value";
 import _Int64Value     "Int64Value";
 import _PrincipalValue "PrincipalValue";
+import _BlobValue      "BlobValue";
 import _RecordValue    "RecordValue";
 import _MapEntity      "MapEntity";
 import _ArrayEntity    "ArrayEntity";
@@ -74,6 +75,7 @@ module {
   public let Int32Value  = _Int32Value;
   public let Int64Value  = _Int64Value;
   public let PrincipalValue = _PrincipalValue;
+  public let BlobValue      = _BlobValue;
   public let RecordValue    = _RecordValue;
   public let MapEntity      = _MapEntity;
   public let ArrayEntity    = _ArrayEntity;

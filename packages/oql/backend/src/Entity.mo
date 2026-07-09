@@ -41,6 +41,17 @@ module {
 
   type OwnerSpec = { field : Text; canSee : OwnerCheck };
 
+  /// Per-subject row projection (`.viewWith`): the SHAPE a scoped subject
+  /// sees a row in, as opposed to WHICH rows it sees (`OwnerCheck`). Runs
+  /// for concrete (scoped) subjects only — unrestricted reads (`null`
+  /// subject: controllers, `#public_`) always see raw rows — and only on
+  /// rows the ownership check has already admitted, so a view can reshape
+  /// a row (mask a column, coarsen a value) but can never widen or narrow
+  /// visibility. Because the whole pipeline — filters, sorts, grouping,
+  /// aggregation, join traversal — runs over the viewed row, a predicate
+  /// can never probe a value the view hides (no redaction oracle).
+  public type RowView<T> = (subject : Principal, row : T) -> T;
+
   /// Default `.ownedBy` scheme: a caller sees rows whose owner column is
   /// exactly its own principal (rendered as `#text`).
   public func ownerIsCaller(subject : Principal, owner : Value) : Bool =
@@ -72,6 +83,7 @@ module {
     owner        : List.List<OwnerSpec>;  // at most one entry: the owner column + its check
     sample       : List.List<T>;     // at most one entry; List used for mutability
     auth         : List.List<TableAuth>;  // at most one entry; default applied in build()
+    views        : List.List<RowView<T>>; // at most one entry: per-subject row projection
     scopedSource : Bool;
   };
 
@@ -106,6 +118,7 @@ module {
     owner   = List.empty();
     sample  = List.empty();
     auth    = List.empty();
+    views   = List.empty();
     scopedSource = false;
   };
 
@@ -133,6 +146,7 @@ module {
     owner   = List.empty();
     sample  = List.empty();
     auth    = List.empty();
+    views   = List.empty();
     scopedSource = true;
   };
 
@@ -156,6 +170,7 @@ module {
     owner   = List.empty();
     sample  = List.empty();
     auth    = List.empty();
+    views   = List.empty();
     scopedSource = false;
   };
 
@@ -229,6 +244,36 @@ module {
   public func ownedByWith<T>(self : Builder<T>, field : Text, canSee : OwnerCheck) : Builder<T> {
     self.owner.clear();
     self.owner.add({ field; canSee });
+    self
+  };
+
+  /// Per-subject row projection — column security's value-level cousin.
+  /// Where `.ownedByWith` decides WHICH rows a scoped subject sees, the
+  /// view decides what SHAPE it sees them in: `view(subject, row)` returns
+  /// the row as that subject is entitled to see it (mask a title, blank a
+  /// location, coarsen a timestamp). Typical use: tiered visibility, e.g.
+  /// a calendar whose "freebusy" viewers see events as opaque busy blocks:
+  ///
+  ///   .ownedByWith("calendarId", canSeeCalendar)
+  ///   .viewWith(func (subject, e) = switch (levelFor(subject, e)) {
+  ///     case (#full) e;
+  ///     case (#freebusy) { { e with title = "Busy"; description = "" } };
+  ///   })
+  ///
+  /// Guarantees:
+  ///   • Runs AFTER the ownership check, on admitted rows only — the check
+  ///     evaluates the RAW row, so a view can never widen or narrow which
+  ///     rows a subject sees, only reshape them.
+  ///   • Runs for concrete (scoped) subjects only. Unrestricted reads
+  ///     (`null` subject: controllers, `#public_`) and schema derivation
+  ///     see raw rows.
+  ///   • The entire pipeline downstream — `where`, `orderBy`, `groupBy`,
+  ///     aggregates, joins INTO this entity — reads the viewed row, so a
+  ///     predicate cannot probe a hidden value via the result shape (the
+  ///     classic redact-at-projection oracle).
+  public func viewWith<T>(self : Builder<T>, view : RowView<T>) : Builder<T> {
+    self.views.clear();
+    self.views.add(view);
     self
   };
 
@@ -381,13 +426,24 @@ module {
         };
         let nameIndex = Map.empty<Text, Nat>();
         for (j in keptIdx.keys()) { nameIndex.add(Text.compare, names[keptIdx[j]], j) };
+        // Shared slot resolver — built once for the entity, not per row, so
+        // exposing the flat path costs a row nothing beyond a reference.
+        let slot = func (name : Text) : ?Nat = nameIndex.get(Text.compare, name);
+        // With no `.extras` (the common auto-derive case), `toRow(v)` is already
+        // the full cell array in declaration order, so it equals
+        // `rawCellList(v).toArray()` positionally — skip the `List` round-trip
+        // that `rawCellList` does purely to concatenate extras. (`dedupeNames`
+        // preserves order and length, so `keptIdx` indexes `toRow(v)` directly.)
+        let noExtras = extras.size() == 0;
         func (v : T) : Predicate.Row {
-          let raw = rawCellList(v).toArray();
+          let raw = if (noExtras) self.toRow(v) else rawCellList(v).toArray();
           let values = Array.tabulate<Value>(keptIdx.size(), func j = raw[keptIdx[j]].1);
           {
             get = func (path : Path) : ?Value =
               if (path.size() != 1) null
               else switch (nameIndex.get(Text.compare, path[0])) { case (?i) ?values[i]; case null null };
+            slot = ?slot;   // flat layout: index `values` directly, name lookup resolved once
+            values;
           };
         };
       };
@@ -399,7 +455,7 @@ module {
       typeName   = self.typeName;
       primaryKey = self.primaryKey;
       fields     = schemaFields;
-      rows       = makeRows(self.source, toPredRow, ownerSpec);
+      rows       = makeRows(self.source, toPredRow, ownerSpec, self.views.first());
       auth       = level;
     }
   };
@@ -409,19 +465,44 @@ module {
   /// and the subject is a concrete principal, keeps only rows the entity's
   /// ownership check (`canSee`) admits for that subject. Unrestricted
   /// callers (`null`) and owner-less entities pass every row through.
+  ///
+  /// A `.viewWith` projection applies to a CONCRETE subject's admitted
+  /// rows only, strictly after the ownership check — which deliberately
+  /// evaluates the RAW row, so the view governs shape, never visibility.
+  /// The viewed row is re-materialised through `toPredRow`; that second
+  /// materialisation is paid only by entities that declare a view, and
+  /// only for rows a scoped subject actually receives.
   func makeRows<T>(
     source    : ?Principal -> Iter.Iter<T>,
     toPredRow : T -> Predicate.Row,
     ownerSpec : ?OwnerSpec,
+    view      : ?RowView<T>,
   ) : ?Principal -> Iter.Iter<Predicate.Row> =
     func (subject : ?Principal) : Iter.Iter<Predicate.Row> {
-      let base = source(subject).map(toPredRow);
-      switch (ownerSpec, subject) {
-        case (?spec, ?p) {
-          base.filter(func (r : Predicate.Row) : Bool =
-            switch (r.get([spec.field])) { case (?v) { spec.canSee(p, v) }; case null { false } })
+      switch (subject, view) {
+        // Scoped subject on a viewed entity: admit on the raw row, then
+        // serve the viewed row.
+        case (?p, ?v) {
+          let admitted = switch ownerSpec {
+            case (?spec) {
+              source(subject).filter(func (t : T) : Bool =
+                switch (toPredRow(t).get([spec.field])) { case (?ow) { spec.canSee(p, ow) }; case null { false } })
+            };
+            case null { source(subject) };
+          };
+          admitted.map(func (t : T) : Predicate.Row = toPredRow(v(p, t)));
         };
-        case _ { base };
+        // No view (or unrestricted read): the original single-pass path.
+        case _ {
+          let base = source(subject).map(toPredRow);
+          switch (ownerSpec, subject) {
+            case (?spec, ?p) {
+              base.filter(func (r : Predicate.Row) : Bool =
+                switch (r.get([spec.field])) { case (?v) { spec.canSee(p, v) }; case null { false } })
+            };
+            case _ { base };
+          };
+        };
       };
     };
 
@@ -474,6 +555,7 @@ module {
       {
         get = func (path : Path) : ?Value =
           if (path.size() != 1) null else cells.get(Text.compare, path[0]);
+        slot = null; values = [];  // Map-backed fallback row — no flat layout.
       };
     };
 

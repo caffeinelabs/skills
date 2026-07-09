@@ -18,6 +18,7 @@ func row(cells : [(Text, Value)]) : Predicate.Row {
     get = func (path : Types.Path) : ?Value {
       if (path.size() != 1) null else m.get(path[0])
     };
+    slot = null; values = [];  // Map-backed test row — exercises the `get` path.
   };
 };
 

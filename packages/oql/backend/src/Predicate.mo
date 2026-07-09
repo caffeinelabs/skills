@@ -38,7 +38,19 @@ module {
 
   /// A row, viewed for predicate evaluation: it knows how to resolve a path
   /// to a value (or to `null` if the path is absent / hidden).
-  public type Row = { get : Path -> ?Value };
+  ///
+  /// Flat-layout fast path for base rows. `slot` resolves a top-level column
+  /// name to an index into `values` ONCE (the resolver is shared across every
+  /// row of the entity, so no per-row allocation), and `values` is this row's
+  /// flat cells — so the executor can resolve a query's columns once and then
+  /// index `values` directly per row instead of a name lookup per access.
+  /// `slot` is `null` for rows without a flat layout (seed-less / aggregated),
+  /// where callers fall back to `get` (and `values` is unused, `[]`).
+  public type Row = {
+    get    : Path -> ?Value;
+    slot   : ?(Text -> ?Nat);
+    values : [Value];
+  };
 
   /// Missing fields fail every relation **except `#ne`** — strict
   /// three-valued logic is a later change.

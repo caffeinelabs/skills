@@ -1,6 +1,6 @@
 [package]
 name = "caffeineai-oql"
-version = "0.3.0"
+version = "0.4.0"
 description = "Object Query Layer — expose a canister's data shape via schema() and answer JSON queries via execute(), with filters, aggregation, and edge traversal."
 license = "Apache-2.0"
 repository = "https://github.com/caffeinelabs/skills"

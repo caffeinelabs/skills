@@ -84,8 +84,15 @@ module {
         switch (q.limit) { case (?lim) { ?(q.offset.get(0) + lim + 1) }; case null { null } };
       } else { null };
 
+    // Every dotted path is validated into `hops.edges` (collectHops traps on
+    // an invalid hop), so an empty `edges` means the query never traverses —
+    // `wrapRow` would be a pure pass-through. Skip it to save a per-row closure
+    // allocation on the common join-free query.
+    let hasEdges = hops.edges.size() > 0;
+    let baseRows = entity.rows(startSubject);
     let kept = filter(
-      entity.rows(startSubject).map(func (row : Row) : Row = wrapRow(row, entity.name, hops)),
+      if (hasEdges) { baseRows.map(func (row : Row) : Row = wrapRow(row, entity.name, hops)) }
+      else          { baseRows },
       q.where_,
       scanCap,
     );
@@ -99,7 +106,9 @@ module {
       if (q.aggregate.size() == 0 and q.groupBy.size() == 0) { (kept, null) }
       else {
         let g = aggregateRows(kept, q.groupBy, q.aggregate);
-        (g.rows.map(func (row : Row) : Row = wrapRow(row, entity.name, hops)), ?g.columns)
+        let gr = if (hasEdges) { g.rows.map(func (row : Row) : Row = wrapRow(row, entity.name, hops)) }
+                 else          { g.rows };
+        (gr, ?g.columns)
       };
 
     let sorted = if (q.orderBy.size() == 0) { workRows }
@@ -113,7 +122,11 @@ module {
     let hasMore = endIdx < sorted.size();
 
     let paths = projectionPaths(q.select, entity.fields, defaultCols);
-    let rows  = window.map(func (row : Row) : [Cell] = project(row, paths));
+    // Column names + flat slots are identical across rows — resolve them once,
+    // not per cell per row.
+    let names = paths.map(Types.pathToText);
+    let slots = resolveSlots(if (window.size() == 0) null else ?window[0], paths);
+    let rows  = window.map(func (row : Row) : [Cell] = project(row, paths, names, slots));
 
     { rows; hasMore };
   };
@@ -123,7 +136,7 @@ module {
   /// Validated hops + per-target PK indexes for one query.
   type Hops = {
     edges   : Map.Map<Text, Text>;                // "<entity>\u{1f}<edge>" -> target entity
-    indexes : Map.Map<Text, Map.Map<Text, Row>>;  // target entity -> PK index
+    indexes : Map.Map<Text, Map.Map<Value, Row>>;  // target entity -> PK index (Value-keyed)
   };
 
   /// Collect every dotted path in the query, validate each hop against the
@@ -154,10 +167,10 @@ module {
       };
     };
 
-    let indexes = Map.empty<Text, Map.Map<Text, Row>>();
+    let indexes = Map.empty<Text, Map.Map<Value, Row>>();
     for (decl in needed.values()) {
       let idx = switch (access(decl)) {
-        case (#deny) { Map.empty<Text, Row>() };  // denied target -> left-join null
+        case (#deny) { Map.empty<Value, Row>() };  // denied target -> left-join null
         case (a)     { buildIndex(decl, subjectOf(a)) };
       };
       indexes.add(Text.compare, decl.name, idx);
@@ -241,28 +254,28 @@ module {
       or (num(fk) and num(pk))
   };
 
-  /// Join-key encoding. Deliberately NOT `valueKey`: its type-tagging is
-  /// correct for groupBy buckets and fatal here, where FK and PK may arrive
-  /// as different numeric variants that `compare` treats as equal.
-  /// Float/null are unjoinable -> null -> left-join.
-  func joinKey(v : Value) : ?Text = switch v {
-    case (#text t) { ?("t:" # t) };
-    case (#nat n)  { ?("i:" # Nat.toText(n)) };  // == Int.toText(n) for n >= 0
-    case (#int i)  { ?("i:" # Int.toText(i)) };
-    case (#bool b) { ?("b:" # Bool.toText(b)) };
-    case _ { null };
+  /// Whether a Value may serve as a join key. The PK index is keyed on `Value`
+  /// directly via `Predicate.compare` (which bridges `#nat`/`#int`), so there
+  /// is no per-access Text encoding; this only gates build-time insertion so a
+  /// target with a null/float primary key surfaces loudly instead of silently
+  /// left-joining every traversal to null.
+  func joinableValue(v : Value) : Bool = switch v {
+    case (#text _) true;
+    case (#nat  _) true;
+    case (#int  _) true;
+    case (#bool _) true;
+    case _ { false };
   };
 
-  func buildIndex(decl : Entity.Decl, subject : ?Principal) : Map.Map<Text, Row> {
-    let idx = Map.empty<Text, Row>();
+  func buildIndex(decl : Entity.Decl, subject : ?Principal) : Map.Map<Value, Row> {
+    let idx = Map.empty<Value, Row>();
     for (row in decl.rows(subject)) {
-      switch (joinKey(row.get([decl.primaryKey]).get(#null_))) {
-        case (?k) { idx.add(Text.compare, k, row) };
-        case null {
-          Runtime.trap("OQL: row of '" # decl.name # "' has no joinable primary key '"
-            # decl.primaryKey # "'")
-        };
+      let pk = row.get([decl.primaryKey]).get(#null_);
+      if (not joinableValue(pk)) {
+        Runtime.trap("OQL: row of '" # decl.name # "' has no joinable primary key '"
+          # decl.primaryKey # "'")
       };
+      idx.add(Predicate.compare, pk, row);
     };
     idx
   };
@@ -289,18 +302,29 @@ module {
             case (?v) { v };
             case null { return null };
           };
-          switch (joinKey(fk)) {
-            case null { null };                 // null FK -> left-join null
-            case (?k) {
-              switch (idx.get(Text.compare, k)) {
-                case null { null };             // dangling FK -> left-join null
-                case (?t) { wrapRow(t, target, hops).get(path.sliceToArray(1, path.size())) };
-              };
+          // Float/null FKs are unjoinable by design — a float PK traps at build
+          // time, so mirror that on the FK side: left-join to null instead of
+          // letting Predicate.compare bridge a #float FK into a numerically-equal
+          // #nat/#int PK (e.g. #float 3.0 joining #nat 3, or -0.0 joining 0).
+          // (A declared-Float FK is rejected earlier by validateHop's `joinable`
+          // type check; this guard covers the runtime divergence case where the
+          // seed row was Nat but a later row emits #float for the same FK.)
+          if (not joinableValue(fk)) return null;
+          switch (idx.get(Predicate.compare, fk)) {
+            case null { null };               // dangling FK -> left-join null
+            case (?t) {
+              let rest = path.sliceToArray(1, path.size());
+              if (rest.size() == 1) { t.get(rest) }          // single-hop: read off target, no re-wrap
+              else { wrapRow(t, target, hops).get(rest) };   // multi-hop: keep recursion
             };
           };
         };
       };
     };
+    // Own-field single-segment reads hit `base` first and are identical to
+    // the base row, so forward its flat accessor; edge paths (multi-segment)
+    // go through `get` above, which the flat path never serves.
+    slot = base.slot; values = base.values;
   };
 
   /// Filter the row iterator by the predicate. `cap` bounds how many survivors
@@ -325,10 +349,23 @@ module {
     };
   };
 
-  func project(row : Row, paths : [Path]) : [Cell] =
-    paths.map(func (p : Path) : Cell = {
-      name  = Types.pathToText(p);
-      value = row.get(p).get(#null_);
+  /// Resolve each single-segment field to its flat slot ONCE, using a sample
+  /// row's fast accessor (the slot map is shared across the entity's rows).
+  /// Multi-segment paths (edge traversal) and non-flat rows yield `null`, so
+  /// the per-row caller falls back to `get`.
+  func resolveSlots(sample : ?Row, fields : [Path]) : [?Nat] =
+    switch (do ? { sample!.slot! }) {
+      case (?resolve) { Array.map<Path, ?Nat>(fields, func p = if (p.size() == 1) resolve(p[0]) else null) };
+      case null       { Array.tabulate<?Nat>(fields.size(), func _ = null) };
+    };
+
+  func project(row : Row, paths : [Path], names : [Text], slots : [?Nat]) : [Cell] =
+    Array.tabulate<Cell>(paths.size(), func i = {
+      name  = names[i];
+      value = switch (slots[i], row.slot) {
+        case (?s, ?_) { row.values[s] };              // flat: index directly
+        case _        { row.get(paths[i]).get(#null_) };
+      };
     });
 
   /// Explicit `select` wins. Otherwise: for aggregated results project the
@@ -356,8 +393,15 @@ module {
   /// `compareKeys` mirrors the old comparator exactly (same `Predicate.compare`,
   /// same asc/desc, same null handling), so the result is identical.
   func sortByKeys(rows : [Row], clauses : [Query.OrderBy]) : [Row] {
+    let slots = resolveSlots(
+      if (rows.size() == 0) null else ?rows[0],
+      Array.map<Query.OrderBy, Path>(clauses, func c = c.field));
     func keyOf(r : Row) : [Value] =
-      Array.map<Query.OrderBy, Value>(clauses, func c = r.get(c.field).get(#null_));
+      Array.tabulate<Value>(clauses.size(), func i =
+        switch (slots[i], r.slot) {
+          case (?s, ?_) { r.values[s] };
+          case _        { r.get(clauses[i].field).get(#null_) };
+        });
     let decorated = Array.map<Row, ([Value], Row)>(rows, func r = (keyOf(r), r));
     let ordered = Array.sort<([Value], Row)>(
       decorated, func ((ka, _), (kb, _)) = compareKeys(ka, kb, clauses));
@@ -523,7 +567,10 @@ module {
   func rowOf(cells : [(Text, Value)]) : Row {
     let m = Map.empty<Text, Value>();
     for ((k, v) in cells.values()) m.add(Text.compare, k, v);
-    { get = func (p : Path) : ?Value = if (p.size() == 0) null else m.get(Text.compare, Types.pathToText(p)) }
+    {
+      get = func (p : Path) : ?Value = if (p.size() == 0) null else m.get(Text.compare, Types.pathToText(p));
+      slot = null; values = [];  // aggregated row is Map-backed (dotted group keys) — no flat layout.
+    }
   };
 
   /// Type-tagged serialisation of the group-key tuple, so distinct values
