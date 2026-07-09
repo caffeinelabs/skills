@@ -1,10 +1,10 @@
 ---
 name: extension-oql
 description: Make a canister's data queryable by the Caffeine Data Intelligence agent. Use whenever an app stores structured data (Maps/Lists/arrays of records) that should be answerable in natural language — "top customers", "revenue by region", "active projects". Adds a discoverable `schema()` and a JSON `execute()` query endpoint via the `caffeineai-oql` mops package's `Expose` mixin.
-version: 0.3.0
+version: 0.4.0
 compatibility:
   mops:
-    caffeineai-oql: "~0.3.0"
+    caffeineai-oql: "~0.4.0"
 caffeineai-subscription: [none]
 ---
 
@@ -22,8 +22,8 @@ your entities first, then pick a level per entity — see `## Auth`.
 
 ## Setup
 
-Run `mops add caffeineai-oql@0.2.0` in the **same write batch** as your first
-`mo:caffeineai-oql/...` import. Auto-derivation requires `moc >= 1.9` (the
+Run `mops add caffeineai-oql@0.4.0` in the **same write batch** as your first
+`mo:caffeineai-oql/...` import. Auto-derivation requires `moc >= 1.11` (the
 generated-app template already satisfies this).
 
 ## Declare entities and install
@@ -309,7 +309,7 @@ OQL.Entity.manual<(Article, Text)>("articleTag", func () = flattenTags(articles)
 
 ## Checklist
 
-- [ ] `mops add caffeineai-oql@0.2.0` in the same batch as the first import
+- [ ] `mops add caffeineai-oql@0.4.0` in the same batch as the first import
 - [ ] Each entity: row iterator exists; `.toEntity` (all-primitive) or
       `.toEntityManual` / `OQL.Entity.manual` otherwise
 - [ ] `<Type>Value.mo` for every non-primitive field reused across entities,
