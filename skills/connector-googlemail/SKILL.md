@@ -5,10 +5,10 @@ description: >-
   canister to send email, compose a draft, list or read Gmail messages, or
   fetch the authenticated user's Gmail profile.  The package wraps the Gmail
   REST API v1 at `https://gmail.googleapis.com` via outbound HTTPS calls.
-version: 0.1.3
+version: 0.1.4
 compatibility:
   mops:
-    googlemail-client: "~0.1.3"
+    googlemail-client: "~0.1.4"
 ---
 
 # googlemail-client
@@ -29,14 +29,26 @@ email", "forward results by email", "send a notification email".
 ## How Gmail authentication works (read before wiring)
 
 Gmail uses **OAuth 2.0 Authorization Code** flow — there is no static API key.
-The canister never mints a token on its own; the user completes an OAuth dance
-off-chain and passes in the resulting **Bearer access token** at call time.
+Each end-user authorises their own Gmail; the app exchanges the authorization
+code for a short-lived **Bearer access token** (~1 hour) and passes that token
+to the client at call time.  On expiry the API returns HTTP 401 — surface a
+`#Err("auth_expired")` result and re-authenticate.
 
-Token lifetime: **1 hour** by default (Google's access tokens).  After expiry
-the API returns HTTP 401.  The refresh token must be exchanged off-chain too —
-the canister cannot call Google's token endpoint (that would expose the client
-secret on-chain).  Surface a `#Err("auth_expired")` result and ask the caller
-to re-authenticate.
+**The token exchange is an on-chain outcall** to Google's token endpoint and
+requires the Google **Client Secret**.  Two hazards to design around:
+
+- **`is_replicated = ?false` on the exchange too.**  The token response is
+  non-deterministic (fresh token + expiry per call), so a *replicated* exchange
+  duplicates across ~13 replicas and fails IC consensus — the same failure mode
+  as a replicated send.
+- **The Client Secret leaks with exported source.**  It is embedded in the
+  canister source, and Caffeine lets users export their app to a downloaded
+  `.zip` *or a public GitHub repo* — the secret rides along in both.  Treat it
+  as **leakable**: scope it minimally and rotate it if the source is ever
+  exported or shared.
+
+Persist the per-user refresh/session token across upgrades (stable memory) so a
+redeploy doesn't force every user to re-authenticate.
 
 Required OAuth 2.0 scope for `messages.send`: `https://www.googleapis.com/auth/gmail.send`.
 For read access add: `https://www.googleapis.com/auth/gmail.readonly`.
