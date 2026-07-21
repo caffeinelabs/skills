@@ -12,12 +12,12 @@ description: >-
   or any prior task mentions scheduling, calendar events, appointments,
   meetings, "add to calendar", or any equivalent phrasing — and BEFORE
   writing any code that touches a Google endpoint.
-version: 0.2.4
+version: 0.2.6
 caffeineai-subscription: [none]
 compatibility:
   mops:
     googlecalendar-client: "~0.1.4"
-    google-oauth: "~0.1.4"
+    google-oauth: "~0.2.0"
     caffeineai-authorization: "~1.0.0"
 ---
 
@@ -75,7 +75,7 @@ Google Calendar on behalf of the signed-in user. The ingredients are:
 
 ```bash
 mops add googlecalendar-client@0.1.4
-mops add google-oauth@0.1.4
+mops add google-oauth@0.2.0
 mops add caffeineai-authorization@1.0.0
 ```
 
@@ -313,16 +313,13 @@ mixin (
 
 ```motoko filepath=src/backend/lib/calendar.mo
 import Array "mo:core/Array";
-import Char "mo:core/Char";
-import Int "mo:core/Int";
-import Iter "mo:core/Iter";
 import Map "mo:core/Map";
-import Nat32 "mo:core/Nat32";
 import Nat64 "mo:core/Nat64";
 import Principal "mo:core/Principal";
 import Runtime "mo:core/Runtime";
 import Text "mo:core/Text";
 import OAuth "mo:google-oauth/OAuth";
+import DateTime "mo:google-oauth/DateTime";
 import { calendar_events_list; calendar_events_insert } "mo:googlecalendar-client/Apis/EventsApi";
 import { calendar_freebusy_query } "mo:googlecalendar-client/Apis/FreebusyApi";
 import { type Event; JSON = Event } "mo:googlecalendar-client/Models/Event";
@@ -521,62 +518,19 @@ module {
     busy;
   };
 
-  // --- Availability math: offset-aware RFC 3339 parsing + slot overlap ---
+  // --- Availability math (re-exported from google-oauth's tested DateTime) ---
   //
-  // Google returns busy periods with an explicit offset ("2026-07-21T14:00:00Z"
-  // or "…+02:00"). Parse honoring that offset. Dropping it shifts every busy
-  // interval and busy blocks silently miss their slots.
-
-  // RFC 3339 timestamp -> absolute nanoseconds since the Unix epoch.
-  // Honors a trailing "Z" or "±HH:MM"; a bare "YYYY-MM-DD" is midnight UTC.
-  public func rfc3339ToNanos(s : Text) : Int {
-    let cs = Iter.toArray(s.chars());
-    if (cs.size() < 10) return 0;
-    func digit(i : Nat) : Int = Nat32.toNat(Char.toNat32(cs[i])) - 48;
-    func d2(i : Nat) : Int = digit(i) * 10 + digit(i + 1);
-    func d4(i : Nat) : Int = digit(i) * 1000 + digit(i + 1) * 100 + digit(i + 2) * 10 + digit(i + 3);
-    var secs = daysFromCivil(d4(0), d2(5), d2(8)) * 86_400;
-    if (cs.size() >= 19 and cs[10] == 'T') {
-      secs += d2(11) * 3_600 + d2(14) * 60 + d2(17);
-      var i = 19; // skip past any ".fff" fraction to the "Z" or "±HH:MM" offset
-      label scan while (i < cs.size()) {
-        let c = cs[i];
-        if (c == 'Z') break scan; // already UTC
-        if ((c == '+' or c == '-') and i + 5 < cs.size()) {
-          let sign = if (c == '+') 1 else -1;
-          secs -= sign * (d2(i + 1) * 3_600 + d2(i + 4) * 60); // local wall clock -> UTC
-          break scan;
-        };
-        i += 1;
-      };
-    };
-    secs * 1_000_000_000;
-  };
-
-  // Howard Hinnant's days_from_civil: proleptic Gregorian Y/M/D -> days since epoch.
-  func daysFromCivil(y0 : Int, m : Int, d : Int) : Int {
-    let y = if (m <= 2) y0 - 1 else y0;
-    let era = (if (y >= 0) y else y - 399) / 400;
-    let yoe = y - era * 400;
-    let doy = (153 * (if (m > 2) m - 3 else m + 9) + 2) / 5 + d - 1;
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    era * 146_097 + doe - 719_468;
-  };
-
-  // Keep a candidate slot only if it overlaps NO busy interval. Half-open
-  // intervals: [aStart, aEnd) overlaps [bStart, bEnd) iff aStart < bEnd and bStart < aEnd.
-  public func overlaps(aStart : Int, aEnd : Int, bStart : Int, bEnd : Int) : Bool {
-    aStart < bEnd and bStart < aEnd;
-  };
-
-  // A candidate [slotStart, slotEnd) is free when it overlaps none of the busy
-  // (start, end) RFC 3339 pairs returned by busyTimes.
-  public func isSlotFree(slotStart : Int, slotEnd : Int, busy : [(Text, Text)]) : Bool {
-    for ((bs, be) in busy.vals()) {
-      if (overlaps(slotStart, slotEnd, rfc3339ToNanos(bs), rfc3339ToNanos(be))) return false;
-    };
-    true;
-  };
+  // Do NOT re-implement RFC 3339 parsing — a digit parse that forgets to subtract
+  // '0' (48) reads "2026" as 55354, so busy intervals land in the wrong year and
+  // availability breaks silently (compiles, never traps). These thin re-exports
+  // let callers use `LibCalendar.isSlotFree` / `.rfc3339ToNanos` with no extra
+  // import; the implementation lives in `mo:google-oauth/DateTime`.
+  public func rfc3339ToNanos(s : Text) : Int = DateTime.rfc3339ToNanos(s);
+  public func nanosToRfc3339(ns : Int) : Text = DateTime.nanosToRfc3339(ns);
+  public func overlaps(aStart : Int, aEnd : Int, bStart : Int, bEnd : Int) : Bool =
+    DateTime.overlaps(aStart, aEnd, bStart, bEnd);
+  public func isSlotFree(slotStart : Int, slotEnd : Int, busy : [(Text, Text)]) : Bool =
+    DateTime.isSlotFree(slotStart, slotEnd, busy);
 
   public func createEvent(
     clientId : Text, clientSecret : Text, connection : CalendarConnection,
@@ -662,24 +616,44 @@ to an absolute instant honoring the trailing offset — Google returns timed
 periods with a `Z` **or** a numeric offset (`2026-07-21T14:00:00+02:00`), and
 all-day blocks as a bare `YYYY-MM-DD` date. Truncating at the seconds and
 ignoring the offset shifts every busy interval by the offset (e.g. 2h in
-Zurich summer), so busy blocks miss the slots they should hide. Use the
-`rfc3339ToNanos` helper in the `lib/calendar.mo` block above — it honors the
-offset and handles all-day dates — then overlap numerically. Do **not**
-hand-roll a parser that stops at the seconds.
+Zurich summer), so busy blocks miss the slots they should hide. Use
+`LibCalendar.rfc3339ToNanos` (a tested re-export of `mo:google-oauth/DateTime`)
+— it honors the offset and handles all-day dates — then overlap numerically. Do
+**not** hand-roll a parser that stops at the seconds.
 
-End to end: build your candidate slots as `(start, end)` nanosecond instants,
-call `busyTimes(...)` for the window, then keep a slot only when
-`isSlotFree(slotStart, slotEnd, busy)` is true — it parses each busy pair with
-`rfc3339ToNanos` and rejects any slot that `overlaps` a busy interval:
+End to end, the whole availability flow lives in nanosecond instants and only
+touches text at the edges: anchor the window with `LibCalendar.rfc3339ToNanos`,
+build the candidate grid with plain integer arithmetic, filter with
+`LibCalendar.isSlotFree`, then format the survivors back with
+`LibCalendar.nanosToRfc3339` so they are ready to display and to pass straight to
+`createEvent` (whose `startDateTime` / `endDateTime` are RFC 3339 text). The grid
+below is a fixed UTC window; real working-hours / timezone policy is app-specific,
+but the parse → integer-math → format shape is the same:
 
 ```motoko
 func availableSlots(
   clientId : Text, clientSecret : Text, connection : LibCalendar.CalendarConnection,
   caller : Principal, calendarConnections : Map.Map<Principal, LibCalendar.CalendarConnection>,
-  timeMin : Text, timeMax : Text, candidateSlots : [(Int, Int)],
-) : async* [(Int, Int)] {
-  let busy = await* LibCalendar.busyTimes(clientId, clientSecret, connection, caller, calendarConnections, timeMin, timeMax);
-  Array.filter<(Int, Int)>(candidateSlots, func(s) = LibCalendar.isSlotFree(s.0, s.1, busy));
+  windowStart : Text,   // e.g. "2026-07-21T09:00:00Z"
+  slotCount : Nat,      // number of consecutive slots to consider
+  slotMinutes : Nat,    // slot length, e.g. 30
+) : async* [(Text, Text)] {
+  let slotNs = slotMinutes * 60 * 1_000_000_000;
+  let start0 = LibCalendar.rfc3339ToNanos(windowStart);
+  // Candidate grid of [s, s+slot) instants.
+  let candidates = Array.tabulate<(Int, Int)>(slotCount, func(i) {
+    let s = start0 + i * slotNs;
+    (s, s + slotNs);
+  });
+  let windowEnd = start0 + slotCount * slotNs;
+  let busy = await* LibCalendar.busyTimes(
+    clientId, clientSecret, connection, caller, calendarConnections,
+    windowStart, LibCalendar.nanosToRfc3339(windowEnd),
+  );
+  let free = Array.filter<(Int, Int)>(candidates, func(s) = LibCalendar.isSlotFree(s.0, s.1, busy));
+  Array.map<(Int, Int), (Text, Text)>(
+    free, func(s) = (LibCalendar.nanosToRfc3339(s.0), LibCalendar.nanosToRfc3339(s.1)),
+  );
 };
 ```
 
@@ -696,6 +670,20 @@ func availableSlots(
 | `OAuth.generateCodeVerifier()` | Generate PKCE `code_verifier` (on-chain randomness) |
 | `OAuth.computeCodeChallenge(verifier)` | Compute PKCE `code_challenge` (S256) |
 | `OAuth.buildAuthorizeUrl(...)` | Build the Google OAuth authorize URL |
+| `OAuth.getUserEmail(accessToken)` | Fetch the connected email via OIDC userinfo (needs only `openid email`) |
+
+### Availability math (`LibCalendar` re-exports of `mo:google-oauth/DateTime`)
+
+`lib/calendar.mo` re-exports these tested helpers, so call them as `LibCalendar.*`
+with no extra import. Times are absolute nanoseconds since the Unix epoch,
+matching `Time.now()`.
+
+| Function | Purpose |
+| --- | --- |
+| `LibCalendar.rfc3339ToNanos(text)` | Offset-aware RFC 3339 -> nanoseconds (honors `Z` / `±HH:MM`, bare dates) |
+| `LibCalendar.nanosToRfc3339(ns)` | Nanoseconds -> UTC RFC 3339 text (`…Z`), ready for `createEvent` |
+| `LibCalendar.overlaps(aStart, aEnd, bStart, bEnd)` | Half-open interval overlap test |
+| `LibCalendar.isSlotFree(slotStart, slotEnd, busy)` | Slot is free of every `(start, end)` RFC 3339 busy pair |
 
 ### `googlecalendar-client` (Calendar REST API v3)
 
@@ -793,6 +781,12 @@ large payloads.
   from your candidate slots. Parse each interval's `start`/`end` as RFC 3339
   allowing a trailing `Z` or a numeric offset (`+02:00`); compare instants, not
   raw strings.
+- **Parse RFC 3339 with `LibCalendar.rfc3339ToNanos` (re-exported from
+  `mo:google-oauth/DateTime`) — do NOT re-implement it.** A hand-rolled parser
+  that forgets to subtract `'0'` (48) per digit reads `"2026"` as `55354`, so
+  every busy interval lands in the wrong year, overlap checks never match, and
+  availability is silently wrong — the code still compiles and never traps, so the
+  bug is invisible until a user is double-booked. Use the tested helper.
 - **HTTP 429 rate-limit.** Surface the error to the caller; never
   silently retry a write inside the canister — a retry may create a
   duplicate event.
@@ -802,6 +796,18 @@ large payloads.
   bearer is a per-user account compromise.
 - **`alt = #json`** for all Calendar API v3 calls. Leave optional string
   parameters `""` and `prettyPrint = false`.
+- **API query parameters are plain positional values, not `?T` — never pass
+  `null` for one.** The client's function parameters are `Text` / `Bool` / enum /
+  `Nat` (e.g. `alt`, `fields`, `prettyPrint`); pass real values like `#json`,
+  `""`, `false`, `10` — `null` will not type-check. (Respect each param's
+  documented minimum: `maxAttendees` / `maxResults` must be ≥ 1, see below.) Only
+  **model** values (`Event`, `EventDateTime`, `FreeBusyRequest`) are optional
+  `?T`.
+- **Combined Gmail + Calendar apps: request the scope union, and learn the
+  address via `OAuth.getUserEmail`.** The union of `openid email` + `.../calendar`
+  + `.../gmail.send` covers availability, sending, and the connected address (via
+  OIDC userinfo) — no `gmail.readonly` needed unless the app actually reads mail.
+  Never drop a scope when merging recipes — see "Combined Gmail + Calendar apps".
 - **Build `Event` / `EventDateTime` with `init {}` then record-update**
   the fields you need — all fields are optional (`?T`); leave the rest null.
 - **PATCH/PUT/DELETE are forced non-replicated** in the generated client
@@ -977,8 +983,9 @@ flows). It is the same shape as the per-connector `startAuthorize` /
 
 - One `#admin`-gated config setter storing a single Client ID/Secret.
 - `SCOPES` = the union below — both APIs in one consent.
-- `completeGoogleOAuth(code, state)` fetches the Gmail profile for the connected
-  email (the union includes `gmail.readonly`) and stores one connection
+- `completeGoogleOAuth(code, state)` learns the connected email via
+  `OAuth.getUserEmail` (OIDC userinfo — needs only `openid email`, not
+  `gmail.readonly`) and stores one connection
   `{ accessToken; refreshToken; emailAddress }` in a single
   `Map<Principal, GoogleConnection>`.
 - Gmail sends and Calendar calls each build **their own** client `Config` from
@@ -989,9 +996,10 @@ flows). It is the same shape as the per-connector `startAuthorize` /
 
 ```motoko filepath=src/backend/google.mo
 let SCOPES : Text =
-  "https://www.googleapis.com/auth/gmail.send "
-  # "https://www.googleapis.com/auth/gmail.readonly "
+  "openid email "                                    // learn the address via userinfo
+  # "https://www.googleapis.com/auth/gmail.send "
   # "https://www.googleapis.com/auth/calendar";
+// Add "https://www.googleapis.com/auth/gmail.readonly " ONLY if the app reads mail.
 ```
 
 Wire it as **one** connection shared by both services — declare the config,
@@ -1047,7 +1055,7 @@ the user explicitly asks to connect two different Google accounts.
 ## Related
 
 - [`mops add googlecalendar-client@0.1.4`](https://mops.one/googlecalendar-client) — Calendar REST API v3 bindings.
-- [`mops add google-oauth@0.1.4`](https://mops.one/google-oauth) — Google OAuth 2.0 library (token exchange, refresh, PKCE).
+- [`mops add google-oauth@0.2.0`](https://mops.one/google-oauth) — Google OAuth 2.0 library (token exchange, refresh, PKCE, `getUserEmail` userinfo, `DateTime` RFC 3339 helpers).
 - [Google OAuth 2.0 for Web Server Applications](https://developers.google.com/identity/protocols/oauth2/web-server) — Web-client redirect URI and authorization-code flow reference.
 - [Google Calendar API v3 reference](https://developers.google.com/calendar/api/v3/reference) — what `googlecalendar-client` wraps.
 - [RFC 7636 — Proof Key for Code Exchange](https://datatracker.ietf.org/doc/html/rfc7636) — PKCE spec.
