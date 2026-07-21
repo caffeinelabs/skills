@@ -12,12 +12,12 @@ description: >-
   mentions sending email, Gmail, "notify via email", "forward results by
   email", or any equivalent phrasing — and BEFORE writing any code that
   touches a Google endpoint.
-version: 0.2.1
+version: 0.2.3
 caffeineai-subscription: [none]
 compatibility:
   mops:
-    googlemail-client: "~0.1.5"
-    google-oauth: "~0.1.4"
+    googlemail-client: "~0.1.6"
+    google-oauth: "~0.2.0"
     caffeineai-authorization: "~1.0.0"
 ---
 
@@ -70,8 +70,8 @@ Gmail on behalf of the signed-in user. The ingredients are:
 ## 1. Add dependencies
 
 ```bash
-mops add googlemail-client@0.1.5
-mops add google-oauth@0.1.4
+mops add googlemail-client@0.1.6
+mops add google-oauth@0.2.0
 mops add caffeineai-authorization@1.0.0
 ```
 
@@ -94,9 +94,13 @@ Code with PKCE flow. The canister:
 ### Google Cloud Console setup
 
 1. Create a Google OAuth 2.0 **Web application** client.
-2. Under **Authorized redirect URIs**, register the exact deployed callback:
-   `https://<app-domain>/connect/gmail`. The URI passed to Google must match
-   this value byte-for-byte, including its scheme, path, and trailing slash.
+2. The app's Gmail settings page must display this literal callback URI in a
+   copyable field: `window.location.origin + "/connect/gmail"` — for example,
+   `https://my-app.caffeine.xyz/connect/gmail`. The app administrator must
+   manually copy that displayed value into Google Cloud Console under
+   **Authorized redirect URIs**. Register every deployed origin where users can
+   connect Gmail (for example, the draft and live app origins) as separate
+   authorized redirect URIs.
 3. Enable only the Gmail scopes the app needs on the consent screen.
 4. Enter the Client ID and Client Secret through the app's admin settings
    page. The canister uses the secret for the token exchange; the frontend
@@ -104,16 +108,26 @@ Code with PKCE flow. The canister:
 
 PKCE binds each authorization code to the canister-generated verifier, while
 the Web client registration binds the browser callback to the deployed app.
+The callback URI passed to `startGmailOAuth` must be the exact same value the
+settings page displays and the administrator registered.
 
 ### OAuth scopes
 
 | Scope | Purpose |
 | --- | --- |
+| `openid email` | Learn the connected address via `OAuth.getUserEmail` (OIDC userinfo) |
 | `https://www.googleapis.com/auth/gmail.send` | Send messages (`messages.send`) |
 | `https://www.googleapis.com/auth/gmail.readonly` | Read messages, list, get profile |
 | `https://mail.google.com/` | Full access (rarely needed) |
 
-Request both `gmail.send` and `gmail.readonly` for a typical send+read app.
+**Learn the connected address with `OAuth.getUserEmail` (OIDC userinfo), not
+`gmail_users_getProfile`.** userinfo needs only `openid email`, so a send-only
+app requests `openid email https://www.googleapis.com/auth/gmail.send` and
+nothing more. `gmail_users_getProfile` requires the restricted `gmail.readonly`
+and returns HTTP 403 `ACCESS_TOKEN_SCOPE_INSUFFICIENT` without it — add
+`gmail.readonly` **only** when the app actually reads mail. When combining APIs
+(e.g. Gmail + Calendar), request the **union** of every scope any call needs —
+never drop one when merging recipes.
 
 ### Storing tokens
 
@@ -302,7 +316,7 @@ import Principal "mo:core/Principal";
 import Text "mo:core/Text";
 import Runtime "mo:core/Runtime";
 import OAuth "mo:google-oauth/OAuth";
-import { gmail_users_messages_send; gmail_users_getProfile } "mo:googlemail-client/Apis/UsersApi";
+import { gmail_users_messages_send } "mo:googlemail-client/Apis/UsersApi";
 import { type Message; JSON = Message } "mo:googlemail-client/Models/Message";
 import { defaultConfig; type Config } "mo:googlemail-client/Config";
 
@@ -319,7 +333,9 @@ module {
     state : Text;
   };
 
-  let SCOPES : Text = "https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly";
+  // Send-only: learn the address via OIDC userinfo (`openid email`), so no
+  // `gmail.readonly`. Add `.../gmail.readonly` here ONLY if the app reads mail.
+  let SCOPES : Text = "openid email https://www.googleapis.com/auth/gmail.send";
 
   func configForToken(token : Text) : Config {
     {
@@ -354,14 +370,12 @@ module {
       case (?t) t;
       case null Runtime.trap("Token exchange failed: missing refresh_token");
     };
-    let profile = try {
-      await* gmail_users_getProfile(configForToken(accessToken), "me", #_1_, "", #json, "", "", "", "", true, "", "", "");
-    } catch e {
-      Runtime.trap("Failed to fetch Gmail profile: " # e.message());
-    };
-    let emailAddress = switch (profile.emailAddress) {
+    // Learn the connected address via OIDC userinfo — needs only `openid email`,
+    // never `gmail.readonly`. (If the app also reads mail and requests
+    // `gmail.readonly`, `gmail_users_getProfile` is an equivalent alternative.)
+    let emailAddress = switch (await OAuth.getUserEmail(accessToken)) {
       case (?e) e;
-      case null Runtime.trap("Gmail profile did not return an email address");
+      case null Runtime.trap("Failed to fetch connected email from userinfo");
     };
     { accessToken; refreshToken; emailAddress };
   };
@@ -434,6 +448,7 @@ module {
 | `OAuth.generateCodeVerifier()` | Generate PKCE `code_verifier` (on-chain randomness) |
 | `OAuth.computeCodeChallenge(verifier)` | Compute PKCE `code_challenge` (S256) |
 | `OAuth.buildAuthorizeUrl(...)` | Build the Google OAuth authorize URL |
+| `OAuth.getUserEmail(accessToken)` | Fetch the connected email via OIDC userinfo (needs only `openid email`) |
 
 ### `googlemail-client` (Gmail REST API)
 
@@ -477,9 +492,21 @@ may include large payloads.
   retries once. If the refresh also fails, surface "re-connect your account".
 - **Callback URI exact-match.** Every character (trailing slash, query
   string, port) must match between the authorize URL and the redirect.
-  Google returns `redirect_uri_mismatch` otherwise. Always use
-  `window.location.origin + window.location.pathname` for `redirectUri` and
-  register that exact URI on the Google Web client.
+  Google returns `redirect_uri_mismatch` otherwise. Use the fixed
+  `window.location.origin + "/connect/gmail"` for `redirectUri` — the same
+  value the settings page displays and the `/connect/gmail` route owns — and
+  register that exact URI on the Google Web client. Do not build it from
+  `window.location.pathname`, which varies by page.
+- **Pass the displayed value to `startGmailOAuth` unchanged — never the raw
+  `*.icp0.io` canister URL.** A Caffeine app is served at several origins (the
+  `*-draft.caffeine.xyz` draft, the `*.caffeine.xyz` live domain, and the raw
+  `<canister-id>.icp0.io` URL). Compute the redirect URI in **one** shared
+  helper (`window.location.origin + "/connect/gmail"`) and use that same helper
+  both for the copyable field on the settings page and for the value handed to
+  `startGmailOAuth`. If the value sent to Google (via `startGmailOAuth`) differs
+  from what the settings page showed and the admin registered — e.g. a
+  build-time/config value or the `*.icp0.io` canister origin — Google returns
+  `redirect_uri_mismatch`.
 - **RFC 5322 `raw` Blob.** Pass the message as a plain `Blob` in the
   `raw` field (`?Text.encodeUtf8(mime)`). The `googlemail-client`
   base64-encodes it for the API — do **not** base64-encode it yourself
@@ -492,11 +519,41 @@ may include large payloads.
   no iterator. A leaked bearer is a per-user account compromise.
 - **`xgafv = #_1_`, `alt = #json`** for all Gmail API v1 calls. Leave
   optional string parameters `""` and `prettyPrint = false`.
+- **API query parameters are plain positional values, not `?T` — never pass
+  `null` for one.** The client's function parameters are `Text` / `Bool` / enum
+  (e.g. `xgafv`, `alt`, `fields`, `prettyPrint`); pass `#_1_`, `#json`, `""`,
+  `false` — `null` will not type-check. Only **model** values (`Message`) are
+  optional `?T`.
 - **`userId = "me"`** refers to the authenticated user.
 
 # Frontend
 
-Every build using this skill must ship:
+Every build using this skill MUST ship all four items below. (If the app
+**also** uses the Google Calendar connector, follow "Combined Gmail + Calendar
+apps" below instead — it replaces `/settings/gmail` + `/connect/gmail` with one
+shared `/settings/google` + `/connect/google`. The requirements below still
+apply; only the two paths change.) These are **acceptance criteria, not
+suggestions** — verify each before the build is done. These three are the
+requirements builds skip, and any one missing makes the connector **broken,
+not merely incomplete**:
+
+- **The credentials page exists and is reachable.** The app MUST have the
+  `/settings/gmail` page with Client ID/Secret inputs (item 2), and a signed-in
+  admin MUST be able to reach it — via a nav link or the not-configured prompt on
+  the connect page. A "Connect Gmail" button with no page to enter credentials is
+  the most common failure and leaves the connector unusable.
+- **The admin settings page displays the literal, copyable redirect URI.** Not a
+  `<your-domain>` placeholder, not "your app URL + /connect/gmail" as text for
+  the admin to assemble — the actual string
+  `window.location.origin + "/connect/gmail"` rendered in a read-only field the
+  admin can copy. Concretely: an app served from `https://my-app.caffeine.xyz`
+  must show a field containing exactly `https://my-app.caffeine.xyz/connect/gmail`
+  and nothing else. Without it the admin cannot register the URI in Google and
+  every connection fails.
+- **`/connect/gmail` is a real route that handles Google's callback** — not a
+  button-only page. If it falls through to a catch-all/home redirect, or calls
+  `completeGmailOAuth` before the authenticated actor is ready, the connection
+  silently fails and the app shows "not connected".
 
 1. **A login flow — required.** Gmail cannot work without a non-anonymous
    caller; the per-user OAuth handshake stores tokens keyed by
@@ -506,24 +563,79 @@ Every build using this skill must ship:
    `useInternetIdentity`, login/logout buttons, the `useActor` plumbing
    that injects the authenticated identity into every backend call.
 
-2. **An admin settings page** — `/settings/gmail` (admin-gated):
+2. **An admin settings page** — `/settings/gmail` (admin-gated). This page
+   is required; a Gmail build is incomplete without it:
+   - Show a "How to get your Google credentials" panel before the credential
+     inputs. Reassure the admin it is a one-time, ~5-minute setup, and walk
+     through these numbered steps (the agent's completion message must repeat
+     the same steps):
+     1. open the [Google Cloud Console](https://console.cloud.google.com) and
+        sign in with any Google account;
+     2. create or pick a project;
+     3. enable the **Gmail API** (APIs & Services → Library → search
+        "Gmail API" → Enable);
+     4. configure the **OAuth consent screen** (APIs & Services → OAuth consent
+        screen → **External**; set app name, support email, developer email;
+        Google's default scopes are fine);
+     5. create an **OAuth client ID** of type **Web application** (APIs &
+        Services → Credentials → Create Credentials → OAuth client ID);
+     6. under **Authorized redirect URIs**, add the exact value from the
+        copyable field on this page;
+     7. copy the resulting **Client ID** and **Client Secret** into the inputs
+        below and save.
+     Include a convenience link that opens the Google Cloud Console.
+   - Render the actual URI in a read-only, copyable field using one shared
+     helper: `const gmailRedirectUri = () => window.location.origin + "/connect/gmail";`.
+     For example, if the app is open at `https://my-app.caffeine.xyz`, the
+     displayed value is `https://my-app.caffeine.xyz/connect/gmail`. Never
+     show only `<app-domain>` or ask the administrator to infer the URI.
    - Two password-inputs bound to `setGmailCredentials(clientId, clientSecret)`.
      Submit on enter; clear inputs on success.
    - Status indicator driven by `isGmailConfigured()` (returns `Bool`).
      Show "Configured" / "Not configured" — never display the credentials.
-   - Hide from non-admins via
-     [`extension-authorization`](../extension-authorization/SKILL.md)'s
-     `isCallerAdmin` query — non-admins should not see the link in the nav.
+   - **Make this page reachable.** The app's main navigation (the shared Layout)
+     MUST link to this page for admins — show the link when `isCallerAdmin` is
+     true, hide it otherwise (via
+     [`extension-authorization`](../extension-authorization/SKILL.md)). Add that
+     link wherever the nav is defined, not inside this page. A `/settings/gmail`
+     route with no way to reach it is a broken build. Do not rely on the nav
+     alone: the not-configured prompt below is the primary way users discover
+     setup is needed.
 
-3. **A "Connect Gmail" page** — `/connect/gmail` (any signed-in user):
+3. **A "Connect Gmail" and callback page** — `/connect/gmail` (any signed-in
+   user). This dedicated page must catch and handle Google's redirect after
+   consent; it is not only a page with a connect button:
+   - **Handle the not-configured case for everyone.** `isGmailConfigured()` is a
+     public query (any signed-in user may call it). When it returns `false`, do
+     not show a dead connect button. Admins see a link to `/settings/gmail` to
+     enter credentials. Non-admins must see an explanation, not a dead end — e.g.
+     "Gmail isn't set up yet — the app's administrator needs to add Google
+     credentials in Settings." Enable the "Connect Gmail" button only once
+     configured.
    - "Connect Gmail" button bound to
-     `startGmailOAuth(window.location.origin + window.location.pathname)`.
-     Redirect the browser to the URL returned by the canister. Register this
-     exact URI in the Google Cloud Console first.
+     `startGmailOAuth(gmailRedirectUri())`. Redirect the browser to the URL
+     returned by the canister. Do not derive the callback from an arbitrary
+     current pathname; the fixed `/connect/gmail` route and the settings-page
+     URI must be identical.
+   - Register `/connect/gmail` as a real application route. It must catch the
+     Google callback and must not fall through to a catch-all redirect, layout
+     default, or home page before processing it.
    - On the return leg, read `error`, `code`, and `state` from
      `URLSearchParams`. If `error` is present, show the failed/declined
      connection state and do not call the canister. Only when both `code`
-     and `state` are present, call `completeGmailOAuth(code, state)`.
+     and `state` are present, call and **await**
+     `completeGmailOAuth(code, state)` before navigating anywhere or clearing
+     the URL. Keep a visible "Connecting Gmail…" state while it is pending.
+     Do not replace the route, redirect to the home page, or discard the
+     query parameters first — that loses the one-time code and leaves the
+     user disconnected.
+   - **Wait for actor readiness before the one-time callback call.** The page
+     must wait for `useInternetIdentity().isAuthenticated` and
+     `useActor(createActor)` to provide a non-null, non-fetching actor before
+     calling `completeGmailOAuth`. Do not set a `startedRef`/one-shot guard
+     until then: on first render the actor is often unavailable, and an
+     "Actor not ready" failure otherwise consumes the only retry while the
+     authorization code is still in the URL.
    - After either terminal path, call `history.replaceState` to remove the
      OAuth query parameters. This prevents a page refresh from reusing a
      one-time authorization code.
@@ -533,9 +645,11 @@ Every build using this skill must ship:
      either bearer token.
    - Optional "Disconnect Gmail" button bound to `disconnectMyGmail()`.
 
-4. **Empty-state nudge on the send-email UI** — when
-   `isMyGmailConnected()` is `false`, render an inline "Connect Gmail to
-   send" link to `/connect/gmail`.
+4. **Empty-state nudges.** When `isMyGmailConnected()` is `false`, render an
+   inline "Connect Gmail to send" link to `/connect/gmail` on the send-email UI.
+   When `isGmailConfigured()` is `false` and the caller is an admin, render a
+   "Set up Gmail" link to `/settings/gmail` so the credentials page is
+   discoverable, not just reachable.
 
 Suggested route layout:
 
@@ -543,12 +657,88 @@ Suggested route layout:
 /                   →  Main UI (any signed-in user; empty-state when no Gmail connection)
 /settings/gmail     →  Admin credential config (admin-only)
 /connect/gmail      →  Per-user OAuth handshake (any signed-in user)
+# If the app ALSO uses Google Calendar: drop the two routes above and use a
+# single /settings/google + /connect/google — see "Combined Gmail + Calendar apps".
 ```
+
+## Combined Gmail + Calendar apps
+
+When an app uses both connectors, build **one** shared Google connection, not
+two (an auth code is single-use, so two flows would force two consent screens).
+Frontend:
+
+- **One admin page `/settings/google`** — a single Client ID / Client Secret
+  form, one `isGoogleConfigured` status, and one copyable redirect-URI field
+  showing exactly `window.location.origin + "/connect/google"`.
+- **One connect route `/connect/google`** — the same real callback route the
+  Frontend section above requires: it renders "Connect Google", catches the
+  redirect, waits for actor readiness, then calls completion once. No second
+  callback route.
+- **Do NOT build** `/settings/gmail`, `/connect/gmail`, `/settings/calendar`, or
+  `/connect/calendar`. Every other Frontend requirement above still applies —
+  only these paths change.
+
+Backend — write the shared flow **once** (it replaces both per-connector OAuth
+flows). It is the same shape as the per-connector `startAuthorize` /
+`exchangeCode` / refresh functions, with these exact differences:
+
+- One `#admin`-gated config setter storing a single Client ID/Secret.
+- `SCOPES` = the union below — both APIs in one consent.
+- `completeGoogleOAuth(code, state)` learns the connected email via
+  `OAuth.getUserEmail` (OIDC userinfo — needs only `openid email`, not
+  `gmail.readonly`) and stores one connection
+  `{ accessToken; refreshToken; emailAddress }` in a single
+  `Map<Principal, GoogleConnection>`.
+- Gmail sends and Calendar calls each build **their own** client `Config` from
+  that one `accessToken`, each keeping its single-refresh-on-401 retry.
+- Keep the connection and client config in **one** shared state value and pass it
+  as a parameter to both the Gmail and Calendar mixins, so both read and write the
+  same connection (see the `writing-motoko` mixins rule).
+
+```motoko filepath=src/backend/google.mo
+let SCOPES : Text =
+  "openid email "                                    // learn the address via userinfo
+  # "https://www.googleapis.com/auth/gmail.send "
+  # "https://www.googleapis.com/auth/calendar";
+// Add "https://www.googleapis.com/auth/gmail.readonly " ONLY if the app reads mail.
+```
+
+Wire it as **one** connection shared by both services — declare the config,
+connection map, and pending-flow map once and pass the **same** bindings to
+every mixin. The Gmail and Calendar messaging mixins do **not** declare their own
+config or connection; they receive the shared `googleConfig` and
+`googleConnections` (config is needed for the refresh-on-401 retry):
+
+```motoko filepath=src/backend/main.mo
+actor {
+  let accessControlState = AccessControl.initState();
+  include MixinAuthorization(accessControlState, null);
+
+  // ONE shared credential + connection state for both services.
+  let googleConfig = { var clientId : Text = ""; var clientSecret : Text = "" };
+  let googleConnections : Map.Map<Principal, Google.Connection> = Map.empty();
+  let pendingGoogleFlows : Map.Map<Principal, Google.PendingOAuth> = Map.empty();
+
+  include MixinGoogleConfig(accessControlState, googleConfig);                    // setGoogleCredentials / isGoogleConfigured (#admin-gated setter)
+  include MixinGoogleOAuth(googleConfig, googleConnections, pendingGoogleFlows);  // startGoogleOAuth / completeGoogleOAuth, SCOPES = union above
+  include MixinGmailMessaging(googleConfig, googleConnections);                  // sendEmail — refresh-on-401 needs config; reads the shared connection
+  include MixinCalendarMessaging(googleConfig, googleConnections);               // calendar calls — same shared config + connection
+};
+```
+
+Do not give Gmail and Calendar separate config/connection state or separate
+OAuth flows — one auth code is single-use, and separate state desyncs (see the
+`writing-motoko` mixins rule).
+
+Enable both APIs on the one OAuth client and register only the single
+`.../connect/google` redirect URI. Split into two separate panels **only** if
+the user explicitly asks to connect two different Google accounts.
 
 ## Common to all variants
 
 - **Sign-in is required** for every Gmail-related route. Wire the
-  `/settings/...` and `/connect/gmail` routes through
+  `/settings/...` and the connect route (`/connect/gmail`, or `/connect/google`
+  in a combined app) through
   [`extension-authorization`](../extension-authorization/SKILL.md)'s
   auth guard (`useInternetIdentity` + redirect when `!isAuthenticated`).
 - **The frontend never persists tokens.** No `localStorage`, no
@@ -556,7 +746,8 @@ Suggested route layout:
   only ever sees `Bool` status flags and the OAuth redirect URLs.
 - **The OAuth `state` parameter is canister-generated and validated.** The
   canister stores a random nonce with the pending verifier and callback URI.
-  The frontend must pass both `code` and `state` to `completeGmailOAuth`;
+  The frontend must pass both `code` and `state` to the completion call
+  (`completeGmailOAuth`, or `completeGoogleOAuth` in a combined app);
   it never creates or modifies either value.
 - **The send-email UI itself is trivial:** inputs for `to`, `subject`,
   `body`, a submit button. No client-side Gmail SDK, no token handling,
@@ -564,8 +755,8 @@ Suggested route layout:
 
 ## Related
 
-- [`mops add googlemail-client@0.1.5`](https://mops.one/googlemail-client) — Gmail REST API bindings.
-- [`mops add google-oauth@0.1.4`](https://mops.one/google-oauth) — Google OAuth 2.0 library (token exchange, refresh, PKCE).
+- [`mops add googlemail-client@0.1.6`](https://mops.one/googlemail-client) — Gmail REST API bindings.
+- [`mops add google-oauth@0.2.0`](https://mops.one/google-oauth) — Google OAuth 2.0 library (token exchange, refresh, PKCE, `getUserEmail` userinfo, `DateTime` RFC 3339 helpers).
 - [Google OAuth 2.0 for Web Server Applications](https://developers.google.com/identity/protocols/oauth2/web-server) — Web-client redirect URI and authorization-code flow reference.
 - [Gmail API v1 reference](https://developers.google.com/gmail/api/reference/rest) — what `googlemail-client` wraps.
 - [RFC 7636 — Proof Key for Code Exchange](https://datatracker.ietf.org/doc/html/rfc7636) — PKCE spec.
