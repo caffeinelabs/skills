@@ -12,11 +12,11 @@ description: >-
   or any prior task mentions scheduling, calendar events, appointments,
   meetings, "add to calendar", or any equivalent phrasing — and BEFORE
   writing any code that touches a Google endpoint.
-version: 0.2.2
+version: 0.2.4
 caffeineai-subscription: [none]
 compatibility:
   mops:
-    googlecalendar-client: "~0.1.3"
+    googlecalendar-client: "~0.1.4"
     google-oauth: "~0.1.4"
     caffeineai-authorization: "~1.0.0"
 ---
@@ -44,6 +44,7 @@ Intent → capability mapping:
 | --- | --- |
 | Connect and list upcoming events | `googlecalendar-client` + `google-oauth` |
 | Create calendar events | `googlecalendar-client` + `google-oauth` |
+| **Check availability / free slots / busy times** (booking, Calendly-style, "when am I free") | `googlecalendar-client` **FreeBusy** (`calendar_freebusy_query`) + `google-oauth` — **not** `calendar_events_list` |
 
 **Prerequisite for all builds: [extension-authorization](../extension-authorization/SKILL.md).**
 Calendar requires a signed-in caller for every endpoint: the per-user OAuth
@@ -73,7 +74,7 @@ Google Calendar on behalf of the signed-in user. The ingredients are:
 ## 1. Add dependencies
 
 ```bash
-mops add googlecalendar-client@0.1.3
+mops add googlecalendar-client@0.1.4
 mops add google-oauth@0.1.4
 mops add caffeineai-authorization@1.0.0
 ```
@@ -96,10 +97,13 @@ independently via the Authorization Code with PKCE flow. The canister:
 ### Google Cloud Console setup
 
 1. Create a Google OAuth 2.0 **Web application** client.
-2. Under **Authorized redirect URIs**, register the exact deployed callback:
-   `https://<app-domain>/connect/calendar`. The URI passed to Google must
-   match this value byte-for-byte, including its scheme, path, and trailing
-   slash.
+2. The app's Calendar settings page must display this literal callback URI in
+   a copyable field: `window.location.origin + "/connect/calendar"` — for
+   example, `https://my-app.caffeine.xyz/connect/calendar`. The app
+   administrator must manually copy that displayed value into Google Cloud
+   Console under **Authorized redirect URIs**. Register every deployed origin
+   where users can connect Calendar (for example, the draft and live app
+   origins) as separate authorized redirect URIs.
 3. Enable only the Calendar scopes the app needs on the consent screen.
 4. Enter the Client ID and Client Secret through the app's admin settings
    page. The canister uses the secret for the token exchange; the frontend
@@ -107,6 +111,8 @@ independently via the Authorization Code with PKCE flow. The canister:
 
 PKCE binds each authorization code to the canister-generated verifier, while
 the Web client registration binds the browser callback to the deployed app.
+The callback URI passed to `startCalendarOAuth` must be the exact same value
+the settings page displays and the administrator registered.
 
 ### OAuth scopes
 
@@ -267,7 +273,7 @@ mixin (
   };
 
   public shared ({ caller }) func listUpcomingEvents(
-    timeMin : Text, maxResults : Nat,
+    timeMin : Text, timeMax : Text, maxResults : Nat,
   ) : async LibCalendar.EventSummaryList {
     if (caller.isAnonymous()) {
       Runtime.trap("Sign in to list events");
@@ -277,7 +283,7 @@ mixin (
     };
     await* LibCalendar.listUpcomingEvents(
       calendarConfig.clientId, calendarConfig.clientSecret, connection, caller,
-      calendarConnections, timeMin, maxResults,
+      calendarConnections, timeMin, timeMax, maxResults,
     );
   };
 
@@ -307,16 +313,24 @@ mixin (
 
 ```motoko filepath=src/backend/lib/calendar.mo
 import Array "mo:core/Array";
+import Char "mo:core/Char";
+import Int "mo:core/Int";
+import Iter "mo:core/Iter";
 import Map "mo:core/Map";
+import Nat32 "mo:core/Nat32";
 import Nat64 "mo:core/Nat64";
 import Principal "mo:core/Principal";
 import Runtime "mo:core/Runtime";
 import Text "mo:core/Text";
 import OAuth "mo:google-oauth/OAuth";
 import { calendar_events_list; calendar_events_insert } "mo:googlecalendar-client/Apis/EventsApi";
+import { calendar_freebusy_query } "mo:googlecalendar-client/Apis/FreebusyApi";
 import { type Event; JSON = Event } "mo:googlecalendar-client/Models/Event";
 import { type EventDateTime; JSON = EventDateTime } "mo:googlecalendar-client/Models/EventDateTime";
 import { type Events; JSON = Events } "mo:googlecalendar-client/Models/Events";
+import { type FreeBusyRequest; JSON = FreeBusyRequest } "mo:googlecalendar-client/Models/FreeBusyRequest";
+import { type FreeBusyRequestItem; JSON = FreeBusyRequestItem } "mo:googlecalendar-client/Models/FreeBusyRequestItem";
+import { type FreeBusyResponse } "mo:googlecalendar-client/Models/FreeBusyResponse";
 import { defaultConfig; type Config } "mo:googlecalendar-client/Config";
 
 module {
@@ -336,6 +350,14 @@ module {
     summary : Text;
     start : Text;
     end : Text;
+    // Signals that let the frontend tell a real meeting from a marker:
+    // isAllDay = the event has a date but no time (all-day block).
+    // transparency = "transparent" (shows as free) or "opaque"/"" (busy).
+    // eventType = "default" | "outOfOffice" | "focusTime" | "workingLocation".
+    // To count/show only real meetings, keep timed, opaque, default events.
+    isAllDay : Bool;
+    transparency : Text;
+    eventType : Text;
   };
 
   public type EventSummaryList = [EventSummary];
@@ -411,10 +433,14 @@ module {
     };
   };
 
+  // Lists events in [timeMin, timeMax). Pass timeMax = "" for an open-ended
+  // "everything from now" list; pass both to bound a single day/week (e.g.
+  // timeMin = start-of-tomorrow, timeMax = start-of-day-after) so the count is
+  // exact. Both are RFC 3339 strings; include an offset ("…Z" or "…+02:00").
   public func listUpcomingEvents(
     clientId : Text, clientSecret : Text, connection : CalendarConnection,
     caller : Principal, calendarConnections : Map.Map<Principal, CalendarConnection>,
-    timeMin : Text, maxResults : Nat,
+    timeMin : Text, timeMax : Text, maxResults : Nat,
   ) : async* EventSummaryList {
     if (timeMin.size() == 0) {
       Runtime.trap("timeMin must be an RFC 3339 timestamp");
@@ -422,10 +448,10 @@ module {
     let events : Events = try {
       await* calendar_events_list(
         configForToken(connection.accessToken), "primary", #json,
-        "", "", "", true, "", "",
-        false, [], "", 0, maxResults, #starttime,
+        "", "", "", false, "", "",
+        false, [], "", 10, maxResults, #starttime,
         "", [], "", [], false, false, true, "",
-        "", timeMin, "", "",
+        timeMax, timeMin, "", "",
       );
     } catch e {
       let ?newToken = await* refreshIfNeeded(
@@ -433,13 +459,123 @@ module {
       ) else Runtime.trap("Calendar API failed");
       await* calendar_events_list(
         configForToken(newToken), "primary", #json,
-        "", "", "", true, "", "",
-        false, [], "", 0, maxResults, #starttime,
+        "", "", "", false, "", "",
+        false, [], "", 10, maxResults, #starttime,
         "", [], "", [], false, false, true, "",
-        "", timeMin, "", "",
+        timeMax, timeMin, "", "",
       );
     };
     eventSummariesOf(events);
+  };
+
+  // Availability uses FreeBusy (POST + JSON body), NOT events.list: one call
+  // returns the merged busy intervals across the user's calendars with recurring
+  // events already expanded server-side — no paging, recurrence expansion, or
+  // client-side merging. Returns the owner's busy intervals in [timeMin, timeMax]
+  // as raw RFC 3339 (start, end) pairs; timeMin/timeMax are UTC "…Z" strings.
+  // Single-refresh-on-401 retry.
+  public func busyTimes(
+    clientId : Text, clientSecret : Text, connection : CalendarConnection,
+    caller : Principal, calendarConnections : Map.Map<Principal, CalendarConnection>,
+    timeMin : Text, timeMax : Text,
+  ) : async* [(Text, Text)] {
+    let request : FreeBusyRequest = {
+      FreeBusyRequest.init {} with
+      timeMin = ?timeMin;
+      timeMax = ?timeMax;
+      items = ?[{ FreeBusyRequestItem.init {} with id = ?"primary" }];
+    };
+    let response : FreeBusyResponse = try {
+      await* calendar_freebusy_query(
+        configForToken(connection.accessToken), #json, "", "", "", false, "", "", request,
+      );
+    } catch e {
+      let ?newToken = await* refreshIfNeeded(
+        clientId, clientSecret, connection, caller, calendarConnections, e.message(),
+      ) else Runtime.trap("Calendar API failed");
+      await* calendar_freebusy_query(
+        configForToken(newToken), #json, "", "", "", false, "", "", request,
+      );
+    };
+    // The response map is keyed by the RESOLVED calendar id (the user's email),
+    // NOT "primary". Iterate EVERY returned calendar and union its busy periods.
+    var busy : [(Text, Text)] = [];
+    switch (response.calendars) {
+      case (?calendars) {
+        for ((_id, cal) in calendars.entries()) {
+          switch (cal.busy) {
+            case (?periods) {
+              for (p in periods.vals()) {
+                switch (p.start, p.end) {
+                  case (?s, ?e) busy := Array.concat(busy, [(s, e)]);
+                  case _ {};
+                };
+              };
+            };
+            case null {};
+          };
+        };
+      };
+      case null {};
+    };
+    busy;
+  };
+
+  // --- Availability math: offset-aware RFC 3339 parsing + slot overlap ---
+  //
+  // Google returns busy periods with an explicit offset ("2026-07-21T14:00:00Z"
+  // or "…+02:00"). Parse honoring that offset. Dropping it shifts every busy
+  // interval and busy blocks silently miss their slots.
+
+  // RFC 3339 timestamp -> absolute nanoseconds since the Unix epoch.
+  // Honors a trailing "Z" or "±HH:MM"; a bare "YYYY-MM-DD" is midnight UTC.
+  public func rfc3339ToNanos(s : Text) : Int {
+    let cs = Iter.toArray(s.chars());
+    if (cs.size() < 10) return 0;
+    func digit(i : Nat) : Int = Nat32.toNat(Char.toNat32(cs[i])) - 48;
+    func d2(i : Nat) : Int = digit(i) * 10 + digit(i + 1);
+    func d4(i : Nat) : Int = digit(i) * 1000 + digit(i + 1) * 100 + digit(i + 2) * 10 + digit(i + 3);
+    var secs = daysFromCivil(d4(0), d2(5), d2(8)) * 86_400;
+    if (cs.size() >= 19 and cs[10] == 'T') {
+      secs += d2(11) * 3_600 + d2(14) * 60 + d2(17);
+      var i = 19; // skip past any ".fff" fraction to the "Z" or "±HH:MM" offset
+      label scan while (i < cs.size()) {
+        let c = cs[i];
+        if (c == 'Z') break scan; // already UTC
+        if ((c == '+' or c == '-') and i + 5 < cs.size()) {
+          let sign = if (c == '+') 1 else -1;
+          secs -= sign * (d2(i + 1) * 3_600 + d2(i + 4) * 60); // local wall clock -> UTC
+          break scan;
+        };
+        i += 1;
+      };
+    };
+    secs * 1_000_000_000;
+  };
+
+  // Howard Hinnant's days_from_civil: proleptic Gregorian Y/M/D -> days since epoch.
+  func daysFromCivil(y0 : Int, m : Int, d : Int) : Int {
+    let y = if (m <= 2) y0 - 1 else y0;
+    let era = (if (y >= 0) y else y - 399) / 400;
+    let yoe = y - era * 400;
+    let doy = (153 * (if (m > 2) m - 3 else m + 9) + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146_097 + doe - 719_468;
+  };
+
+  // Keep a candidate slot only if it overlaps NO busy interval. Half-open
+  // intervals: [aStart, aEnd) overlaps [bStart, bEnd) iff aStart < bEnd and bStart < aEnd.
+  public func overlaps(aStart : Int, aEnd : Int, bStart : Int, bEnd : Int) : Bool {
+    aStart < bEnd and bStart < aEnd;
+  };
+
+  // A candidate [slotStart, slotEnd) is free when it overlaps none of the busy
+  // (start, end) RFC 3339 pairs returned by busyTimes.
+  public func isSlotFree(slotStart : Int, slotEnd : Int, busy : [(Text, Text)]) : Bool {
+    for ((bs, be) in busy.vals()) {
+      if (overlaps(slotStart, slotEnd, rfc3339ToNanos(bs), rfc3339ToNanos(be))) return false;
+    };
+    true;
   };
 
   public func createEvent(
@@ -457,8 +593,8 @@ module {
     let created : Event = try {
       await* calendar_events_insert(
         configForToken(connection.accessToken), "primary", #json,
-        "", "", "", true, "", "",
-        0, 0, true, #all, false, event,
+        "", "", "", false, "", "",
+        0, 10, true, #all, false, event,
       );
     } catch e {
       let ?newToken = await* refreshIfNeeded(
@@ -466,8 +602,8 @@ module {
       ) else Runtime.trap("Calendar API failed");
       await* calendar_events_insert(
         configForToken(newToken), "primary", #json,
-        "", "", "", true, "", "",
-        0, 0, true, #all, false, event,
+        "", "", "", false, "", "",
+        0, 10, true, #all, false, event,
       );
     };
     switch (created.id) {
@@ -492,8 +628,58 @@ module {
         case (?dt) switch (dt.dateTime) { case (?t) t; case null switch (dt.date) { case (?d) d; case null "" } };
         case null "";
       };
+      // All-day events carry `date` but no `dateTime`.
+      isAllDay = switch (e.start) {
+        case (?dt) switch (dt.dateTime) { case (?_) false; case null true };
+        case null false;
+      };
+      transparency = switch (e.transparency) { case (?t) t; case null "" };
+      eventType = switch (e.eventType) { case (?t) t; case null "" };
     });
   };
+};
+```
+
+## 4b. Availability / busy times — use FreeBusy, NOT events.list
+
+Any "when is this person free / busy", booking, or Calendly-style feature MUST
+read availability through **FreeBusy** (`calendar_freebusy_query`), not
+`calendar_events_list`. FreeBusy is purpose-built for this: a single POST returns
+the **merged busy intervals** across the user's calendars, with recurring events
+already expanded server-side — you never page through events, expand recurrences,
+or union overlapping blocks yourself. It also folds in out-of-office and all-day
+blocks. Reserve `calendar_events_list` for showing the app's own event list and
+`_insert` / `_delete` for event CRUD.
+
+The `busyTimes` helper in the `lib/calendar.mo` block above is the reference
+implementation: it builds a `FreeBusyRequest` for `items = [{ id = "primary" }]`
+over `[timeMin, timeMax]`, does the single-refresh-on-401 retry, and — crucially
+— iterates **every** calendar the response returns (the map is keyed by the
+resolved calendar id, not `"primary"`) and unions their busy periods.
+
+**Before comparing** each `(start, end)` against your candidate slots, parse it
+to an absolute instant honoring the trailing offset — Google returns timed
+periods with a `Z` **or** a numeric offset (`2026-07-21T14:00:00+02:00`), and
+all-day blocks as a bare `YYYY-MM-DD` date. Truncating at the seconds and
+ignoring the offset shifts every busy interval by the offset (e.g. 2h in
+Zurich summer), so busy blocks miss the slots they should hide. Use the
+`rfc3339ToNanos` helper in the `lib/calendar.mo` block above — it honors the
+offset and handles all-day dates — then overlap numerically. Do **not**
+hand-roll a parser that stops at the seconds.
+
+End to end: build your candidate slots as `(start, end)` nanosecond instants,
+call `busyTimes(...)` for the window, then keep a slot only when
+`isSlotFree(slotStart, slotEnd, busy)` is true — it parses each busy pair with
+`rfc3339ToNanos` and rejects any slot that `overlaps` a busy interval:
+
+```motoko
+func availableSlots(
+  clientId : Text, clientSecret : Text, connection : LibCalendar.CalendarConnection,
+  caller : Principal, calendarConnections : Map.Map<Principal, LibCalendar.CalendarConnection>,
+  timeMin : Text, timeMax : Text, candidateSlots : [(Int, Int)],
+) : async* [(Int, Int)] {
+  let busy = await* LibCalendar.busyTimes(clientId, clientSecret, connection, caller, calendarConnections, timeMin, timeMax);
+  Array.filter<(Int, Int)>(candidateSlots, func(s) = LibCalendar.isSlotFree(s.0, s.1, busy));
 };
 ```
 
@@ -514,9 +700,10 @@ module {
 ### `googlecalendar-client` (Calendar REST API v3)
 
 The canonical actor above intentionally implements only upcoming-event listing
-and event creation. For another generated operation, keep bearer
-authentication and `is_replicated = ?false`, then apply the same
-single-refresh-retry pattern as `refreshIfNeeded`.
+and event creation; for availability/busy times use the FreeBusy helper in §4b.
+For another generated operation, keep bearer authentication and
+`is_replicated = ?false`, then apply the same single-refresh-retry pattern as
+`refreshIfNeeded`.
 
 The generated package also exposes:
 
@@ -560,15 +747,52 @@ large payloads.
   retries once. If the refresh also fails, surface "re-connect your account".
 - **Callback URI exact-match.** Every character (trailing slash, query
   string, port) must match between the authorize URL and the redirect.
-  Google returns `redirect_uri_mismatch` otherwise. Always use
-  `window.location.origin + window.location.pathname` for `redirectUri` and
-  register that exact URI on the Google Web client.
+  Google returns `redirect_uri_mismatch` otherwise. Use the fixed
+  `window.location.origin + "/connect/calendar"` for `redirectUri` — the same
+  value the settings page displays and the `/connect/calendar` route owns — and
+  register that exact URI on the Google Web client. Do not build it from
+  `window.location.pathname`, which varies by page.
+- **Pass the displayed value to `startCalendarOAuth` unchanged — never the raw
+  `*.icp0.io` canister URL.** A Caffeine app is served at several origins (the
+  `*-draft.caffeine.xyz` draft, the `*.caffeine.xyz` live domain, and the raw
+  `<canister-id>.icp0.io` URL). Compute the redirect URI in **one** shared
+  helper (`window.location.origin + "/connect/calendar"`) and use that same
+  helper both for the copyable field on the settings page and for the value
+  handed to `startCalendarOAuth`. If the value sent to Google (via
+  `startCalendarOAuth`) differs from what the settings page showed and the admin
+  registered — e.g. a build-time/config value or the `*.icp0.io` canister origin
+  — Google returns `redirect_uri_mismatch`.
 - **RFC 3339 timestamps.** Calendar uses RFC 3339 strings
   (`2026-07-10T15:00:00-07:00`). For all-day events set
   `EventDateTime.date` (`YYYY-MM-DD`) instead of `dateTime`.
+- **`createEvent` times need a zone.** The `dateTime` you pass to `createEvent`
+  MUST carry a UTC offset (`…Z` or `…+02:00`) or you MUST also set
+  `EventDateTime.timeZone` (an IANA name like `"Europe/Zurich"`). A bare
+  `2026-07-10T15:00:00` with neither is rejected by Google. Prefer sending an
+  offset-qualified string so the event lands at the intended wall-clock time.
 - **`calendarId = "primary"`** refers to the authenticated user's default
   calendar. Named/shared calendars use their calendar-ID (an email-like
   address).
+- **Availability = FreeBusy, not `events.list`.** For "am I free / busy" use
+  `calendar_freebusy_query` (§4b): one POST returns merged busy intervals with
+  recurrences expanded server-side. Rebuilding availability from `events.list`
+  means paging, expanding recurring events, and merging overlaps by hand — easy
+  to get wrong, and the classic cause of "the booking link shows me free when I'm
+  busy".
+- **`maxAttendees` and `maxResults` must be ≥ 1.** Google rejects `maxAttendees=0`
+  / `maxResults=0` with HTTP 400 (documented minimum is 1). The `listUpcomingEvents`
+  and `createEvent` recipes pass `maxAttendees = 10`; never pass `0` for these on
+  any events endpoint.
+- **FreeBusy responses are keyed by the *resolved* calendar ID, not the string
+  you queried.** When you call `calendar_freebusy_query` for `"primary"`, Google
+  resolves it and returns the `calendars` map keyed by the real calendar ID (the
+  user's email address), **not** the literal `"primary"`. Do **not** look up
+  `"primary"` in the response — that finds nothing and makes every slot look
+  free (a common availability bug). Instead, iterate over **every** calendar the
+  response returns and union all their `busy` intervals, then subtract those
+  from your candidate slots. Parse each interval's `start`/`end` as RFC 3339
+  allowing a trailing `Z` or a numeric offset (`+02:00`); compare instants, not
+  raw strings.
 - **HTTP 429 rate-limit.** Surface the error to the caller; never
   silently retry a write inside the canister — a retry may create a
   duplicate event.
@@ -586,7 +810,32 @@ large payloads.
 
 # Frontend
 
-Every build using this skill must ship:
+Every build using this skill MUST ship all four items below. (If the app
+**also** uses the Gmail connector, follow "Combined Gmail + Calendar apps" below
+instead — it replaces `/settings/calendar` + `/connect/calendar` with one shared
+`/settings/google` + `/connect/google`. The requirements below still apply; only
+the two paths change.) These are **acceptance criteria, not suggestions** —
+verify each before the build is done. These three are the requirements builds
+skip, and any one missing makes the connector **broken, not merely
+incomplete**:
+
+- **The credentials page exists and is reachable.** The app MUST have the
+  `/settings/calendar` page with Client ID/Secret inputs (item 2), and a signed-in
+  admin MUST be able to reach it — via a nav link or the not-configured prompt on
+  the connect page. A "Connect Google Calendar" button with no page to enter
+  credentials is the most common failure and leaves the connector unusable.
+- **The admin settings page displays the literal, copyable redirect URI.** Not a
+  `<your-domain>` placeholder, not "your app URL + /connect/calendar" as text for
+  the admin to assemble — the actual string
+  `window.location.origin + "/connect/calendar"` rendered in a read-only field
+  the admin can copy. Concretely: an app served from `https://my-app.caffeine.xyz`
+  must show a field containing exactly
+  `https://my-app.caffeine.xyz/connect/calendar` and nothing else. Without it the
+  admin cannot register the URI in Google and every connection fails.
+- **`/connect/calendar` is a real route that handles Google's callback** — not a
+  button-only page. If it falls through to a catch-all/home redirect, or calls
+  `completeCalendarOAuth` before the authenticated actor is ready, the connection
+  silently fails and the app shows "not connected".
 
 1. **A login flow — required.** Calendar cannot work without a non-anonymous
    caller; the per-user OAuth handshake stores tokens keyed by
@@ -596,33 +845,97 @@ Every build using this skill must ship:
    `useInternetIdentity`, login/logout buttons, the `useActor` plumbing
    that injects the authenticated identity into every backend call.
 
-2. **An admin settings page** — `/settings/calendar` (admin-gated):
+2. **An admin settings page** — `/settings/calendar` (admin-gated). This
+   page is required; a Calendar build is incomplete without it:
+   - Show a "How to get your Google credentials" panel before the credential
+     inputs. Reassure the admin it is a one-time, ~5-minute setup, and walk
+     through these numbered steps (the agent's completion message must repeat
+     the same steps):
+     1. open the [Google Cloud Console](https://console.cloud.google.com) and
+        sign in with any Google account;
+     2. create or pick a project;
+     3. enable the **Google Calendar API** (APIs & Services → Library → search
+        "Google Calendar API" → Enable);
+     4. configure the **OAuth consent screen** (APIs & Services → OAuth consent
+        screen → **External**; set app name, support email, developer email;
+        Google's default scopes are fine);
+     5. create an **OAuth client ID** of type **Web application** (APIs &
+        Services → Credentials → Create Credentials → OAuth client ID);
+     6. under **Authorized redirect URIs**, add the exact value from the
+        copyable field on this page;
+     7. copy the resulting **Client ID** and **Client Secret** into the inputs
+        below and save.
+     Include a convenience link that opens the Google Cloud Console.
+   - Render the actual URI in a read-only, copyable field using one shared
+     helper:
+     `const calendarRedirectUri = () => window.location.origin + "/connect/calendar";`.
+     For example, if the app is open at `https://my-app.caffeine.xyz`, the
+     displayed value is `https://my-app.caffeine.xyz/connect/calendar`. Never
+     show only `<app-domain>` or ask the administrator to infer the URI.
    - Two password-inputs bound to `setCalendarCredentials(clientId, clientSecret)`.
      Submit on enter; clear inputs on success.
    - Status indicator driven by `isCalendarConfigured()` (returns `Bool`).
      Show "Configured" / "Not configured" — never display the credentials.
-   - Hide from non-admins via
-     [`extension-authorization`](../extension-authorization/SKILL.md)'s
-     `isCallerAdmin` query — non-admins should not see the link in the nav.
+   - **Make this page reachable.** The app's main navigation (the shared Layout)
+     MUST link to this page for admins — show the link when `isCallerAdmin` is
+     true, hide it otherwise (via
+     [`extension-authorization`](../extension-authorization/SKILL.md)). Add that
+     link wherever the nav is defined, not inside this page. A `/settings/calendar`
+     route with no way to reach it is a broken build. Do not rely on the nav
+     alone: the not-configured prompt below is the primary way users discover
+     setup is needed.
 
-3. **A "Connect Calendar" page** — `/connect/calendar` (any signed-in user):
+3. **A "Connect Calendar" and callback page** — `/connect/calendar` (any
+   signed-in user). This dedicated page must catch and handle Google's redirect
+   after consent; it is not only a page with a connect button:
+   - **Handle the not-configured case for everyone.** `isCalendarConfigured()` is
+     a public query (any signed-in user may call it). When it returns `false`, do
+     not show a dead connect button. Admins see a link to `/settings/calendar` to
+     enter credentials. Non-admins must see an explanation, not a dead end — e.g.
+     "Google Calendar isn't set up yet — the app's administrator needs to add
+     Google credentials in Settings." Enable the "Connect Google Calendar" button
+     only once configured.
    - "Connect Google Calendar" button bound to
-     `startCalendarOAuth(window.location.origin + window.location.pathname)`.
-     Redirect the browser to the URL returned by the canister. Register this
-     exact URI in the Google Cloud Console first.
+     `startCalendarOAuth(calendarRedirectUri())`. Redirect the browser to the
+     URL returned by the canister. Do not derive the callback from an
+     arbitrary current pathname; the fixed `/connect/calendar` route and the
+     settings-page URI must be identical.
+   - Register `/connect/calendar` as a real application route. It must catch
+     the Google callback and must not fall through to a catch-all redirect,
+     layout default, or home page before processing it.
    - On the return leg, read `error`, `code`, and `state` from
      `URLSearchParams`. If `error` is present, show the failed/declined
      connection state and do not call the canister. Only when both `code`
-     and `state` are present, call `completeCalendarOAuth(code, state)`.
+     and `state` are present, call and **await**
+     `completeCalendarOAuth(code, state)` before navigating anywhere or
+     clearing the URL. Keep a visible "Connecting Google Calendar…" state
+     while it is pending. Do not replace the route, redirect to the home
+     page, or discard the query parameters first — that loses the one-time
+     code and leaves the user disconnected.
+   - **Wait for actor readiness before the one-time callback call.** The page
+     must wait for `useInternetIdentity().isAuthenticated` and
+     `useActor(createActor)` to provide a non-null, non-fetching actor before
+     calling `completeCalendarOAuth`. Do not set a `startedRef`/one-shot guard
+     until then: on first render the actor is often unavailable, and an
+     "Actor not ready" failure otherwise consumes the only retry while the
+     authorization code is still in the URL.
    - After either terminal path, call `history.replaceState` to remove the
      OAuth query parameters. This prevents a page refresh from reusing a
      one-time authorization code.
    - Status driven by `isMyCalendarConnected()` (returns `Bool`).
    - Optional "Disconnect Calendar" button bound to `disconnectMyCalendar()`.
 
-4. **Calendar UI** — the main page shows upcoming events. Pass the current
-   time as the RFC 3339 `timeMin` value:
-   `listUpcomingEvents(new Date().toISOString(), 10)`. This is required when
+4. **Calendar UI** — the main page shows upcoming events. When
+   `isCalendarConfigured()` is `false` and the caller is an admin, render a
+   "Set up Google Calendar" link to `/settings/calendar` so the credentials
+   page is discoverable, not just reachable. Pass the current
+   time as the RFC 3339 `timeMin` value, `""` for an open-ended `timeMax`:
+   `listUpcomingEvents(new Date().toISOString(), "", 10)`. To bound a single day
+   (e.g. "meetings tomorrow"), pass both — the local start of the day and the
+   start of the next day, each RFC 3339 with an offset — and count only entries
+   whose `isAllDay` is false and `transparency` is not `"transparent"` and
+   `eventType` is `"default"` (that filters out all-day, free, out-of-office,
+   and working-location markers). This is required when
    using `singleEvents = true` and `orderBy = startTime`. Also include a
    "create event" form. `datetime-local` values have no offset, so convert
    each browser-local value to an RFC 3339 instant before calling the actor:
@@ -637,12 +950,86 @@ Suggested route layout:
 /                   →  Main UI (upcoming events + create form)
 /settings/calendar  →  Admin credential config (admin-only)
 /connect/calendar   →  Per-user OAuth handshake (any signed-in user)
+# If the app ALSO uses Gmail: drop the two routes above and use a single
+# /settings/google + /connect/google — see "Combined Gmail + Calendar apps".
 ```
+
+## Combined Gmail + Calendar apps
+
+When an app uses both connectors, build **one** shared Google connection, not
+two (an auth code is single-use, so two flows would force two consent screens).
+Frontend:
+
+- **One admin page `/settings/google`** — a single Client ID / Client Secret
+  form, one `isGoogleConfigured` status, and one copyable redirect-URI field
+  showing exactly `window.location.origin + "/connect/google"`.
+- **One connect route `/connect/google`** — the same real callback route the
+  Frontend section above requires: it renders "Connect Google", catches the
+  redirect, waits for actor readiness, then calls completion once. No second
+  callback route.
+- **Do NOT build** `/settings/gmail`, `/connect/gmail`, `/settings/calendar`, or
+  `/connect/calendar`. Every other Frontend requirement above still applies —
+  only these paths change.
+
+Backend — write the shared flow **once** (it replaces both per-connector OAuth
+flows). It is the same shape as the per-connector `startAuthorize` /
+`exchangeCode` / refresh functions, with these exact differences:
+
+- One `#admin`-gated config setter storing a single Client ID/Secret.
+- `SCOPES` = the union below — both APIs in one consent.
+- `completeGoogleOAuth(code, state)` fetches the Gmail profile for the connected
+  email (the union includes `gmail.readonly`) and stores one connection
+  `{ accessToken; refreshToken; emailAddress }` in a single
+  `Map<Principal, GoogleConnection>`.
+- Gmail sends and Calendar calls each build **their own** client `Config` from
+  that one `accessToken`, each keeping its single-refresh-on-401 retry.
+- Keep the connection and client config in **one** shared state value and pass it
+  as a parameter to both the Gmail and Calendar mixins, so both read and write the
+  same connection (see the `writing-motoko` mixins rule).
+
+```motoko filepath=src/backend/google.mo
+let SCOPES : Text =
+  "https://www.googleapis.com/auth/gmail.send "
+  # "https://www.googleapis.com/auth/gmail.readonly "
+  # "https://www.googleapis.com/auth/calendar";
+```
+
+Wire it as **one** connection shared by both services — declare the config,
+connection map, and pending-flow map once and pass the **same** bindings to
+every mixin. The Gmail and Calendar messaging mixins do **not** declare their own
+config or connection; they receive the shared `googleConfig` and
+`googleConnections` (config is needed for the refresh-on-401 retry):
+
+```motoko filepath=src/backend/main.mo
+actor {
+  let accessControlState = AccessControl.initState();
+  include MixinAuthorization(accessControlState, null);
+
+  // ONE shared credential + connection state for both services.
+  let googleConfig = { var clientId : Text = ""; var clientSecret : Text = "" };
+  let googleConnections : Map.Map<Principal, Google.Connection> = Map.empty();
+  let pendingGoogleFlows : Map.Map<Principal, Google.PendingOAuth> = Map.empty();
+
+  include MixinGoogleConfig(accessControlState, googleConfig);                    // setGoogleCredentials / isGoogleConfigured (#admin-gated setter)
+  include MixinGoogleOAuth(googleConfig, googleConnections, pendingGoogleFlows);  // startGoogleOAuth / completeGoogleOAuth, SCOPES = union above
+  include MixinGmailMessaging(googleConfig, googleConnections);                  // sendEmail — refresh-on-401 needs config; reads the shared connection
+  include MixinCalendarMessaging(googleConfig, googleConnections);               // calendar calls — same shared config + connection
+};
+```
+
+Do not give Gmail and Calendar separate config/connection state or separate
+OAuth flows — one auth code is single-use, and separate state desyncs (see the
+`writing-motoko` mixins rule).
+
+Enable both APIs on the one OAuth client and register only the single
+`.../connect/google` redirect URI. Split into two separate panels **only** if
+the user explicitly asks to connect two different Google accounts.
 
 ## Common to all variants
 
 - **Sign-in is required** for every Calendar-related route. Wire the
-  `/settings/...` and `/connect/calendar` routes through
+  `/settings/...` and the connect route (`/connect/calendar`, or
+  `/connect/google` in a combined app) through
   [`extension-authorization`](../extension-authorization/SKILL.md)'s
   auth guard (`useInternetIdentity` + redirect when `!isAuthenticated`).
 - **The frontend never persists tokens.** No `localStorage`, no
@@ -650,7 +1037,8 @@ Suggested route layout:
   only ever sees `Bool` status flags and the OAuth redirect URLs.
 - **The OAuth `state` parameter is canister-generated and validated.** The
   canister stores a random nonce with the pending verifier and callback URI.
-  The frontend must pass both `code` and `state` to `completeCalendarOAuth`;
+  The frontend must pass both `code` and `state` to the completion call
+  (`completeCalendarOAuth`, or `completeGoogleOAuth` in a combined app);
   it never creates or modifies either value.
 - **The calendar UI is trivial:** a list of upcoming events, a create-event
   form with summary + start/end datetime inputs. No client-side Google SDK,
@@ -658,7 +1046,7 @@ Suggested route layout:
 
 ## Related
 
-- [`mops add googlecalendar-client@0.1.3`](https://mops.one/googlecalendar-client) — Calendar REST API v3 bindings.
+- [`mops add googlecalendar-client@0.1.4`](https://mops.one/googlecalendar-client) — Calendar REST API v3 bindings.
 - [`mops add google-oauth@0.1.4`](https://mops.one/google-oauth) — Google OAuth 2.0 library (token exchange, refresh, PKCE).
 - [Google OAuth 2.0 for Web Server Applications](https://developers.google.com/identity/protocols/oauth2/web-server) — Web-client redirect URI and authorization-code flow reference.
 - [Google Calendar API v3 reference](https://developers.google.com/calendar/api/v3/reference) — what `googlecalendar-client` wraps.
