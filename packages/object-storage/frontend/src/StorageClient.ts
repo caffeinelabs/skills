@@ -1,7 +1,16 @@
-import { type HttpAgent, isV4ResponseBody } from "@icp-sdk/core/agent";
+import {
+	Cbor,
+	type Cert,
+	type HttpAgent,
+	isV4ResponseBody,
+	LookupPathStatus,
+	lookup_path,
+	lookupResultToBuffer,
+} from "@icp-sdk/core/agent";
 import { IDL } from "@icp-sdk/core/candid";
 
 import { formatBlobContentDisposition } from "./formatBlobContentDisposition";
+import { formatCertificateRejectionError } from "./formatCertificateRejectionError";
 import { resolveBlobContentType } from "./resolveBlobContentType";
 
 type Headers = Record<string, string>;
@@ -493,8 +502,54 @@ export class StorageClient {
 		});
 		const respone = result.response.body;
 		if (isV4ResponseBody(respone)) {
-			console.log("Certificate:", respone.certificate);
-			return respone.certificate;
+			const certBytes = respone.certificate;
+			const decoded = Cbor.decode<Cert>(certBytes);
+			if (decoded.tree) {
+				const requestStatusPath = [
+					new TextEncoder().encode("request_status"),
+					result.requestId,
+				] as const;
+				const statusLookup = lookup_path(
+					[...requestStatusPath, new TextEncoder().encode("status")],
+					decoded.tree,
+				);
+				if (
+					statusLookup.status === LookupPathStatus.Found &&
+					new TextDecoder().decode(statusLookup.value) === "rejected"
+				) {
+					const rejectCodeBytes = lookupResultToBuffer(
+						lookup_path(
+							[...requestStatusPath, new TextEncoder().encode("reject_code")],
+							decoded.tree,
+						),
+					);
+					const rejectMessageBytes = lookupResultToBuffer(
+						lookup_path(
+							[
+								...requestStatusPath,
+								new TextEncoder().encode("reject_message"),
+							],
+							decoded.tree,
+						),
+					);
+					const errorCodeBytes = lookupResultToBuffer(
+						lookup_path(
+							[...requestStatusPath, new TextEncoder().encode("error_code")],
+							decoded.tree,
+						),
+					);
+					throw formatCertificateRejectionError({
+						rejectCode: rejectCodeBytes?.[0],
+						rejectMessage: rejectMessageBytes
+							? new TextDecoder().decode(rejectMessageBytes)
+							: undefined,
+						errorCode: errorCodeBytes
+							? new TextDecoder().decode(errorCodeBytes)
+							: undefined,
+					});
+				}
+			}
+			return certBytes;
 		}
 		throw new Error("Expected v4 response body");
 	}

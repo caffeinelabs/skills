@@ -2,6 +2,10 @@
 
 ### Bug Fixes
 
+- detect IC rejection certificates in StorageClient.getCertificate (INTK-73) (#119)
+
+### Bug Fixes
+
 - **object-storage**: restore MIME and filename in gateway blob-tree headers (#144)
 
 ### Bug Fixes
