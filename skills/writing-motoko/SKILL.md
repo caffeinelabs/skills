@@ -3,7 +3,7 @@ name: writing-motoko
 description: >-
   Motoko language reference, architecture patterns, and dependency tooling
   (mops). Load when writing or modifying backend .mo files.
-version: 0.1.0
+version: 0.1.1
 compatibility: {}
 caffeineai-subscription: [none]
 ---
@@ -21,7 +21,7 @@ Motoko is an under-represented language for the Internet Computer Protocol, so y
 - `mo:base` library -- Deprecated. Use `mo:core` instead
 - `system func preupgrade/postupgrade` -- Not needed with enhanced orthogonal persistence
 - `(with migration = ...)` actor-attached migration syntax -- Use the mops-managed migration chain in `migrations/`
-- Inline initializers on stable actor fields -- Initial values come from the migration chain (see `migrating-motoko`)
+- Inline initializers on stable actor fields -- Initial values come from the migration chain (see `migrating-motoko-actors`)
 - Module function style for `self` parameters -- Don't write `List.add(list, item)` or `Map.get(map, key)`
 - Manual field-by-field record copying for immutable records -- Use record spread (`{ self with ... }`). For records with `var` fields, do not use record spread; mutate the `var` field directly or rebuild the record explicitly.
 - Single-file monolithic actors -- Use the multi-file architecture: types.mo, lib/, mixins/, main.mo
@@ -38,7 +38,7 @@ Motoko is an under-represented language for the Internet Computer Protocol, so y
 
 **When encountering compilation errors:** Re-check [api-reference.md](api-reference.md) for exact method signatures.
 
-**Before changing actor state shape, introducing new stable fields, or upgrading canisters:** load `migrating-motoko`. Caffeine projects use **enhanced migrations** — when a change requires a migration, it goes in a NEW file in `src/backend/migrations/`. Introducing stable state for the first time always needs one (no inline initializers); trivial stable-compatible upgrades do not. See the skill. If a migration or compatibility diagnostic still does not match what the source says, or a migration file cannot be written, load `troubleshooting-motoko-migrations`.
+**Before changing actor state shape, introducing new stable fields, or upgrading canisters:** load `migrating-motoko-actors`. Caffeine projects use **enhanced migrations** — when a change requires a migration, it goes in a NEW file in `src/backend/migrations/`. Introducing stable state for the first time always needs one (no inline initializers); trivial stable-compatible upgrades do not. See the skill. If a migration or compatibility diagnostic still does not match what the source says, or a migration file cannot be written, load `troubleshooting-motoko-migrations`.
 
 ## Toolchain (mops)
 
@@ -206,7 +206,7 @@ backend/
 ├── lib/             # Domain logic (stateless modules with self pattern)
 ├── mixins/          # Service layer (stateless, state injected via parameters)
 ├── types/           # Type definitions for mixins and lib modules
-├── migrations/      # Mops-managed migration chain. See migrating-motoko.
+├── migrations/      # Mops-managed migration chain. See migrating-motoko-actors.
 │                    #   Each file is YYYYMMDD_HHMMSS.mo (a UTC timestamp, not a feature name); files predating this build are FROZEN.
 └── main.mo          # Composition root (state owner, NO public methods)
 ```
@@ -233,7 +233,7 @@ import Types "backend/types";
 
 ```
 
-**Migration files** (`migrations/*.mo`) must be self-contained — they may only import from `mo:core/...`, never from `../types` or any project module. See `migrating-motoko` for the full rules.
+**Migration files** (`migrations/*.mo`) must be self-contained — they may only import from `mo:core/...`, never from `../types` or any project module. See `migrating-motoko-actors` for the full rules.
 
 ### Import Hygiene
 
@@ -629,7 +629,7 @@ If a user requests functionality that would send cycles to another canister, ref
 | `field fromInt is deprecated`                          | Deprecated Float conversion  | `Float.fromInt64(Int64.fromNat64(Nat64.fromNat(n)))` |
 | `syntax error, unexpected token '.'`                   | Missing parens               | `#text (searchTerm.toLower())`              |
 | `syntax error, unexpected token ','`                   | Missing parens in for        | `for ((key, value) in map.entries())`       |
-| `Compatibility error [M0170]`                          | Missing migration            | Load `migrating-motoko`                     |
+| `Compatibility error [M0170]`                          | Missing migration            | Load `migrating-motoko-actors`            |
 | `M0250` initialized stable field                       | Initializer on a stable actor field | Declare it type-only; move the value into the migration's `NewActor` |
 | `M0254` / `M0267` initial actor requires field         | Stable field no migration supplies | Add it to the pending migration's `NewActor` |
 | `M0255` stable signature downgrade                     | Chain or migrations config removed | Restore it — enhanced migration is one-way; load `troubleshooting-motoko-migrations` |
@@ -678,7 +678,7 @@ If a user requests functionality that would send cycles to another canister, ref
 
 - **Control flow**: [references/control-flow.md](references/control-flow.md) — switch statements, for loops
 - **Type conversions**: [references/type-conversions.md](references/type-conversions.md) — Nat/Int size conversions
-- **Actor migrations**: Load `migrating-motoko` when upgrading canisters or changing actor state shape
+- **Actor migrations**: Load `migrating-motoko-actors` when upgrading canisters or changing actor state shape
 - **Migration failures**: Load `troubleshooting-motoko-migrations` for unexplained compatibility diagnostics, frozen migration files, or converted legacy projects
 - **API signatures**: [api-reference.md](api-reference.md) — complete function signatures
 - **Complete examples**: [examples.md](examples.md) — full working code samples

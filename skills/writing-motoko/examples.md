@@ -358,7 +358,7 @@ actor Main {
 
 ### migrations/20260101_000000.mo
 
-The first migration supplies the initial values. `OldActor = {}` because no prior version exists. Types are inlined — migration files may only import from `mo:core/...`. See `migrating-motoko` for full rules.
+The first migration supplies the initial values. `OldActor = {}` because no prior version exists. Types are inlined — migration files may only import from `mo:core/...`. See `migrating-motoko-actors` for full rules.
 
 ```motoko
 import List "mo:core/List";
