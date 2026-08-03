@@ -4,9 +4,9 @@ description: >-
   Deep reference for when the migration chain misbehaves — upgrade
   compatibility errors you cannot explain, migration files you cannot write,
   a project converted from legacy persistence, or a request to remove the
-  chain. Load only when the rules in migrating-motoko do not explain what
+  chain. Load only when the rules in migrating-motoko-actors do not explain what
   you are seeing.
-version: 0.1.0
+version: 0.1.1
 compatibility: {}
 caffeineai-subscription: [none]
 ---
@@ -15,7 +15,7 @@ caffeineai-subscription: [none]
 
 Reference for the failure modes of the mops-managed migration chain (`migrations/`).
 
-**Do not load this for routine work.** Writing a migration, deciding implicit vs explicit, or naming a new file is covered by `migrating-motoko` — that skill's rules are sufficient for the normal path. Come here when:
+**Do not load this for routine work.** Writing a migration, deciding implicit vs explicit, or naming a new file is covered by `migrating-motoko-actors` — that skill's rules are sufficient for the normal path. Come here when:
 
 - a compatibility or migration diagnostic does not match what you see in `main.mo`
 - a write to a migration file fails, or you are tempted to rename/delete one
@@ -125,5 +125,5 @@ Do not create room to proceed by relaxing protected configuration, deleting or r
 
 ## Related skills
 
-- `migrating-motoko` — how to author migrations (the normal path)
+- `migrating-motoko-actors` — how to author migrations (the normal path)
 - `writing-motoko` — language reference, actor and mixin rules, core library
