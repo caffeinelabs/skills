@@ -1,7 +1,7 @@
 ---
 name: extension-authorization
 description: Authorization system with role-based access control. Must-have for all apps that manage personal or access-restricted data.
-version: 1.1.0
+version: 1.2.0
 compatibility:
   mops:
     caffeineai-authorization: "~1.0.0"
@@ -216,6 +216,15 @@ const { data: callerEmail } = useQuery<string | null>({
 # Frontend
 
 Authentication system with role-based access control.
+
+## Sign-In Options
+
+Sign-in goes through the `useInternetIdentity` hook from `@caffeineai/core-infrastructure` (see the `extension-core-infrastructure` skill for the full API and UI pattern). Default to plain `login()` unless Google or company/workspace SSO sign-in was requested.
+
+Rules:
+
+- When Google or SSO sign-in **is** requested, the sign-in screen must show the requested direct option (Google button and/or SSO domain input) **and** keep a plain `login()` "Sign in with Internet Identity" button as a fallback — users without a Google account or a registered company domain must still be able to sign in.
+- Never remove the Internet Identity option from an existing app that already has users. The principal is derived from the user's Internet Identity: a user whose II identity is Google-backed gets the **same principal** through either button, but a user who signed up with a passkey-based II identity gets a **different principal** if they authenticate with a Google account that is not linked to that identity — their data would appear missing. Keeping both buttons lets every existing user sign in the way they always have.
 
 ## User Profile Setup
 
