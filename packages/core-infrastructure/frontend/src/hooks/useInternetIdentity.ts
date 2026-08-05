@@ -2,6 +2,7 @@ import {
 	AuthClient,
 	type AuthClientCreateOptions,
 	type AuthClientSignInOptions,
+	scopedKeys,
 } from "@icp-sdk/auth/client";
 import { Actor, HttpAgent, type Identity } from "@icp-sdk/core/agent";
 import type { IDL } from "@icp-sdk/core/candid";
@@ -19,7 +20,7 @@ import {
 	useRef,
 	useState,
 } from "react";
-import { loadConfig } from "../config";
+import { getCachedConfig, loadConfig } from "../config";
 
 export type Status =
 	| "initializing"
@@ -28,13 +29,39 @@ export type Status =
 	| "success"
 	| "loginError";
 
+/**
+ * Options for {@link InternetIdentityContext.login} selecting how the user signs in.
+ * All variants go through Internet Identity and produce the same kind of identity;
+ * they only change which screen the user sees first.
+ */
+export type LoginOptions = {
+	/**
+	 * One-click Google sign-in: Internet Identity opens the Google OAuth flow
+	 * directly instead of showing its own landing page first.
+	 */
+	provider?: "google";
+
+	/**
+	 * Company/workspace SSO sign-in, e.g. `login({ ssoDomain: 'acme.com' })`.
+	 * Internet Identity discovers the company's OpenID Connect provider from
+	 * `https://<ssoDomain>/.well-known/ii-openid-configuration` and signs the
+	 * user in against it. Takes precedence over `provider` when both are set.
+	 */
+	ssoDomain?: string;
+};
+
 export type InternetIdentityContext = {
 	/** The identity is available after successfully loading the identity from local storage
 	 * or completing the login process. */
 	identity?: Identity;
 
-	/** Connect to Internet Identity to login the user. */
-	login: () => void;
+	/** Connect to Internet Identity to login the user.
+	 *
+	 * - `login()` — plain Internet Identity sign-in.
+	 * - `login({ provider: 'google' })` — one-click Google sign-in via Internet Identity.
+	 * - `login({ ssoDomain: 'acme.com' })` — company/workspace SSO via Internet Identity.
+	 */
+	login: (options?: LoginOptions) => void;
 
 	/** Clears the identity from the state and local storage. Effectively "logs the user out". */
 	clear: () => void;
@@ -114,23 +141,85 @@ const InternetIdentityReactContext = createContext<ProviderValue | undefined>(
 );
 
 /**
- * Create the auth client with default options or options provided by the user.
+ * Single constructor for every `AuthClient` — the shared client built at
+ * provider initialization and the per-login clients for the Google/SSO
+ * variants (`identityProvider` and `openIdProvider` are constructor-only
+ * options on `@icp-sdk/auth`, so variants need their own client).
+ * Delegation storage is shared across all clients, so a variant sign-in is
+ * still restored by the shared client on reload and cleared by `clear()`.
+ *
+ * Deliberately synchronous: the signer window must be opened inside the
+ * click's user-activation frame, so no awaits are allowed between the click
+ * and `signIn()`. Callers that may run before the config cache is populated
+ * (provider initialization) must `await loadConfig()` first; the login path
+ * reads the cache, which is populated by then.
  */
-async function createAuthClient(
+function buildAuthClient(
+	config: ReturnType<typeof getCachedConfig>,
+	loginOptions?: LoginOptions,
 	createOptions?: AuthClientCreateOptions,
-): Promise<AuthClient> {
-	const config = await loadConfig();
-	const options: AuthClientCreateOptions = {
+): AuthClient {
+	// Every flow goes through II's authorize endpoint. The pathname is forced
+	// to /authorize so origin-only II_URL overrides (e.g.
+	// http://localhost:5173) open the authorize flow instead of landing on
+	// II's home page.
+	const identityProviderUrl = new URL(
+		(
+			createOptions?.identityProvider ??
+			DEFAULT_IDENTITY_PROVIDER ??
+			"https://id.ai"
+		).toString(),
+	);
+	identityProviderUrl.pathname = "/authorize";
+
+	const ssoDomain = loginOptions?.ssoDomain?.trim();
+	if (ssoDomain) {
+		// Direct SSO passes the workspace domain as the `sso` query param,
+		// e.g. https://id.ai/authorize?sso=acme.com. II discovers the
+		// workspace's OIDC provider from the domain's
+		// /.well-known/ii-openid-configuration.
+		identityProviderUrl.searchParams.set("sso", ssoDomain);
+	}
+
+	return new AuthClient({
 		idleOptions: {
 			disableDefaultIdleCallback: true,
 			disableIdle: true,
 			...createOptions?.idleOptions,
 		},
-		identityProvider: DEFAULT_IDENTITY_PROVIDER,
-		derivationOrigin: config.ii_derivation_origin,
+		derivationOrigin: config?.ii_derivation_origin,
 		...createOptions,
-	};
-	return new AuthClient(options);
+		// After the spread so a caller-supplied identityProvider still gets
+		// the /authorize normalization applied above.
+		identityProvider: identityProviderUrl,
+		// SSO is driven by the query param; openIdProvider only applies to
+		// the Google variant (the SDK ignores undefined).
+		openIdProvider: ssoDomain ? undefined : loginOptions?.provider,
+	});
+}
+
+/**
+ * Pick the attribute keys to request from II for a sign-in variant. Explicit
+ * keys from `withAttributes` always win; otherwise the keys are scoped to the
+ * sign-in variant so the user grants access in a single step.
+ */
+function resolveAttributeKeys(
+	attrs: AttributeProviderConfig,
+	loginOptions?: LoginOptions,
+): string[] {
+	if (attrs.keys) {
+		return attrs.keys;
+	}
+	const ssoDomain = loginOptions?.ssoDomain?.trim();
+	if (ssoDomain) {
+		return [`sso:${ssoDomain}:name`, `sso:${ssoDomain}:email`];
+	}
+	if (loginOptions?.provider === "google") {
+		// name, email, verified_email scoped to Google, e.g.
+		// `openid:https://accounts.google.com:verified_email`.
+		return scopedKeys({ openIdProvider: "google" });
+	}
+	return DEFAULT_ATTRIBUTE_KEYS;
 }
 
 /**
@@ -239,10 +328,12 @@ export function InternetIdentityProvider({
 	const [loginStatus, setStatus] = useState<Status>("initializing");
 	const [loginError, setError] = useState<Error | undefined>(undefined);
 
-	// Keep withAttributes in a ref so the login callback stays stable
-	// while still reading the latest prop value on each invocation.
+	// Keep withAttributes/createOptions in refs so the login callback stays
+	// stable while still reading the latest prop values on each invocation.
 	const withAttributesRef = useRef(withAttributes);
 	withAttributesRef.current = withAttributes;
+	const createOptionsRef = useRef(createOptions);
+	createOptionsRef.current = createOptions;
 
 	const setErrorMessage = useCallback((message: string) => {
 		setStatus("loginError");
@@ -269,83 +360,131 @@ export function InternetIdentityProvider({
 		[setErrorMessage],
 	);
 
-	const login = useCallback(() => {
-		if (!authClient) {
-			setErrorMessage(
-				"AuthClient is not initialized yet, make sure to call `login` on user interaction e.g. click.",
-			);
-			return;
-		}
+	const login = useCallback(
+		(loginOptions?: LoginOptions) => {
+			if (!authClient) {
+				setErrorMessage(
+					"AuthClient is not initialized yet, make sure to call `login` on user interaction e.g. click.",
+				);
+				return;
+			}
 
-		if (authClient.isAuthenticated()) {
-			setErrorMessage("User is already authenticated");
-			return;
-		}
+			// The authenticated flag is shared across all sign-in variants,
+			// so checking the default client covers Google and SSO sessions too.
+			if (authClient.isAuthenticated()) {
+				setErrorMessage("User is already authenticated");
+				return;
+			}
 
-		const options: AuthClientSignInOptions = {
-			maxTimeToLive: ONE_HOUR_IN_NANOSECONDS * BigInt(24 * 30), // 30 days
-		};
+			if (
+				loginOptions?.ssoDomain !== undefined &&
+				!loginOptions.ssoDomain.trim()
+			) {
+				setErrorMessage(
+					'ssoDomain must be a non-empty domain such as "acme.com"',
+				);
+				return;
+			}
 
-		setStatus("logging-in");
+			const options: AuthClientSignInOptions = {
+				maxTimeToLive: ONE_HOUR_IN_NANOSECONDS * BigInt(24 * 30), // 30 days
+			};
 
-		const attrs = withAttributesRef.current;
+			setStatus("logging-in");
 
-		if (attrs !== false) {
-			// Fire nonce fetch, signIn popup, and requestAttributes all in parallel.
-			// authClient.requestAttributes accepts Promise<Uint8Array> for nonce,
-			// so the II window opens immediately while the canister round-trip completes.
-			const noncePromise = createIIAttributesActor().then((actor) =>
-				actor._internet_identity_sign_in_start(),
-			);
-			const signInPromise = authClient.signIn(options);
-			const attributesPromise = authClient.requestAttributes({
-				keys: attrs.keys ?? DEFAULT_ATTRIBUTE_KEYS,
-				nonce: noncePromise,
-			});
+			const attrs = withAttributesRef.current;
 
-			void Promise.all([signInPromise, attributesPromise])
-				.then(async ([plainIdentity, { data, signature }]) => {
-					const actor = await createIIAttributesActor(plainIdentity);
-					if (!data || data.length === 0) {
-						await handleLoginSuccess(authClient);
-						await actor._initialize_access_control();
-						return;
-					}
-
-					const signerCanisterId = Principal.fromText(II_SIGNER_CANISTER_ID);
-					const attributedIdentity = new AttributesIdentity({
-						inner: plainIdentity,
-						attributes: { data, signature },
-						signer: { canisterId: signerCanisterId },
+			const startSignIn = (client: AuthClient) => {
+				if (attrs !== false) {
+					// Fire nonce fetch, signIn popup, and requestAttributes all in parallel.
+					// client.requestAttributes accepts Promise<Uint8Array> for nonce,
+					// so the II window opens immediately while the canister round-trip completes.
+					const noncePromise = createIIAttributesActor().then((actor) =>
+						actor._internet_identity_sign_in_start(),
+					);
+					const signInPromise = client.signIn(options);
+					const attributesPromise = client.requestAttributes({
+						keys: resolveAttributeKeys(attrs, loginOptions),
+						nonce: noncePromise,
 					});
-					const finishActor = await createIIAttributesActor(attributedIdentity);
-					try {
-						await finishActor._internet_identity_sign_in_finish();
-					} catch (error) {
-						console.error(error);
-					}
-					await handleLoginSuccess(authClient);
-				})
-				.catch((unknownError: unknown) => {
+
+					void Promise.all([signInPromise, attributesPromise])
+						.then(async ([plainIdentity, { data, signature }]) => {
+							const actor = await createIIAttributesActor(plainIdentity);
+							if (!data || data.length === 0) {
+								await handleLoginSuccess(client);
+								await actor._initialize_access_control();
+								return;
+							}
+
+							const signerCanisterId = Principal.fromText(
+								II_SIGNER_CANISTER_ID,
+							);
+							const attributedIdentity = new AttributesIdentity({
+								inner: plainIdentity,
+								attributes: { data, signature },
+								signer: { canisterId: signerCanisterId },
+							});
+							const finishActor =
+								await createIIAttributesActor(attributedIdentity);
+							try {
+								await finishActor._internet_identity_sign_in_finish();
+							} catch (error) {
+								console.error(error);
+							}
+							await handleLoginSuccess(client);
+						})
+						.catch((unknownError: unknown) => {
+							handleLoginError(
+								unknownError instanceof Error
+									? unknownError.message
+									: undefined,
+							);
+						});
+				} else {
+					void client
+						.signIn(options)
+						.then(async (plainIdentity) => {
+							const actor = await createIIAttributesActor(plainIdentity);
+							await actor._initialize_access_control();
+							handleLoginSuccess(client);
+						})
+						.catch((unknownError: unknown) => {
+							handleLoginError(
+								unknownError instanceof Error
+									? unknownError.message
+									: undefined,
+							);
+						});
+				}
+			};
+
+			const needsVariantClient = Boolean(
+				loginOptions?.ssoDomain?.trim() || loginOptions?.provider,
+			);
+			if (needsVariantClient) {
+				// Constructed synchronously so signIn() opens the signer window
+				// inside the click's user-activation frame — the signer rejects
+				// windows opened outside a click handler.
+				try {
+					startSignIn(
+						buildAuthClient(
+							getCachedConfig(),
+							loginOptions ?? {},
+							createOptionsRef.current,
+						),
+					);
+				} catch (unknownError) {
 					handleLoginError(
 						unknownError instanceof Error ? unknownError.message : undefined,
 					);
-				});
-		} else {
-			void authClient
-				.signIn(options)
-				.then(async (plainIdentity) => {
-					const actor = await createIIAttributesActor(plainIdentity);
-					await actor._initialize_access_control();
-					handleLoginSuccess(authClient);
-				})
-				.catch((unknownError: unknown) => {
-					handleLoginError(
-						unknownError instanceof Error ? unknownError.message : undefined,
-					);
-				});
-		}
-	}, [authClient, handleLoginError, handleLoginSuccess, setErrorMessage]);
+				}
+			} else {
+				startSignIn(authClient);
+			}
+		},
+		[authClient, handleLoginError, handleLoginSuccess, setErrorMessage],
+	);
 
 	const clear = useCallback(() => {
 		if (!authClient) {
@@ -378,8 +517,9 @@ export function InternetIdentityProvider({
 				setStatus("initializing");
 				let existingClient = authClient;
 				if (!existingClient) {
-					existingClient = await createAuthClient(createOptions);
+					const config = await loadConfig();
 					if (cancelled) return;
+					existingClient = buildAuthClient(config, undefined, createOptions);
 					setAuthClient(existingClient);
 				}
 				if (cancelled) return;

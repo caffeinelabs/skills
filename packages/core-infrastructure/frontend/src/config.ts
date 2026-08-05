@@ -25,6 +25,16 @@ interface Config {
 
 let configCache: Config | null = null;
 
+/**
+ * Synchronous access to the config cached by a previous `loadConfig()` call.
+ * Needed by code paths that must stay inside a user-activation window (e.g.
+ * opening the Internet Identity popup from a click handler) and therefore
+ * cannot await. Returns `null` if `loadConfig()` has not completed yet.
+ */
+export function getCachedConfig(): Config | null {
+	return configCache;
+}
+
 export async function loadConfig(): Promise<Config> {
 	if (configCache) {
 		return configCache;

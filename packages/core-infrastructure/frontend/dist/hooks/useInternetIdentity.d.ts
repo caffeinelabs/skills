@@ -2,12 +2,36 @@ import { type AuthClientCreateOptions } from "@icp-sdk/auth/client";
 import { type Identity } from "@icp-sdk/core/agent";
 import { type PropsWithChildren, type ReactNode } from "react";
 export type Status = "initializing" | "idle" | "logging-in" | "success" | "loginError";
+/**
+ * Options for {@link InternetIdentityContext.login} selecting how the user signs in.
+ * All variants go through Internet Identity and produce the same kind of identity;
+ * they only change which screen the user sees first.
+ */
+export type LoginOptions = {
+    /**
+     * One-click Google sign-in: Internet Identity opens the Google OAuth flow
+     * directly instead of showing its own landing page first.
+     */
+    provider?: "google";
+    /**
+     * Company/workspace SSO sign-in, e.g. `login({ ssoDomain: 'acme.com' })`.
+     * Internet Identity discovers the company's OpenID Connect provider from
+     * `https://<ssoDomain>/.well-known/ii-openid-configuration` and signs the
+     * user in against it. Takes precedence over `provider` when both are set.
+     */
+    ssoDomain?: string;
+};
 export type InternetIdentityContext = {
     /** The identity is available after successfully loading the identity from local storage
      * or completing the login process. */
     identity?: Identity;
-    /** Connect to Internet Identity to login the user. */
-    login: () => void;
+    /** Connect to Internet Identity to login the user.
+     *
+     * - `login()` — plain Internet Identity sign-in.
+     * - `login({ provider: 'google' })` — one-click Google sign-in via Internet Identity.
+     * - `login({ ssoDomain: 'acme.com' })` — company/workspace SSO via Internet Identity.
+     */
+    login: (options?: LoginOptions) => void;
     /** Clears the identity from the state and local storage. Effectively "logs the user out". */
     clear: () => void;
     /** The loginStatus of the login process. Note: The login loginStatus is not affected when a stored

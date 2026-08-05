@@ -4,6 +4,15 @@ const DEFAULT_STORAGE_GATEWAY_URL = "https://blob.caffeine.ai";
 const DEFAULT_BUCKET_NAME = "default-bucket";
 const DEFAULT_PROJECT_ID = "0000000-0000-0000-0000-00000000000";
 let configCache = null;
+/**
+ * Synchronous access to the config cached by a previous `loadConfig()` call.
+ * Needed by code paths that must stay inside a user-activation window (e.g.
+ * opening the Internet Identity popup from a click handler) and therefore
+ * cannot await. Returns `null` if `loadConfig()` has not completed yet.
+ */
+export function getCachedConfig() {
+    return configCache;
+}
 export async function loadConfig() {
     if (configCache) {
         return configCache;

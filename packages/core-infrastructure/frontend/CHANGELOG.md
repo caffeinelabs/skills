@@ -1,5 +1,9 @@
 
 
+### Features
+
+- Google and workspace-SSO login variants (#193)
+
 ### Bug Fixes
 
 - **core-infrastructure**: peer-dep object-storage to dedupe installs (#159)
