@@ -1,12 +1,12 @@
 ---
 name: extension-authorization
 description: Authorization system with role-based access control. Must-have for all apps that manage personal or access-restricted data.
-version: 1.0.0
+version: 1.1.0
 compatibility:
   mops:
     caffeineai-authorization: "~1.0.0"
   npm:
-    "@caffeineai/core-infrastructure": "^1.0.0"
+    "@caffeineai/core-infrastructure": "^1.2.0"
 caffeineai-subscription: [none]
 ---
 
@@ -164,6 +164,12 @@ Do NOT use the `mo:identity-attributes` mixin directly -- always go through `Mix
 
 The field is named `email`, but it only ever holds II's `verified_email` value -- the unverified `email` key is never read. Use `attrs.email` in the callback (there is no `attrs.verified_email` field).
 
+Which attributes arrive depends on the sign-in variant the frontend used (see the `extension-authorization`-compatible `login()` options in the `extension-core-infrastructure` skill):
+
+- `login()` (plain Internet Identity): `email` is present when the user has a verified email in II; `sso` is null.
+- `login({ provider: 'google' })`: verified `name` and `email` from the user's Google account; `sso` is null.
+- `login({ ssoDomain: 'acme.com' })`: verified `name` and `email` from the company's identity provider; `sso` holds the domain (e.g. `"acme.com"`). Use `attrs.sso` to gate features to company members or auto-assign roles by domain.
+
 Store them in your own state and expose a getter to read them back:
 
 ```
@@ -310,6 +316,8 @@ export default function LoginButton() {
 ```
 
 The `login()` and `clear()` functions are fire-and-forget (they don't return promises that track the full flow). The hook's `isLoggingIn` / `isInitializing` states track the async lifecycle — do **not** wrap them in local `useState` / `isPending` logic.
+
+When the app calls for Google sign-in or company/workspace SSO, use the same hook with options: `login({ provider: 'google' })` or `login({ ssoDomain: 'acme.com' })`. All variants produce the same identity and session behavior; see the `extension-core-infrastructure` skill for the full sign-in UI pattern.
 
 Gate authenticated UI on `isAuthenticated` (covers both fresh login and restored sessions on page reload):
 ```typescript
