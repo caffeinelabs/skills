@@ -3,8 +3,12 @@ name: writing-motoko
 description: >-
   Motoko language reference, architecture patterns, and dependency tooling
   (mops). Load when writing or modifying backend .mo files.
-version: 0.1.1
-compatibility: {}
+version: 0.1.2
+compatibility:
+  toolchain:
+    moc: ">=1.11.2"
+  mops:
+    core: ">=2.5.0"
 caffeineai-subscription: [none]
 ---
 
@@ -30,7 +34,7 @@ Motoko is an under-represented language for the Internet Computer Protocol, so y
 
 **ALWAYS use:**
 
-- `mo:core` library version 2.0.0+
+- `mo:core` library version 2.5.0+ (compiler `moc` 1.11.2+)
 - Contextual dot notation -- `list.add(item)`, `map.get(key)`
 - Enhanced orthogonal persistence (state persists without `stable` keyword)
 - Principled Motoko Architecture -- `types.mo` (types), `lib/` (domain logic), `mixins/` (API endpoints), `main.mo` (composition root, NO public methods)
