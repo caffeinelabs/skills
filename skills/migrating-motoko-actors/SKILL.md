@@ -4,8 +4,12 @@ description: >-
   Motoko actor migration and schema evolution with the enhanced migration
   chain (migrations/). Load when upgrading canisters or changing actor
   state shape.
-version: 0.2.0
-compatibility: {}
+version: 0.2.1
+compatibility:
+  toolchain:
+    moc: ">=1.11.2"
+  mops:
+    core: ">=2.5.0"
 caffeineai-subscription: [none]
 ---
 
