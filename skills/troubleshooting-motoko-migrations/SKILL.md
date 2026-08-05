@@ -6,8 +6,12 @@ description: >-
   a project converted from legacy persistence, or a request to remove the
   chain. Load only when the rules in migrating-motoko-actors do not explain what
   you are seeing.
-version: 0.1.1
-compatibility: {}
+version: 0.1.2
+compatibility:
+  toolchain:
+    moc: ">=1.11.2"
+  mops:
+    core: ">=2.5.0"
 caffeineai-subscription: [none]
 ---
 
