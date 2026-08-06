@@ -44,10 +44,7 @@ module {
       is_replicated = ?false;
     };
     let httpResponse = await Call.httpRequest(args);
-    switch (httpResponse.body.decodeUtf8()) {
-      case (null) { Runtime.trap("empty HTTP response") };
-      case (?decodedResponse) { decodedResponse };
-    };
+    httpResponse.body.decodeUtf8() ?? Runtime.trap("empty HTTP response");
   };
 
   public func httpPostRequest(url : Text, extraHeaders : [Header], body : Text, transform : Transform) : async Text {
@@ -69,9 +66,6 @@ module {
       is_replicated = ?false;
     };
     let httpResponse = await Call.httpRequest(args);
-    switch (httpResponse.body.decodeUtf8()) {
-      case (null) { Runtime.trap("empty HTTP response") };
-      case (?decodedResponse) { decodedResponse };
-    };
+    httpResponse.body.decodeUtf8() ?? Runtime.trap("empty HTTP response");
   };
 };
