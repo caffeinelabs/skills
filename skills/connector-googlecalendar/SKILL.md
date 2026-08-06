@@ -12,13 +12,13 @@ description: >-
   or any prior task mentions scheduling, calendar events, appointments,
   meetings, "add to calendar", or any equivalent phrasing — and BEFORE
   writing any code that touches a Google endpoint.
-version: 0.2.6
+version: 0.2.7
 caffeineai-subscription: [none]
 compatibility:
   mops:
     googlecalendar-client: "~0.1.4"
-    google-oauth: "~0.2.0"
-    caffeineai-authorization: "~1.0.0"
+    google-oauth: "~0.2.1"
+    caffeineai-authorization: "~1.0.1"
 ---
 
 # Google Calendar Connector
@@ -75,8 +75,8 @@ Google Calendar on behalf of the signed-in user. The ingredients are:
 
 ```bash
 mops add googlecalendar-client@0.1.4
-mops add google-oauth@0.2.0
-mops add caffeineai-authorization@1.0.0
+mops add google-oauth@0.2.1
+mops add caffeineai-authorization@1.0.1
 ```
 
 ## 2. Auth model — OAuth 2.0 PKCE per user, on-chain exchange + refresh
@@ -406,10 +406,8 @@ module {
   ) : async* CalendarConnection {
     let tokens = await OAuth.exchangeAuthorizationCode(clientId, clientSecret, code, redirectUri, codeVerifier);
     let accessToken = accessTokenOf(tokens, "Token exchange");
-    let refreshToken = switch (tokens.refreshToken) {
-      case (?t) t;
-      case null Runtime.trap("Token exchange failed: missing refresh_token");
-    };
+    let refreshToken = tokens.refreshToken
+      ?? Runtime.trap("Token exchange failed: missing refresh_token");
     { accessToken; refreshToken };
   };
 
@@ -424,10 +422,7 @@ module {
       };
       case null {};
     };
-    switch (tokens.accessToken) {
-      case (?token) token;
-      case null Runtime.trap(operation # " failed: missing access_token");
-    };
+    tokens.accessToken ?? Runtime.trap(operation # " failed: missing access_token");
   };
 
   // Lists events in [timeMin, timeMax). Pass timeMax = "" for an open-ended
@@ -560,26 +555,20 @@ module {
         0, 10, true, #all, false, event,
       );
     };
-    switch (created.id) {
-      case (?id) id;
-      case null "";
-    };
+    created.id ?? "";
   };
 
   func eventSummariesOf(events : Events) : EventSummaryList {
-    let items = switch (events.items) {
-      case (?items) items;
-      case null [];
-    };
+    let items = events.items ?? [];
     Array.map<Event, EventSummary>(items, func(e : Event) : EventSummary = {
-      id = switch (e.id) { case (?id) id; case null "" };
-      summary = switch (e.summary) { case (?s) s; case null "(no title)" };
+      id = e.id ?? "";
+      summary = e.summary ?? "(no title)";
       start = switch (e.start) {
-        case (?dt) switch (dt.dateTime) { case (?t) t; case null switch (dt.date) { case (?d) d; case null "" } };
+        case (?dt) dt.dateTime ?? dt.date ?? "";
         case null "";
       };
       end = switch (e.end) {
-        case (?dt) switch (dt.dateTime) { case (?t) t; case null switch (dt.date) { case (?d) d; case null "" } };
+        case (?dt) dt.dateTime ?? dt.date ?? "";
         case null "";
       };
       // All-day events carry `date` but no `dateTime`.
@@ -587,8 +576,8 @@ module {
         case (?dt) switch (dt.dateTime) { case (?_) false; case null true };
         case null false;
       };
-      transparency = switch (e.transparency) { case (?t) t; case null "" };
-      eventType = switch (e.eventType) { case (?t) t; case null "" };
+      transparency = e.transparency ?? "";
+      eventType = e.eventType ?? "";
     });
   };
 };
@@ -1055,7 +1044,7 @@ the user explicitly asks to connect two different Google accounts.
 ## Related
 
 - [`mops add googlecalendar-client@0.1.4`](https://mops.one/googlecalendar-client) — Calendar REST API v3 bindings.
-- [`mops add google-oauth@0.2.0`](https://mops.one/google-oauth) — Google OAuth 2.0 library (token exchange, refresh, PKCE, `getUserEmail` userinfo, `DateTime` RFC 3339 helpers).
+- [`mops add google-oauth@0.2.1`](https://mops.one/google-oauth) — Google OAuth 2.0 library (token exchange, refresh, PKCE, `getUserEmail` userinfo, `DateTime` RFC 3339 helpers).
 - [Google OAuth 2.0 for Web Server Applications](https://developers.google.com/identity/protocols/oauth2/web-server) — Web-client redirect URI and authorization-code flow reference.
 - [Google Calendar API v3 reference](https://developers.google.com/calendar/api/v3/reference) — what `googlecalendar-client` wraps.
 - [RFC 7636 — Proof Key for Code Exchange](https://datatracker.ietf.org/doc/html/rfc7636) — PKCE spec.
