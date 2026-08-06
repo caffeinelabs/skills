@@ -3,7 +3,7 @@ name: writing-motoko
 description: >-
   Motoko language reference, architecture patterns, and dependency tooling
   (mops). Load when writing or modifying backend .mo files.
-version: 0.1.3
+version: 0.1.4
 compatibility:
   toolchain:
     moc: ">=1.11.2"
@@ -35,6 +35,7 @@ Motoko is an under-represented language for the Internet Computer Protocol, so y
 
 - `mo:core` library version 2.5.0+ (compiler `moc` 1.11.2+)
 - Contextual dot notation -- `list.add(item)`, `map.get(key)`
+- Null coalesce `??` for unwrap-or-default and unwrap-or-trap (`opt ?? default`, `opt ?? Runtime.trap(...)`) -- prefer over a two-arm `switch` on `?T` (requires `moc >= 1.7.0`)
 - Enhanced orthogonal persistence (state persists without `stable` keyword)
 - Principled Motoko Architecture -- `types.mo` (types), `lib/` (domain logic), `mixins/` (API endpoints), `main.mo` (composition root, NO public methods)
 - **API reference for uncertain APIs**: Use [api-reference.md](api-reference.md) to verify exact method signatures when you are about to use an unfamiliar `mo:core` API or when a compile diagnostic points at an API mismatch. Do NOT guess API shapes — a targeted lookup of a symbol you are unsure about is always worth the step; skipping it to save steps ships hallucinated APIs and costs far more in compile repair.
@@ -176,6 +177,43 @@ Pass the same binding to each mixin. Never build a new record at the `include` �
 ```motoko
 include GoogleApi({ var connection = google.connection });   // WRONG: NEVER DO THIS!
 ```
+
+### Null Coalesce (`??`)
+
+Prefer `??` over a two-arm `switch` that only unwraps an option or supplies a default / trap. Requires `moc >= 1.7.0`.
+
+```motoko
+// Default when absent
+let name = optName ?? "anonymous";
+
+// Fail-fast unwrap — null means a bug / missing invariant
+let user = users.find(func(u : User) : Bool { u.id == caller })
+  ?? Runtime.trap("User not found");
+
+// Nested options — chain instead of nested switches
+let start = event.start.dateTime ?? event.start.date ?? "";
+
+// RHS is lazy; may be a block. Bare record literals need extra braces/parens:
+let n = opt ?? { let x = 1; x };
+let rec = opt ?? ({ x = 0 });
+```
+
+**Use `switch` instead** when the `?v` arm transforms the value, runs side effects, or you are matching variants / multiple cases — `??` only unwraps or substitutes.
+
+```motoko
+// Keep switch: Some arm transforms / branches on the inner value
+switch (users.get(caller)) {
+  case (?u) { u.isAdmin };
+  case null { false };
+};
+
+switch (result) {
+  case (#ok value) { value };
+  case (#err e) { Runtime.trap(e) };
+};
+```
+
+See [references/control-flow.md](references/control-flow.md).
 
 ### Implicit Parameters
 
@@ -478,18 +516,29 @@ Avoid `Nat` subtraction unless the compiler can prove the result is non-negative
 
 ## Option Handling
 
+**Prefer `??` for unwrap-or-default and unwrap-or-trap.** Do not write a nested `switch` solely to peel `?T`.
+
 ```motoko
 // Unwrap with trap when null means something is wrong
-let user = switch (users.find(func(u : User) : Bool { u.id == caller })) {
-  case (?u) { u };
-  case (null) { Runtime.trap("User not found") };
-};
+let user = users.find(func(u : User) : Bool { u.id == caller })
+  ?? Runtime.trap("User not found");
+
+// Default when absence is fine
+let label = optLabel ?? "(untitled)";
 
 // Only return ?T when absence is a normal, expected outcome
 public query func findUserByName(name : Text) : async ?User {
   users.find(func(u : User) : Bool { u.name == name });
 };
 
+// Keep switch when the Some arm maps / mutates / has side effects
+switch (todos.find(func(todo : Types.Todo) : Bool { todo.id == targetId })) {
+  case (?todo) {
+    todo.completed := not todo.completed;
+    ?toView(todo);
+  };
+  case null { null };
+};
 ```
 
 ## Common Patterns
@@ -648,7 +697,7 @@ Attaching cycles to an inter-canister call (`await (with cycles = ...) <call>`) 
 1. Always `mo:core`, never `mo:base`
 2. No `stable` keyword — enhanced orthogonal persistence handles state
 3. Dot notation for all `self`-parameter functions
-4. Unwrap with `switch` + `Runtime.trap()` on null; `?T` only when absence is expected
+4. Unwrap with `??` (`opt ?? Runtime.trap(...)` or `opt ?? default`); reserve `switch` for transforms/side effects/variants; `?T` only when absence is expected
 5. types.mo / lib/ / mixins/ / main.mo structure
 6. Mixins receive only needed state slices
 7. Queries for read-only, updates for state changes
@@ -658,7 +707,7 @@ Attaching cycles to an inter-canister call (`await (with cycles = ...) <call>`) 
 
 ## Additional Resources
 
-- **Control flow**: [references/control-flow.md](references/control-flow.md) — switch statements, for loops
+- **Control flow**: [references/control-flow.md](references/control-flow.md) — `??`, switch statements, for loops
 - **Type conversions**: [references/type-conversions.md](references/type-conversions.md) — Nat/Int size conversions
 - **Actor migrations**: Load `migrating-motoko-actors` when upgrading canisters or changing actor state shape
 - **Migration failures**: Load `troubleshooting-motoko-migrations` for unexplained compatibility diagnostics, frozen migration files, or converted legacy projects
