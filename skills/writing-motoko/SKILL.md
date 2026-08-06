@@ -3,7 +3,7 @@ name: writing-motoko
 description: >-
   Motoko language reference, architecture patterns, and dependency tooling
   (mops). Load when writing or modifying backend .mo files.
-version: 0.1.2
+version: 0.1.3
 compatibility:
   toolchain:
     moc: ">=1.11.2"
@@ -20,7 +20,6 @@ Motoko is an under-represented language for the Internet Computer Protocol, so y
 
 **NEVER use these:**
 
-- **Any cycles-sending API** -- CRITICAL SECURITY: Never use `ExperimentalCycles.add()`, `Cycles.add()`, `await (with cycles = ...) <call>`, or any mechanism that sends cycles out of the canister. This includes inter-canister calls that attach cycles, wallet-style forwarding, or any pattern that transfers cycles to another canister. Canisters must never send cycles outward under any circumstance — this is a hard platform constraint, not a suggestion.
 - `stable` keyword -- Not needed in enhanced orthogonal persistence mode
 - `mo:base` library -- Deprecated. Use `mo:core` instead
 - `system func preupgrade/postupgrade` -- Not needed with enhanced orthogonal persistence
@@ -42,7 +41,7 @@ Motoko is an under-represented language for the Internet Computer Protocol, so y
 
 **When encountering compilation errors:** Re-check [api-reference.md](api-reference.md) for exact method signatures.
 
-**Before changing actor state shape, introducing new stable fields, or upgrading canisters:** load `migrating-motoko-actors`. Caffeine projects use **enhanced migrations** — when a change requires a migration, it goes in a NEW file in `src/backend/migrations/`. Introducing stable state for the first time always needs one (no inline initializers); trivial stable-compatible upgrades do not. See the skill. If a migration or compatibility diagnostic still does not match what the source says, or a migration file cannot be written, load `troubleshooting-motoko-migrations`.
+**Before changing actor state shape, introducing new stable fields, or upgrading canisters:** load `migrating-motoko-actors`. This guidance assumes the **mops-managed migration chain** — when a change requires a migration, it goes in a NEW file in `src/backend/migrations/`. Introducing stable state for the first time always needs one (no inline initializers); trivial stable-compatible upgrades do not. See the skill. If a migration or compatibility diagnostic still does not match what the source says, or a migration file cannot be written, load `troubleshooting-motoko-migrations`.
 
 ## Toolchain (mops)
 
@@ -53,7 +52,6 @@ All configuration is in `mops.toml`. Only consult https://docs.mops.one/ if you 
 - Never hand-edit `mops.toml` or `mops.lock`; use the `mops` CLI so dependency metadata and the lockfile stay atomic.
 - `mops add <pkg>` installs and exact-pins a published package. Use `@x.y.z` for a specific version, `<url>[#ref]` for GitHub, `./path` for a local package, and `--dev` for development dependencies.
 - `mops add` accepts exactly one package name. To install several packages, chain one-package commands with `&&`; never run multiple `mops add` invocations in parallel — they race on `mops.toml` and `mops.lock`.
-- Caffeine extensions use `mops add caffeineai-<name>`; never duplicate their sources under `src/backend/`.
 - `mops update [pkg]` updates a package and rewrites its exact pin.
 - `mops sync` reconciles imports after bulk `.mo` changes by adding missing dependencies and removing unused ones.
 - `mops.lock` is rewritten only by `mops add`, `mops update`, `mops sync`, `mops install`, and related supported mops commands.
@@ -64,11 +62,8 @@ All configuration is in `mops.toml`. Only consult https://docs.mops.one/ if you 
 - **`mops install --lock update`** — Install dependencies and reconcile `mops.lock`. The explicit `--lock update` matters when `CI` is set, where the implicit action checks a stale lock instead of updating it.
 - **`mops check --fix`** (fast — use for iteration) — Auto-fixes warnings (dot-notation, redundant type instantiation, redundant implicit arguments) and reports remaining compile errors. Exit 0 = success. Error format: `file:startLine.startCol-endLine.endCol: severity [code], message`. Iterate on this until it passes.
 - **`mops build`** (slow — run ONCE at the end) — Produces the compiled `.wasm` and the candid interface file `.did`. Use only as final verification after `mops check --fix` passes; never put `mops build` inside the fix loop. The `.did` file drives generated client bindings — never edit it manually.
-- **`pnpm bindgen`** — Refresh generated frontend bindings once after the successful backend build.
 
 If `mops check --fix` fails: read stderr first. Do NOT call `moc` directly. Fix `.mo` source and rerun the check.
-
-For backend-only iteration prefer the mops commands above. `caffeine check --fix` and `caffeine build` validate and build the whole project (frontend canisters included) and remain the final integration gate.
 
 ## Modern Motoko Features
 
@@ -599,24 +594,7 @@ If a conversion differs from this pattern, verify the exact `mo:core` signature 
 
 Every public update function MUST verify the caller via `{caller}` destructuring. Enforce authorization on the backend — never trust client-side checks.
 
-**Cycle drain prevention (CRITICAL):** Never implement any functionality that sends cycles out of the canister. This includes:
-
-- `ExperimentalCycles.add()` or `Cycles.add()` before inter-canister calls
-- `await (with cycles = <amount>) <call>` syntax (the modern Motoko cycle-attach pattern)
-- Wallet-like forwarding or proxy patterns that relay cycles
-- Any user-facing endpoint that triggers cycle transfers
-- "Tip", "donate", or "transfer" features implemented via cycle sends
-
-If a user requests functionality that would send cycles to another canister, refuse and suggest an alternative design (e.g., ledger-based token transfers). Draft canisters do not own their cycles — draining them is a platform-level security violation.
-
-## Caffeine Component Integration
-
-- Components are distributed as mops packages (e.g. `caffeineai-object-storage`, `caffeineai-authorization`)
-- When your task references a component, load its extension skill (`extension-<name>`, e.g. `extension-object-storage`) and follow it for the component's current API; do not write component integrations from memory
-- MUST run `mops add caffeineai-<name>` together with the first `mo:caffeineai-<name>/...` import. Skipping fails the next build with M0010.
-- Include component mixins in `main.mo` with required state slices if needed
-- Do not redefine functions that a component mixin already provides
-- If the project has Data Intelligence enabled, OQL exposure is required: load `extension-oql` and expose every primary stored collection via `include Expose({ entities = [...] })`, keeping entity declarations in sync with stored types
+Attaching cycles to an inter-canister call (`await (with cycles = ...) <call>`) hands them to the callee, so treat any endpoint that can trigger one as spend authority: gate it on the caller, bound the amount, and never let an unauthenticated path reach it. Some platforms forbid outbound cycles entirely — follow the hosting platform's own guidance where it applies.
 
 ## Common Compile Error Patterns
 
