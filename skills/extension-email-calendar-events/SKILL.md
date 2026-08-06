@@ -1,11 +1,11 @@
 ---
 name: extension-email-calendar-events
 description: Support for organising events/meetings and sending invitations by email.
-version: 0.1.5
+version: 0.1.6
 compatibility:
   mops:
     caffeineai-email-calendar-events: "~0.1.1"
-    caffeineai-authorization: "~0.1.1"
+    caffeineai-authorization: "~1.0.1"
 caffeineai-subscription: [plus, pro]
 ---
 
@@ -161,7 +161,7 @@ actor {
 
   // Include authorization component
   let accessControlState = AccessControl.initState();
-  include MixinAuthorization(accessControlState);
+  include MixinAuthorization(accessControlState, null);
 
   // Store a map of caller principal to UserProfile
   var userProfiles = Map.empty<Principal, UserProfile>();
@@ -199,14 +199,8 @@ actor {
       Runtime.trap("Unauthorized: Only admins can add calendar events");
     };
 
-    let organiser = switch (userProfiles.get(caller)) {
-      case (?o) {
-        o
-      };
-      case (null) {
-        Runtime.trap("Admin profile not found")
-      };
-    };
+    let organiser = userProfiles.get(caller)
+      ?? Runtime.trap("Admin profile not found");
 
     let seed = await Random.blob();
     let uid = Uuid.generateV4(seed);
@@ -309,14 +303,8 @@ actor {
       Runtime.trap("Unauthorized: Only admins can send calendar event invitations");
     };
 
-    let event = switch (calendarEvents.get(uid)) {
-      case (?e) {
-        e
-      };
-      case (null) {
-        Runtime.trap("Calendar event not found")
-      };
-    };
+    let event = calendarEvents.get(uid)
+      ?? Runtime.trap("Calendar event not found");
 
     ignore await EmailClient.sendCalendarEvent(
       "no-reply",
