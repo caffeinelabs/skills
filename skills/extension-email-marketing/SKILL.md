@@ -1,11 +1,11 @@
 ---
 name: extension-email-marketing
 description: Send personalised marketing emails to subscribers with an unsubscribe link.
-version: 0.1.5
+version: 0.1.6
 compatibility:
   mops:
     caffeineai-email-marketing: "~0.1.1"
-    caffeineai-authorization: "~0.1.1"
+    caffeineai-authorization: "~1.0.1"
     caffeineai-email-verification: "~0.1.1"
 caffeineai-subscription: [plus, pro]
 ---
@@ -155,7 +155,7 @@ actor {
 
   // Include authorization component
   let accessControlState = AccessControl.initState();
-  include MixinAuthorization(accessControlState);
+  include MixinAuthorization(accessControlState, null);
 
   // Store a map of caller principal to UserProfile
   let userProfiles = Map.empty<Principal, UserProfile>();
@@ -180,10 +180,7 @@ actor {
   include MixinEmailVerification(verifiedEmails);
 
   func getUserInternal(caller : Principal) : UserProfile {
-    switch (userProfiles.get(caller)) {
-      case (null) { Runtime.trap("User profile does not exist!") };
-      case (?userProfile) { userProfile };
-    };
+    userProfiles.get(caller) ?? Runtime.trap("User profile does not exist!");
   };
 
   public shared ({ caller }) func registerUser(name : Text, email : Text) : async () {
@@ -205,12 +202,9 @@ actor {
     );
     emails.add(email);
     // Subscribe the user to the Newsletter topic by default
-    switch (EmailSubscribers.getTopicId(emailSubscribers, newsletterTopic)) {
-      case (null) { Runtime.trap("Newsletter topic not found") };
-      case (?topicId) {
-        ignore EmailSubscribers.add(emailSubscribers, topicId, email);
-      };
-    };
+    let topicId = EmailSubscribers.getTopicId(emailSubscribers, newsletterTopic)
+      ?? Runtime.trap("Newsletter topic not found");
+    ignore EmailSubscribers.add(emailSubscribers, topicId, email);
     // Send a verification email
     let result = await EmailClient.sendVerificationEmail(
       "no-reply",
@@ -265,12 +259,8 @@ actor {
       Runtime.trap("Unauthorized: Only admins can send the newsletter");
     };
     // Get the array of subscriber emails that have been verified
-    let recipientEmails = switch (EmailSubscribers.verified(emailSubscribers, verifiedEmails, topicId)) {
-      case (null) {
-        Runtime.trap("No verified subscribers found for newsletter topic");
-      };
-      case (?recipientEmails) { recipientEmails };
-    };
+    let recipientEmails = EmailSubscribers.verified(emailSubscribers, verifiedEmails, topicId)
+      ?? Runtime.trap("No verified subscribers found for newsletter topic");
     if (recipientEmails.size() == 0) {
       Runtime.trap("No verified subscribers found for newsletter topic");
     };
