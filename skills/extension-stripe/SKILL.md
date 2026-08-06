@@ -1,12 +1,12 @@
 ---
 name: extension-stripe
 description: Payment support based on Stripe, supporting credit cards and debit cards
-version: 0.1.6
+version: 0.1.7
 compatibility:
   mops:
-    caffeineai-stripe: "~0.1.2"
-    caffeineai-http-outcalls: "~0.1.2"
-    caffeineai-authorization: "~1.0.0"
+    caffeineai-stripe: "~0.1.3"
+    caffeineai-http-outcalls: "~0.1.3"
+    caffeineai-authorization: "~1.0.1"
 caffeineai-subscription: [none]
 ---
 
@@ -121,10 +121,7 @@ actor {
     };
 
     func getStripeConfiguration() : Stripe.StripeConfiguration {
-        switch (configuration) {
-            case (null) { Runtime.trap("Stripe needs to be first configured") };
-            case (?value) { value };
-        };
+        configuration ?? Runtime.trap("Stripe needs to be first configured");
     };
 
     public func getStripeSessionStatus(sessionId : Text) : async Stripe.StripeSessionStatus {
