@@ -6,7 +6,7 @@ description: >-
   a project converted from legacy persistence, or a request to remove the
   chain. Load only when the rules in migrating-motoko-actors do not explain what
   you are seeing.
-version: 0.1.2
+version: 0.1.3
 compatibility:
   toolchain:
     moc: ">=1.11.2"
@@ -64,7 +64,7 @@ Write failures on a migration file are not a tooling bug — see the next sectio
 
 ## Frozen migration files
 
-Every migration that has been deployed is made read-only by the platform after a successful deploy, and write tools reject it by its mode bits.
+On platforms that freeze deployed migrations, each one is made read-only after a successful deploy and write tools reject it by its mode bits.
 
 - **Do not** `chmod` it, delete it, rename it, or route around the write failure. The freeze encodes a runtime invariant, not a policy preference.
 - A migration created **earlier in the current build** is not frozen: edit that one rather than adding a second file for the same change.
@@ -83,7 +83,7 @@ A project can also inherit such a chain without having been converted itself —
 
 ## Protected configuration
 
-The mops migrations config — the `[canisters.<name>.migrations]` section, its `chain` path, and `check-limit` — is platform-owned. You cannot add, remove, or alter it, and the tooling will reject attempts.
+Where a hosting platform owns the mops migrations config — the `[canisters.<name>.migrations]` section, its `chain` path, and `check-limit` — you cannot add, remove, or alter it, and the tooling will reject attempts.
 
 - **Never raise or drop `check-limit` to clear a "too many pending migrations" error.** The fix is always to fold the extra changes into the single pending migration this build already created.
 - **The chain directory is whatever `chain = ...` says.** It is normally `src/backend/migrations`, but a project imported under a non-default canister name can differ. Read the mops config rather than assuming the path.
@@ -91,11 +91,11 @@ The mops migrations config — the `[canisters.<name>.migrations]` section, its 
 
 ## EM is one-way
 
-Once a project uses the migration chain there is no supported path back to legacy persistence. Four independent mechanisms enforce this:
+Once a project uses the migration chain there is no supported path back to legacy persistence. Independent mechanisms enforce this:
 
 1. The persistence model is decided per project and is sticky — nothing re-evaluates it later.
 2. The compiler rejects a signature downgrade (`M0255`), and a legacy wasm deployed over an enhanced canister traps at runtime. Signature versions only move forward.
-3. Deployed migration files are frozen read-only.
+3. Applied migrations are identified by module name, so history cannot be rewritten by editing or renaming files — and on platforms that freeze deployed migrations, it cannot be rewritten at all.
 4. Fresh installs of a converted project permanently depend on the pre-conversion history.
 
 So if a task asks you to delete the `migrations/` directory, restore inline initializers on stable fields, or reintroduce `(with migration = ...)`, say plainly that it is not possible for this project and offer the forward-only equivalent: a new migration that reshapes state toward what the user actually wants.
