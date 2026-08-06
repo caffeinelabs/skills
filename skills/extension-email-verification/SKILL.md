@@ -1,11 +1,11 @@
 ---
 name: extension-email-verification
 description: Support for sending an email with a link the recipient can click to prove they own the email address.
-version: 0.1.5
+version: 0.1.6
 compatibility:
   mops:
     caffeineai-email-verification: "~0.1.1"
-    caffeineai-email: "~0.1.1"
+    caffeineai-email: "~0.1.2"
 caffeineai-subscription: [plus, pro]
 ---
 
@@ -139,14 +139,8 @@ actor {
   };
 
   public shared ({ caller }) func isEmailVerified() : async Bool {
-    switch (users.get(caller)) {
-      case (null) {
-        Runtime.trap("User not registered");
-      };
-      case (?user) {
-        VerifiedEmails.contains(verifiedEmails, user.email);
-      };
-    };
+    let user = users.get(caller) ?? Runtime.trap("User not registered");
+    VerifiedEmails.contains(verifiedEmails, user.email);
   };
 };
 ```
