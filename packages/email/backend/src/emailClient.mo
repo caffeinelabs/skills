@@ -207,14 +207,10 @@ module {
   };
 
   public func getIntegrationsCanisterId() : async Principal {
-    switch (Prim.envVar<system>("INTEGRATIONS_CANISTER_ID")) {
-      case (null) {
-        Runtime.trap("INTEGRATIONS_CANISTER_ID environment variable is not set");
-      };
-      case (?integrationsCanisterId) {
-        Principal.fromText(integrationsCanisterId);
-      };
-    };
+    Principal.fromText(
+      Prim.envVar<system>("INTEGRATIONS_CANISTER_ID")
+        ?? Runtime.trap("INTEGRATIONS_CANISTER_ID environment variable is not set")
+    );
   };
 
   func broadcastEmail(
