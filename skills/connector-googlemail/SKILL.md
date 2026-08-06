@@ -12,13 +12,13 @@ description: >-
   mentions sending email, Gmail, "notify via email", "forward results by
   email", or any equivalent phrasing — and BEFORE writing any code that
   touches a Google endpoint.
-version: 0.2.3
+version: 0.2.4
 caffeineai-subscription: [none]
 compatibility:
   mops:
     googlemail-client: "~0.1.6"
-    google-oauth: "~0.2.0"
-    caffeineai-authorization: "~1.0.0"
+    google-oauth: "~0.2.1"
+    caffeineai-authorization: "~1.0.1"
 ---
 
 # Gmail Connector
@@ -71,8 +71,8 @@ Gmail on behalf of the signed-in user. The ingredients are:
 
 ```bash
 mops add googlemail-client@0.1.6
-mops add google-oauth@0.2.0
-mops add caffeineai-authorization@1.0.0
+mops add google-oauth@0.2.1
+mops add caffeineai-authorization@1.0.1
 ```
 
 ## 2. Auth model — OAuth 2.0 PKCE per user, on-chain exchange + refresh
@@ -366,17 +366,13 @@ module {
   ) : async* GmailConnection {
     let tokens = await OAuth.exchangeAuthorizationCode(clientId, clientSecret, code, redirectUri, codeVerifier);
     let accessToken = accessTokenOf(tokens, "Token exchange");
-    let refreshToken = switch (tokens.refreshToken) {
-      case (?t) t;
-      case null Runtime.trap("Token exchange failed: missing refresh_token");
-    };
+    let refreshToken = tokens.refreshToken
+      ?? Runtime.trap("Token exchange failed: missing refresh_token");
     // Learn the connected address via OIDC userinfo — needs only `openid email`,
     // never `gmail.readonly`. (If the app also reads mail and requests
     // `gmail.readonly`, `gmail_users_getProfile` is an equivalent alternative.)
-    let emailAddress = switch (await OAuth.getUserEmail(accessToken)) {
-      case (?e) e;
-      case null Runtime.trap("Failed to fetch connected email from userinfo");
-    };
+    let emailAddress = (await OAuth.getUserEmail(accessToken))
+      ?? Runtime.trap("Failed to fetch connected email from userinfo");
     { accessToken; refreshToken; emailAddress };
   };
 
@@ -422,16 +418,10 @@ module {
       };
       case null {};
     };
-    switch (tokens.accessToken) {
-      case (?token) token;
-      case null Runtime.trap(operation # " failed: missing access_token");
-    };
+    tokens.accessToken ?? Runtime.trap(operation # " failed: missing access_token");
   };
 
-  func messageIdOf(result : Message) : Text = switch (result.id) {
-    case (?id) id;
-    case null "";
-  };
+  func messageIdOf(result : Message) : Text = result.id ?? "";
 };
 ```
 
@@ -756,7 +746,7 @@ the user explicitly asks to connect two different Google accounts.
 ## Related
 
 - [`mops add googlemail-client@0.1.6`](https://mops.one/googlemail-client) — Gmail REST API bindings.
-- [`mops add google-oauth@0.2.0`](https://mops.one/google-oauth) — Google OAuth 2.0 library (token exchange, refresh, PKCE, `getUserEmail` userinfo, `DateTime` RFC 3339 helpers).
+- [`mops add google-oauth@0.2.1`](https://mops.one/google-oauth) — Google OAuth 2.0 library (token exchange, refresh, PKCE, `getUserEmail` userinfo, `DateTime` RFC 3339 helpers).
 - [Google OAuth 2.0 for Web Server Applications](https://developers.google.com/identity/protocols/oauth2/web-server) — Web-client redirect URI and authorization-code flow reference.
 - [Gmail API v1 reference](https://developers.google.com/gmail/api/reference/rest) — what `googlemail-client` wraps.
 - [RFC 7636 — Proof Key for Code Exchange](https://datatracker.ietf.org/doc/html/rfc7636) — PKCE spec.
