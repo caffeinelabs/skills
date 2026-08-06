@@ -75,23 +75,25 @@ for (score in scores.values()) {
 
 ```
 
-## Labeled Loops
+## Break and Continue
 
-Motoko does not support `break` as a keyword. Use labeled loops for early exit:
+`break` and `continue` work as in most other languages: `break` leaves the enclosing loop, `continue` skips to its next iteration. Both are available in `for`, `while`, and `loop`:
 
 ```motoko
-label search while (true) {
-  switch (iter.next()) {
-    case (?item) {
-      if (item.id == targetId) {
-        result := ?item;
-        break search;
-      };
-    };
-    case null { break search };
+for (item in items.values()) {
+  if (item.archived) { continue };
+  if (item.id == targetId) {
+    result := ?item;
+    break;
   };
 };
 
+while (true) {
+  switch (iter.next()) {
+    case (?item) { total += item.score };
+    case null { break };
+  };
+};
 ```
 
-Alternatively, refactor to a helper function with early `return` instead of using labeled loops.
+Alternatively, refactor to a helper function with early `return` when that reads better than a loop with an early exit.

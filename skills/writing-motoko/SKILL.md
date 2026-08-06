@@ -3,7 +3,7 @@ name: writing-motoko
 description: >-
   Motoko language reference, architecture patterns, and dependency tooling
   (mops). Load when writing or modifying backend .mo files.
-version: 0.1.4
+version: 0.1.5
 compatibility:
   toolchain:
     moc: ">=1.11.2"
@@ -36,6 +36,7 @@ Motoko is an under-represented language for the Internet Computer Protocol, so y
 - `mo:core` library version 2.5.0+ (compiler `moc` 1.11.2+)
 - Contextual dot notation -- `list.add(item)`, `map.get(key)`
 - Null coalesce `??` for unwrap-or-default and unwrap-or-trap (`opt ?? default`, `opt ?? Runtime.trap(...)`) -- prefer over a two-arm `switch` on `?T` (requires `moc >= 1.7.0`)
+- Plain `break` / `continue` to exit or skip a loop iteration -- they work inside `for`, `while`, and `loop` just like in other languages
 - Enhanced orthogonal persistence (state persists without `stable` keyword)
 - Principled Motoko Architecture -- `types.mo` (types), `lib/` (domain logic), `mixins/` (API endpoints), `main.mo` (composition root, NO public methods)
 - **API reference for uncertain APIs**: Use [api-reference.md](api-reference.md) to verify exact method signatures when you are about to use an unfamiliar `mo:core` API or when a compile diagnostic points at an API mismatch. Do NOT guess API shapes — a targeted lookup of a symbol you are unsure about is always worth the step; skipping it to save steps ships hallucinated APIs and costs far more in compile repair.
@@ -681,7 +682,7 @@ Attaching cycles to an inter-canister call (`await (with cycles = ...) <call>`) 
 
 **Basic Types:** `Nat` `Int` `Text` `Bool` `Principal` `?T` `[T]` `[var T]` `Blob` `Float` — `Time.now()` returns `Int` (nanoseconds)
 
-**Common Operations:** `debug_show(value)` → Text | `assert condition` | `# "text"` concatenation | `label name while` for break/continue
+**Common Operations:** `debug_show(value)` → Text | `assert condition` | `# "text"` concatenation | `break` / `continue` inside `for`, `while`, `loop`
 
 | Structure | Use Case         | Key Operations     | Complexity  |
 | --------- | ---------------- | ------------------ | ----------- |
@@ -707,7 +708,7 @@ Attaching cycles to an inter-canister call (`await (with cycles = ...) <call>`) 
 
 ## Additional Resources
 
-- **Control flow**: [references/control-flow.md](references/control-flow.md) — `??`, switch statements, for loops
+- **Control flow**: [references/control-flow.md](references/control-flow.md) — `??`, switch statements, loops, `break` / `continue`
 - **Type conversions**: [references/type-conversions.md](references/type-conversions.md) — Nat/Int size conversions
 - **Actor migrations**: Load `migrating-motoko-actors` when upgrading canisters or changing actor state shape
 - **Migration failures**: Load `troubleshooting-motoko-migrations` for unexplained compatibility diagnostics, frozen migration files, or converted legacy projects
