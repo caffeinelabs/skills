@@ -1,5 +1,9 @@
 
 
+### Features
+
+- **motoko**: prefer null coalesce ?? over nullable switch (#188)
+
 ### Bug Fixes
 
 - **object-storage**: restore MIME and filename in gateway blob-tree headers (#144)

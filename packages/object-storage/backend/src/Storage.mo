@@ -20,14 +20,10 @@ module {
   };
 
   public func getCashierPrincipal() : async Principal {
-    switch (Prim.envVar<system>("CAFFFEINE_STORAGE_CASHIER_PRINCIPAL")) {
-      case (null) {
-        Runtime.trap("CAFFFEINE_STORAGE_CASHIER_PRINCIPAL environment variable is not set");
-      };
-      case (?cashierPrincipal) {
-        Principal.fromText(cashierPrincipal);
-      };
-    };
+    Principal.fromText(
+      Prim.envVar<system>("CAFFFEINE_STORAGE_CASHIER_PRINCIPAL")
+        ?? Runtime.trap("CAFFFEINE_STORAGE_CASHIER_PRINCIPAL environment variable is not set")
+    );
   };
 
   // Authorization functions
@@ -64,15 +60,11 @@ module {
 
     let currentFreeCyclesCount : Nat = Nat.sub(currentBalance, reservedCycles);
 
-    let cyclesToSend : Nat = switch (refillInformation) {
-      case (null) { currentFreeCyclesCount };
-      case (?info) {
-        switch (info.proposed_top_up_amount) {
-          case (null) { currentFreeCyclesCount };
-          case (?proposed) { Nat.min(proposed, currentFreeCyclesCount) };
-        };
-      };
+    let proposedAmount = switch (refillInformation) {
+      case (?info) { info.proposed_top_up_amount };
+      case (null) { null };
     };
+    let cyclesToSend : Nat = Nat.min(proposedAmount ?? currentFreeCyclesCount, currentFreeCyclesCount);
 
     let targetCanister = actor (cashier.toText()) : actor {
       account_top_up_v1 : ({ account : Principal }) -> async ();
