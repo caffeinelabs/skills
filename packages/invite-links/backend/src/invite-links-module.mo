@@ -60,27 +60,21 @@ module {
   };
 
   public func submitRSVP(state : InviteLinksSystemState, name : Text, attending : Bool, inviteCode : Text) {
-    switch (state.inviteCodes.get(inviteCode)) {
-      case (null) {
-        Runtime.trap("Invalid invite code");
-      };
-      case (?invite) {
-        if (invite.used) {
-          Runtime.trap("Invite code already used");
-        };
-        let rsvp : RSVP = {
-          name;
-          attending;
-          timestamp = Time.now();
-          inviteCode;
-        };
-        let updatedInvite : InviteCode = {
-          invite with used = true
-        };
-        state.rsvps.add(name, rsvp);
-        state.inviteCodes.add(inviteCode, updatedInvite);
-      };
+    let invite = state.inviteCodes.get(inviteCode) ?? Runtime.trap("Invalid invite code");
+    if (invite.used) {
+      Runtime.trap("Invite code already used");
     };
+    let rsvp : RSVP = {
+      name;
+      attending;
+      timestamp = Time.now();
+      inviteCode;
+    };
+    let updatedInvite : InviteCode = {
+      invite with used = true
+    };
+    state.rsvps.add(name, rsvp);
+    state.inviteCodes.add(inviteCode, updatedInvite);
   };
 
   public func getAllRSVPs(state : InviteLinksSystemState) : [RSVP] {
