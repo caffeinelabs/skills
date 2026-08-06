@@ -4,7 +4,7 @@ description: >-
   Motoko actor migration and schema evolution with the enhanced migration
   chain (migrations/). Load when upgrading canisters or changing actor
   state shape.
-version: 0.2.1
+version: 0.2.2
 compatibility:
   toolchain:
     moc: ">=1.11.2"
@@ -21,7 +21,7 @@ Expert guidance for migrating actor state across canister upgrades with orthogon
 
 Do not use classical (legacy) persistence or `system func preupgrade` / `system func postupgrade`. They are error-prone, can leave canisters stuck if they trap, and do not scale.
 
-Also do not use the legacy `(with migration = ...)` actor-attached syntax. Caffeine projects use **mops-managed migrations**. When a change requires an explicit migration, write it as a timestamped file in `src/backend/migrations/`; the chain replays automatically.
+Also do not use the legacy `(with migration = ...)` actor-attached syntax. This skill covers **mops-managed migrations**. When a change requires an explicit migration, write it as a timestamped file in `src/backend/migrations/`; the chain replays automatically.
 
 ## How stable state is initialized
 
@@ -37,9 +37,9 @@ Stable actor fields have no initializers in the actor body. The chain in `src/ba
 ## Migration Folder Rules
 
 - **All migrations live in `src/backend/migrations/`.** The full chain replays in lexicographic filename order on fresh install; on upgrade, only entries newer than the deployed tail run. (The directory is declared as `chain = ...` under `[canisters.<name>.migrations]` in `mops.toml`; an imported project using a non-default canister name may place it elsewhere — read `mops.toml` rather than assuming.)
-- **At most one pending migration per build** (`check-limit = 1` in `mops.toml`). If this build already added a migration file, **edit that file** to fold in further changes instead of adding another. `mops check` compares the deployed `.most` baseline and names the latest pending file to fold into when the limit is exceeded. The migrations section and `check-limit` are platform-owned — never edit them to clear an error.
+- **At most one pending migration per build** (`check-limit = 1` in `mops.toml`). If this build already added a migration file, **edit that file** to fold in further changes instead of adding another. `mops check` compares the deployed `.most` baseline and names the latest pending file to fold into when the limit is exceeded. Where a hosting platform owns the migrations section and `check-limit`, never edit them to clear an error.
 - **Name new files with just the UTC timestamp**, no suffix: `YYYYMMDD_HHMMSS.mo`. The timestamp must sort after every existing file. Do NOT encode the change in the name (no `AddPriority`, `AddTags`, `Init`, …) — any feature-ish name tempts you to add another file for the next change instead of editing the one file you already have this build.
-- **Never modify, delete, or rename migration files that existed before this build started.** They are frozen at the FS level (read-only) — writes to them will fail. Applied migrations are tracked by module name, so a rename makes the runtime treat the file as never applied. A migration created earlier in the same build is NOT frozen: **edit** it rather than add a second migration for the same change.
+- **Never modify, delete, or rename migration files that existed before this build started.** Applied migrations are tracked by module name, so a rename makes the runtime treat the file as never applied, and an edit to an already-applied file never executes. Some platforms enforce this by making deployed migrations read-only, in which case writes to them simply fail. A migration created earlier in the same build is not applied yet: **edit** it rather than add a second migration for the same change.
 - **Migrations must be self-contained.** Inline BOTH old types AND new types in the migration file. Only `mo:core/...` imports are allowed — never `../types` or any project module. The chain replays forever; a frozen migration that imported `Types.Note` becomes wrong the moment `Note` changes in an incompatible way.
 - `mops check --fix` automatically verifies upgrade compatibility.
 
@@ -246,7 +246,7 @@ Add the field to `main.mo` with type only (no initializer) AND add it to the nex
 
 ## Compatibility and Tooling
 
-The upgrade safety check is pre-wired by the platform: the previous version's `.most` file (an encoded snapshot of the stable signature — field names and types) sits in `.old/` and is referenced from `mops.toml` under `[canisters.<name>.check-stable]`. Running `mops check --fix` (or `caffeine check --fix`) picks it up and compares it against the new actor body automatically.
+The upgrade safety check compares the new actor body against the last deployed stable signature: a `.most` file (an encoded snapshot of the stable signature — field names and types) referenced from `mops.toml` under `[canisters.<name>.check-stable]`. When that is configured, `mops check --fix` picks it up automatically. Hosted platforms typically wire this up for you and keep the previous `.most` alongside the project.
 
 For the check to pass: the new migration's `OldActor` must match the previously deployed signature, and its `NewActor` must match (or be a stable supertype of) the new actor body.
 
