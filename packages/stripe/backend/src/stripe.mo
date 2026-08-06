@@ -71,10 +71,7 @@ module {
         await OutCall.httpGetRequest(url, headers, transform);
       };
       case (#post) {
-        let postBody = switch (body) {
-          case (?rawBody) { rawBody };
-          case (null) { Runtime.trap("HTTP POST requires a HTTP body") };
-        };
+        let postBody = body ?? Runtime.trap("HTTP POST requires a HTTP body");
         await OutCall.httpPostRequest(url, headers, postBody, transform);
       };
     };

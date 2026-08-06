@@ -1,6 +1,6 @@
 [package]
 name = "caffeineai-stripe"
-version = "0.1.2"
+version = "0.1.3"
 description = "Payment support based on Stripe, supporting credit cards and debit cards"
 license = "Apache-2.0"
 repository = "https://github.com/caffeinelabs/skills"
@@ -11,4 +11,4 @@ core = "2.5.0"
 caffeineai-http-outcalls = "../../http-outcalls/backend"
 
 [toolchain]
-moc = "1.6.0"
+moc = "1.7.0"
