@@ -12,11 +12,11 @@ description: >-
   any prior task mentions ChatGPT, GPT (any version), OpenAI, an LLM, a
   chatbot, or embeddings — and BEFORE writing any code that touches
   `api.openai.com`.
-version: 0.1.0
+version: 0.1.1
 compatibility:
   mops:
     openai-client: "~0.2.5"
-    caffeineai-authorization: "~0.1.1"
+    caffeineai-authorization: "~1.0.1"
 caffeineai-subscription: [none]
 ---
 
@@ -136,7 +136,7 @@ actor {
   // sign-in / caller plumbing on both backend and frontend (see SKILL
   // §"Prerequisite").
   let accessControlState = AccessControl.initState();
-  include MixinAuthorization(accessControlState);
+  include MixinAuthorization(accessControlState, null);
 
   // Per-user OpenAI keys. Never iterated except by the calling principal.
   let openAIKeys : Map.Map<Principal, Text> = Map.empty();
@@ -220,10 +220,8 @@ module {
     if (resp.choices.size() == 0) {
       Runtime.trap("OpenAI returned no choices");
     };
-    switch (resp.choices[0].message.content) {
-      case (?text) text;
-      case null Runtime.trap("OpenAI returned no text content (refusal or tool call)");
-    };
+    resp.choices[0].message.content
+      ?? Runtime.trap("OpenAI returned no text content (refusal or tool call)");
   };
 };
 ```
@@ -312,7 +310,7 @@ import MixinOpenAIAdminChat "mixins/openai-admin-chat";
 
 actor {
   let accessControlState = AccessControl.initState();
-  include MixinAuthorization(accessControlState);
+  include MixinAuthorization(accessControlState, null);
 
   // Admin-set OpenAI bearer key. Wrapped in `{ var value : ?Text }` so the
   // mixin can mutate it.
@@ -369,7 +367,7 @@ Take §9's two files and apply these diffs (the `lib/openai.mo` helper from §4 
 In `src/backend/main.mo`:
 
 - Drop the imports of `mo:caffeineai-authorization/access-control` and `mo:caffeineai-authorization/MixinAuthorization`.
-- Drop `let accessControlState = AccessControl.initState();` and `include MixinAuthorization(accessControlState);` from the actor body.
+- Drop `let accessControlState = AccessControl.initState();` and `include MixinAuthorization(accessControlState, null);` from the actor body.
 - Drop the `accessControlState` argument from the mixin `include`, leaving `include MixinOpenAIAdminChat(openAIApiKey);`.
 
 In `src/backend/mixins/openai-admin-chat.mo`:
