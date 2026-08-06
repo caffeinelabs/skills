@@ -39,12 +39,7 @@ module {
 
   public func getUserRole(state : AccessControlState, caller : Principal) : UserRole {
     if (caller.isAnonymous()) { return #guest };
-    switch (state.userRoles.get(caller)) {
-      case (?role) { role };
-      case (null) {
-        Runtime.trap("User is not registered");
-      };
-    };
+    state.userRoles.get(caller) ?? Runtime.trap("User is not registered");
   };
 
   public func assignRole(state : AccessControlState, caller : Principal, user : Principal, role : UserRole) {
