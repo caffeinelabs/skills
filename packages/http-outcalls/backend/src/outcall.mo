@@ -25,47 +25,74 @@ module {
     name : Text;
     value : Text;
   };
+  public type Method = {
+    #get;
+    #head;
+    #post;
+    #put;
+    #delete;
+    #patch;
+  };
+  public type Request = {
+    url : Text;
+    method : Method;
+    headers : [Header];
+    body : ?Blob;
+    maxResponseBytes : Nat64;
+    transform : Transform;
+  };
+  public type Response = IC.HttpRequestResult;
+  public let defaultMaxResponseBytes : Nat64 = 1_000_000;
 
-  public func httpGetRequest(url : Text, extraHeaders : [Header], transform : Transform) : async Text {
-    let headers = extraHeaders.concat([{
+  public func httpRequest(request : Request) : async Response {
+    let headers = request.headers.concat([{
       name = "User-Agent";
       value = "caffeine.ai";
     }]);
+    let maxResponseBytes = if (request.maxResponseBytes <= defaultMaxResponseBytes) {
+      request.maxResponseBytes;
+    } else {
+      defaultMaxResponseBytes;
+    };
     let args : IC.HttpRequestArgs = {
-      url;
-      max_response_bytes = null;
+      url = request.url;
+      max_response_bytes = ?(maxResponseBytes);
       headers;
-      body = null;
-      method = #get;
+      body = request.body;
+      method = request.method;
       transform = ?{
-        function = transform;
+        function = request.transform;
         context = Blob.fromArray([]);
       };
       is_replicated = ?false;
     };
-    let httpResponse = await Call.httpRequest(args);
+    await Call.httpRequest(args);
+  };
+
+  public func httpGetRequest(url : Text, extraHeaders : [Header], transform : Transform) : async Text {
+    let httpResponse = await httpRequest({
+      url;
+      method = #get;
+      headers = extraHeaders;
+      body = null;
+      maxResponseBytes = defaultMaxResponseBytes;
+      transform;
+    });
     httpResponse.body.decodeUtf8() ?? Runtime.trap("empty HTTP response");
   };
 
   public func httpPostRequest(url : Text, extraHeaders : [Header], body : Text, transform : Transform) : async Text {
     let headers = extraHeaders.concat([
-      { name = "User-Agent"; value = "caffeine.ai" },
       { name = "Idempotency-Key"; value = "Time-" # Time.now().toText() },
     ]);
-    let requestBody = body.encodeUtf8();
-    let args : IC.HttpRequestArgs = {
+    let httpResponse = await httpRequest({
       url;
-      max_response_bytes = null;
-      headers;
-      body = ?requestBody;
       method = #post;
-      transform = ?{
-        function = transform;
-        context = Blob.fromArray([]);
-      };
-      is_replicated = ?false;
-    };
-    let httpResponse = await Call.httpRequest(args);
+      headers;
+      body = ?(body.encodeUtf8());
+      maxResponseBytes = defaultMaxResponseBytes;
+      transform;
+    });
     httpResponse.body.decodeUtf8() ?? Runtime.trap("empty HTTP response");
   };
 };

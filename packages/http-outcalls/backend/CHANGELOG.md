@@ -2,6 +2,10 @@
 
 ### Features
 
+- **http-outcalls**: enforce bounded, verified HTTP outcalls (#209)
+
+### Features
+
 - **motoko**: prefer null coalesce ?? over nullable switch (#188)
 
 ### Refactor
