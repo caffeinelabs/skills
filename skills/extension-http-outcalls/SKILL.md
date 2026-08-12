@@ -1,7 +1,7 @@
 ---
 name: extension-http-outcalls
 description: HTTP outcalls performed by the backend canister (not in the frontend), including mandatory local verification of external REST API requests.
-version: 0.1.7
+version: 0.1.8
 compatibility:
   mops:
     caffeineai-http-outcalls: "~0.1.4"
@@ -25,6 +25,13 @@ Follow these rules:
   count, or another server-side bound appropriate to the feature.
   Limit each response to both at most 10_000 entries and at most 1 MB, then
   paginate if needed.
+- **MUST pick the bound that matches the feature.** The five bounds are not
+  interchangeable. When the feature looks up one entity by something the user
+  supplies — a flight number, an order id, a ticker, a postcode — the
+  identifier bound is the only correct choice. Paginating a collection to find
+  that entity is the anti-pattern, not an alternative: the work still scales
+  with the whole collection no matter how small each page is. Pagination is for
+  a list the user deliberately pages through, not for searching.
 - **MUST put every bound in the actual Motoko http request.** A bound used only by a
   local test does not protect the canister.
 - **NEVER fetch an unbounded collection and filter it in the canister.**
@@ -48,6 +55,24 @@ already past a quarter of the byte ceiling or past 1_000 entries. That band is
 the dangerous one, because it passes a one-off curl and then grows until the
 canister exceeds its per-message instruction budget parsing the payload. Design
 to the stricter bound: bound the request server-side.
+
+## Choosing the wrong bound
+
+A flight lookup takes a flight number and must return one aircraft. Fetching
+`https://opensky-network.org/api/states/all` — every aircraft airborne
+worldwide, roughly 10-13k rows — and scanning the parsed result in Motoko for
+the one callsign is wrong. The canister downloads and parses every record in
+the world to answer a single lookup, and the message is rejected:
+`IC0522: Canister exceeded the limit of 40000000000 instructions for single
+message execution`. Nothing about the code looks wrong — the URL is valid, the
+parse compiles, and a one-off curl returns 200.
+
+That is an instruction limit, not a byte limit. Reaching for a smaller page
+size does not help: the canister still walks the whole collection to find one
+row.
+
+The provider already offered the right bound. `?icao24=<hex>` on the same
+endpoint is the identifier bound: kilobytes, one aircraft, one record to parse.
 
 # Backend
 
