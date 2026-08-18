@@ -1,0 +1,16 @@
+name = "include-invite-links"
+description = "Include the invite links mixin with `include MixinInviteLinks(accessControlState, inviteState);`"
+query = """
+(source_file (obj_dec "actor" (obj_body))) @error
+(source_file (class_dec "actor" (obj_body))) @error
+(source_file
+  (obj_dec "actor"
+   (obj_body
+    (dec_field (include_dec (identifier) @mixin))))
+   (#eq? @mixin "MixinInviteLinks")) @filter
+(source_file
+  (class_dec "actor"
+   (obj_body
+    (dec_field (include_dec (identifier) @mixin))))
+   (#eq? @mixin "MixinInviteLinks")) @filter
+"""

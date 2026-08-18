@@ -1,0 +1,18 @@
+name = "no-redeclare-get-all-rsvps"
+description = "Do NOT redeclare getAllRSVPs — it is provided by MixinInviteLinks"
+query = """
+(source_file
+  (obj_dec "actor"
+    (obj_body
+      (dec_field
+        (func_dec
+          (_) @error
+          (#eq? @error "getAllRSVPs"))))))
+(source_file
+  (class_dec "actor"
+    (obj_body
+      (dec_field
+        (func_dec
+          (_) @error
+          (#eq? @error "getAllRSVPs"))))))
+"""

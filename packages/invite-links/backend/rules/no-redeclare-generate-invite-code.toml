@@ -1,0 +1,18 @@
+name = "no-redeclare-generate-invite-code"
+description = "Do NOT redeclare generateInviteCode — it is provided by MixinInviteLinks"
+query = """
+(source_file
+  (obj_dec "actor"
+    (obj_body
+      (dec_field
+        (func_dec
+          (_) @error
+          (#eq? @error "generateInviteCode"))))))
+(source_file
+  (class_dec "actor"
+    (obj_body
+      (dec_field
+        (func_dec
+          (_) @error
+          (#eq? @error "generateInviteCode"))))))
+"""
