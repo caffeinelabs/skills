@@ -1,11 +1,11 @@
 ---
 name: extension-user-approval
 description: Approval-based user management.
-version: 0.1.5
+version: 1.0.0
 compatibility:
   mops:
-    caffeineai-user-approval: "~0.1.1"
-    caffeineai-authorization: "~0.1.1"
+    caffeineai-user-approval: "~1.0.0"
+    caffeineai-authorization: "~1.0.0"
 caffeineai-subscription: [none]
 ---
 
@@ -16,13 +16,13 @@ User approval extension for [Caffeine AI](https://caffeine.ai?utm_source=caffein
 
 This skill adds approval-based user management. Users request access; admins approve or reject. Approved users gain access to protected features.
 
-# Backend
-
-Approval-based user management:
-
 Prerequisite: You must follow [extension-authorization](../extension-authorization/SKILL.md) first, as this integration depends on it.
 
-There is a prefabricated module `mo:caffeineai-user-approval/approval` that cannot be modified. It provides approval-based user management with role-based access control.
+# Backend
+
+## Module API
+
+The prefabricated module `mo:caffeineai-user-approval/approval` provides low-level approval state management. Do not modify it.
 
 ```mo:caffeineai-user-approval/approval
 import AccessControl "mo:caffeineai-authorization/access-control";
@@ -39,6 +39,7 @@ module {
     public func initState(accessControlState: AccessControl.AccessControlState) : UserApprovalState;
 
     public func isApproved(state : UserApprovalState, caller : Principal) : Bool;
+    public func requestApproval(state : UserApprovalState, caller : Principal);
     public func setApproval(state : UserApprovalState, user : Principal, approval : ApprovalStatus);
 
     public type UserApprovalInfo = {
@@ -50,56 +51,44 @@ module {
 }
 ```
 
-Usage (all the following functions are required to be added):
+## Setup in main.mo
+
+`include MixinUserApproval(accessControlState, approvalState)` MUST be placed in `main.mo`, not in a custom mixin file. Create `approvalState` at actor top level with `UserApproval.initState(accessControlState)` and pass it into the mixin. The mixin provides these public endpoints automatically:
+
+- `isCallerApproved()`
+- `requestApproval()`
+- `setApproval(user, status)`
+- `listApprovals()`
+
+Keep `approvalState` in scope for custom approval guards in app-specific endpoints.
+
+Do NOT redeclare any of the mixin-provided functions.
 
 ```motoko filepath=src/backend/main.mo
 import AccessControl "mo:caffeineai-authorization/access-control";
 import MixinAuthorization "mo:caffeineai-authorization/MixinAuthorization";
+import MixinUserApproval "mo:caffeineai-user-approval/MixinUserApproval";
 import UserApproval "mo:caffeineai-user-approval/approval";
-import Principal "mo:core/Principal";
 import Runtime "mo:core/Runtime";
 
 actor {
-    // Include authorization
     let accessControlState = AccessControl.initState();
-    include MixinAuthorization(accessControlState);
-
+    include MixinAuthorization(accessControlState, null);
     let approvalState = UserApproval.initState(accessControlState);
+    include MixinUserApproval(accessControlState, approvalState);
 
-    public query ({ caller }) func isCallerApproved() : async Bool {
-        AccessControl.hasPermission(accessControlState, caller, #admin) or UserApproval.isApproved(approvalState, caller);
-    };
-
-    public shared ({ caller }) func requestApproval() : async () {
-        UserApproval.requestApproval(approvalState, caller);
-    };
-
-    public shared ({ caller }) func setApproval(user : Principal, status : UserApproval.ApprovalStatus) : async () {
-        if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-            Runtime.trap("Unauthorized: Only admins can perform this action");
-        };
-        UserApproval.setApproval(approvalState, user, status);
-    };
-
-    public query ({ caller }) func listApprovals() : async [UserApproval.UserApprovalInfo] {
-        if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-            Runtime.trap("Unauthorized: Only admins can perform this action");
-        };
-        UserApproval.listApprovals(approvalState);
-    };
-
-    // In addition to access control guards, add an approval check where needed:
-    // Admins should have the permission do use all functionality
-    // * Approved users only:
-    //   if (not (UserApproval.isApproved(approvalState, caller) or AccessControl.hasPermission(accessControlState, caller, #admin))) {
-    //      Runtime.trap("Unauthorized: Only approved users can perform this action");
-    //   };
+    // Example custom endpoint with an approval guard:
+    // public shared ({ caller }) func protectedFeature() : async () {
+    //     if (not (UserApproval.isApproved(approvalState, caller) or AccessControl.hasPermission(accessControlState, caller, #admin))) {
+    //         Runtime.trap("Unauthorized: Only approved users can perform this action");
+    //     };
+    // };
 };
 ```
 
 On `initState`, existing admins are automatically approved. All other users are pending.
 
-IMPORTANT: Apply the right authorization and/or approval check to each public function.
+IMPORTANT: Apply the right authorization and/or approval check to each custom public function.
 
 # Frontend
 
