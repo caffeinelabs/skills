@@ -1,11 +1,11 @@
 ---
 name: extension-invite-links
 description: Requests invite-link / RSVP based access where guests can submit responses without login while admin can view responses with login.
-version: 0.1.5
+version: 1.0.0
 compatibility:
   mops:
-    caffeineai-invite-links: "~0.1.1"
-    caffeineai-authorization: "~0.1.1"
+    caffeineai-invite-links: "~1.0.0"
+    caffeineai-authorization: "~1.0.0"
 caffeineai-subscription: [none]
 ---
 
@@ -16,13 +16,13 @@ Invite links & RSVP extension for [Caffeine AI](https://caffeine.ai?utm_source=c
 
 This skill adds invite-link generation and RSVP collection. Admins generate unique invite codes; guests use them to submit responses without authentication.
 
-# Backend
-
-Invite links and RSVP system functionality:
-
 Prerequisite: You must follow [extension-authorization](../extension-authorization/SKILL.md) first, as this integration depends on it.
 
-There is a prefabricated module `mo:caffeineai-invite-links/invite-links-module.mo` that cannot be modified. It provides invite links with RSVP management.
+# Backend
+
+## Module API
+
+The prefabricated module `mo:caffeineai-invite-links/invite-links-module.mo` provides low-level invite-link and RSVP state management. Do not modify it.
 
 ```mo:caffeineai-invite-links/invite-links-module
 module {
@@ -44,79 +44,41 @@ module {
         var inviteCodes : Map.Map<Text, InviteCode>;
     };
 
-    // State management
     public func initState() : InviteLinksSystemState;
-
-    // UUID generation
     public func generateUUID(blob: Blob) : Text;
-
-    // Invite code management
     public func generateInviteCode(state: InviteLinksSystemState, code: Text);
     public func getInviteCodes(state: InviteLinksSystemState) : [InviteCode];
-
-    // RSVP management
     public func submitRSVP(state: InviteLinksSystemState, name: Text, attending: Bool, inviteCode: Text);
     public func getAllRSVPs(state: InviteLinksSystemState) : [RSVP];
 }
 ```
 
-Usage (all the following functions are required to be added):
+## Setup in main.mo
+
+`include MixinInviteLinks(accessControlState, inviteState)` MUST be placed in `main.mo`, not in a custom mixin file. The mixin provides these public endpoints automatically:
+
+- `generateInviteCode()`
+- `submitRSVP(name, attending, inviteCode)`
+- `getAllRSVPs()`
+- `getInviteCodes()`
+
+Do NOT redeclare any of these functions. They are provided exclusively by `MixinInviteLinks`.
 
 ```motoko filepath=src/backend/main.mo
 import AccessControl "mo:caffeineai-authorization/access-control";
 import MixinAuthorization "mo:caffeineai-authorization/MixinAuthorization";
+import MixinInviteLinks "mo:caffeineai-invite-links/MixinInviteLinks";
 import InviteLinksModule "mo:caffeineai-invite-links/invite-links-module";
-import Text "mo:core/Text";
-import Random "mo:core/Random";
-import Runtime "mo:core/Runtime";
 
 actor {
-    // Include authorization component
     let accessControlState = AccessControl.initState();
-    include MixinAuthorization(accessControlState);
-
-    // Initialize the invite links system state
+    include MixinAuthorization(accessControlState, null);
     let inviteState = InviteLinksModule.initState();
-
-    // Generate invite code (admin only)
-    public shared ({ caller }) func generateInviteCode() : async Text {
-        if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-            Runtime.trap("Unauthorized: Only admins can generate invite codes");
-        };
-        let blob = await Random.blob();
-        let code = InviteLinksModule.generateUUID(blob);
-        InviteLinksModule.generateInviteCode(inviteState, code);
-        code;
-    };
-
-    // Submit RSVP (public, but requires valid invite code)
-    public shared func submitRSVP(name: Text, attending: Bool, inviteCode: Text) : async () {
-        InviteLinksModule.submitRSVP(inviteState, name, attending, inviteCode);
-    };
-
-    // Get all RSVPs (admin only)
-    public query ({ caller }) func getAllRSVPs() : async [InviteLinksModule.RSVP] {
-        if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-            Runtime.trap("Unauthorized: Only admins can view RSVPs");
-        };
-        InviteLinksModule.getAllRSVPs(inviteState);
-    };
-
-    // Get all invite codes (admin only)
-    public query ({ caller }) func getInviteCodes() : async [InviteLinksModule.InviteCode] {
-        if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-            Runtime.trap("Unauthorized: Only admins can view invite codes");
-        };
-        InviteLinksModule.getInviteCodes(inviteState);
-    };
+    include MixinInviteLinks(accessControlState, inviteState);
 
     // Write additional application-specific code here.
-    // Authorization is handled using the AccessControl component.
-    // Use admin-only checks as shown above for protected functions.
 };
 ```
-
-IMPORTANT: Apply the right authorization to each public function using the AccessControl component.
 
 # Frontend
 
