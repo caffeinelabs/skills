@@ -3,7 +3,7 @@ name: writing-motoko
 description: >-
   Motoko language reference, architecture patterns, and dependency tooling
   (mops). Load when writing or modifying backend .mo files.
-version: 0.1.6
+version: 0.1.7
 compatibility:
   toolchain:
     moc: ">=1.11.2"
@@ -68,6 +68,21 @@ All configuration is in `mops.toml`. Only consult https://docs.mops.one/ if you 
 - **`mops build`** (slow — run ONCE at the end) — Produces the compiled `.wasm` and the candid interface file `.did`. Use only as final verification after `mops check --fix` passes; never put `mops build` inside the fix loop. The `.did` file drives generated client bindings — never edit it manually.
 
 If `mops check --fix` fails: read stderr first. Do NOT call `moc` directly. Fix `.mo` source and rerun the check.
+
+### Build feedback
+
+When building through Caffeine, enable complete subprocess output with `CAFFEINE_VERBOSE=1 caffeine build`; successful subprocess warnings are otherwise hidden. Hosted Caffeine sandboxes set this environment variable globally.
+
+- **`MOPS-WASM-COMPLEXITY`**: Focus on the canister, function, severity, limit usage, primary contributors, result, and suggested correction. Refactor the implicated function according to its largest contributors. This check is advisory; PocketIC is authoritative.
+- **`MOPS-CHECK-DEPLOY-SKIPPED`**: Focus on the canister and compatibility diagnostic. The canister was not tested, so NEVER treat this as deployment success.
+- **PocketIC failure**: Focus on the canister, descriptive message, semantic error code, measured values, and suggested correction.
+  - For `CanisterInvalidWasm`, use the descriptive message to identify the exact validation failure.
+  - For `CanisterWasmMemoryLimitExceeded`, compare peak usage with the configured limit and reduce or relocate the implicated allocations.
+  - For traps or Candid failures, inspect the trap details or generated constructor interface.
+
+**RULE:** For unfamiliar deployment failures, follow the documentation URL in the diagnostic before changing code. Do not guess when the descriptive message is unclear.
+
+Caffeine may repeat failed subprocess output. Deduplicate diagnostics, fix each distinct issue, and rerun the relevant check.
 
 ## Modern Motoko Features
 
