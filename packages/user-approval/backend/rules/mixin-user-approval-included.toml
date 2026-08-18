@@ -1,0 +1,16 @@
+name = "include-user-approval"
+description = "Include the user approval mixin with `include MixinUserApproval(accessControlState, approvalState);`"
+query = """
+(source_file (obj_dec "actor" (obj_body))) @error
+(source_file (class_dec "actor" (obj_body))) @error
+(source_file
+  (obj_dec "actor"
+   (obj_body
+    (dec_field (include_dec (identifier) @mixin))))
+   (#eq? @mixin "MixinUserApproval")) @filter
+(source_file
+  (class_dec "actor"
+   (obj_body
+    (dec_field (include_dec (identifier) @mixin))))
+   (#eq? @mixin "MixinUserApproval")) @filter
+"""
