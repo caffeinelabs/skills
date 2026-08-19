@@ -3,10 +3,11 @@ name: writing-motoko
 description: >-
   Motoko language reference, architecture patterns, and dependency tooling
   (mops). Load when writing or modifying backend .mo files.
-version: 0.1.7
+version: 0.1.8
 compatibility:
   toolchain:
     moc: ">=1.11.2"
+    mops: "3.x"
   mops:
     core: ">=2.5.0"
 caffeineai-subscription: [none]
@@ -59,11 +60,11 @@ All configuration is in `mops.toml`. Only consult https://docs.mops.one/ if you 
 - `mops update [pkg]` updates a package and rewrites its exact pin.
 - `mops sync` reconciles imports after bulk `.mo` changes by adding missing dependencies and removing unused ones.
 - `mops.lock` is rewritten only by `mops add`, `mops update`, `mops sync`, `mops install`, and related supported mops commands.
-- On `Integrity check failed` or `Mismatched number of resolved packages`, run `mops install --lock update`. Never use `--lock ignore`, and never `chmod`, remove, or text-edit `mops.lock`.
+- On a lock or integrity failure, run `mops install` — it regenerates a `mops.lock` that is missing, stale, or inconsistent with `mops.toml`. `mops verify` reports a file-hash mismatch it cannot repair; `mops cache clean` forces a verified re-download. Never `chmod`, remove, or text-edit `mops.lock`.
 
 ### Check and build
 
-- **`mops install --lock update`** — Install dependencies and reconcile `mops.lock`. The explicit `--lock update` matters when `CI` is set, where the implicit action checks a stale lock instead of updating it.
+- **`mops install`** — Install dependencies and reconcile `mops.lock`, regenerating it when it is missing or no longer matches `mops.toml`.
 - **`mops check --fix`** (fast — use for iteration) — Reports compile errors and auto-fixes the style warnings, where the project has them enabled (dot-notation, redundant type instantiation, redundant implicit arguments). Follow this skill's rules whether or not `--fix` enforces them. Exit 0 = success. Error format: `file:startLine.startCol-endLine.endCol: severity [code], message`. Iterate on this until it passes.
 - **`mops build`** (slow — run ONCE at the end) — Produces the compiled `.wasm` and the candid interface file `.did`. Use only as final verification after `mops check --fix` passes; never put `mops build` inside the fix loop. The `.did` file drives generated client bindings — never edit it manually.
 
