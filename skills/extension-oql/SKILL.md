@@ -1,10 +1,10 @@
 ---
 name: extension-oql
 description: Make a canister's data queryable by the Caffeine Data Intelligence agent. Use whenever an app stores structured data (Maps/Lists/arrays of records) that should be answerable in natural language — "top customers", "revenue by region", "active projects". Adds a discoverable `schema()` and a JSON `execute()` query endpoint via the `caffeineai-oql` mops package's `Expose` mixin.
-version: 0.4.0
+version: 0.5.0
 compatibility:
   mops:
-    caffeineai-oql: "~0.4.0"
+    caffeineai-oql: "~0.5.0"
 caffeineai-subscription: [none]
 ---
 
@@ -22,9 +22,42 @@ your entities first, then pick a level per entity — see `## Auth`.
 
 ## Setup
 
-Run `mops add caffeineai-oql@0.4.0` in the **same write batch** as your first
+Run `mops add caffeineai-oql@0.5.0` in the **same write batch** as your first
 `mo:caffeineai-oql/...` import. Auto-derivation requires `moc >= 1.11` (the
 generated-app template already satisfies this).
+
+### Build flags
+
+`--default-persistent-actors` and `--implicit-package=core` are mandatory —
+without them the library does not compile. If the app uses `OQL.Table` and needs
+more than 4 GiB of `Region`, add `--max-stable-pages 1638400` as well; a
+dependency's own flags are not applied to the project that depends on it, so it
+has to be set in the app's own build.
+
+### Imports — one per resolver module
+
+`.toEntity`, the builder chain (`.sample` / `.build` / `.public_` / …), and record
+`_toRow` derivation are resolved from modules **imported top-level in the file
+that declares entities** — the resolver does not walk submodules, so importing
+only `mo:caffeineai-oql` is not enough. Import exactly the resolver modules your
+code uses:
+
+- `mo:caffeineai-oql/Entity` — always (the `.sample` / `.build` / `.edge` /
+  `.ownedBy` / auth-level builder chain, and `.payload` / `.flatten` in manual mode).
+- the collection module for each `.toEntity` / `.toEntityManual` receiver —
+  `MapEntity`, `SetEntity`, `ListEntity`, `ArrayEntity`, or `VarArrayEntity`.
+- for each **auto-derived** (`.toEntity`) record: `RecordValue`, plus one
+  `<Type>Value` per primitive field type present — `NatValue`, `TextValue`,
+  `PrincipalValue`, `BoolValue`, `IntValue`, `FloatValue`, the sized `Nat`/`Int`
+  widths, `BlobValue`. Manual `.payload` return types need their `<Type>Value`
+  too; manual-only entities need no `RecordValue`.
+
+When a collection module is missing the compiler names it — *"field toEntity does
+not exist … Did you mean to import mo:caffeineai-oql/MapEntity?"* — add the named
+import. A missing `Entity` import gets no such hint: it surfaces as a bare
+*"field payload does not exist in type Builder<…>"* (M0072). Treat any
+`field <builderMethod> does not exist` error as a missing top-level import from
+this list, never as a wrong package version.
 
 ## Declare entities and install
 
@@ -40,18 +73,26 @@ import Nat       "mo:core/Nat";
 import Principal "mo:core/Principal";
 import OQL       "mo:caffeineai-oql";
 import Expose    "mo:caffeineai-oql/Expose";
+// Resolver modules, imported top-level (see "Imports" above). This app derives
+// Map entities over records of Nat / Text / Principal fields:
+import MapEntity      "mo:caffeineai-oql/MapEntity";
+import Entity         "mo:caffeineai-oql/Entity";
+import RecordValue    "mo:caffeineai-oql/RecordValue";
+import NatValue       "mo:caffeineai-oql/NatValue";
+import TextValue      "mo:caffeineai-oql/TextValue";
+import PrincipalValue "mo:caffeineai-oql/PrincipalValue";
 
 actor {
   type Product  = { id : Nat; name : Text; priceUsd : Nat };
   type Vendor   = { id : Nat; name : Text };
   type AuditLog = { id : Nat; action : Text; atNs : Nat };
   type Note     = { id : Nat; user : Principal; body : Text };
-  type Document = { id : Nat; owner : Principal; title : Text };
+  type Document = { id : Nat; owner : Principal; title : Text; ciphertext : Text };
   type User     = { id : Principal; isAdmin : Bool };
 
   let products  = Map.empty<Nat, Product>();
   let vendors   = Map.empty<Nat, Vendor>();
-  let supplies  = Map.empty<Product, Vendor>();    
+  let supplies  = Map.empty<Product, Vendor>();
   let auditLogs = Map.empty<Nat, AuditLog>();
   let notes     = Map.empty<Nat, Note>();
   let documents = Map.empty<Nat, Document>();
@@ -103,8 +144,10 @@ actor {
         .scopedPerUser()
         .build(),
       // #controllerOrScoped — controller reads all; scoped reads use canSeeDocument.
+      // `.hidden` — opaque column absent from schema + default projection
       documents.toEntity("document", "Document", "id")
-        .sample({ id = 0; owner = anyP; title = "" })
+        .sample({ id = 0; owner = anyP; title = ""; ciphertext = "" })
+        .hidden("ciphertext")
         .ownedByWith("owner", canSeeDocument)
         .controllerOrScoped()
         .build(),
@@ -183,6 +226,27 @@ docs.toEntity("doc", "Doc", "id")
   .build()
 ```
 
+Where ownership decides **which** rows a scoped caller sees, `.viewWith(view)`
+decides what **shape** it sees them in — a per-subject redaction that runs only
+on rows the ownership check already admitted:
+
+```mo
+// Everyone sees their own bookings; exact amounts only on their own rows is
+// not needed here — but coarsen the contact field for non-owners of a shared
+// calendar, say:
+bookings.toEntity("booking", "Booking", "id")
+  .ownedByWith("calendarId", canSeeCalendar)
+  .viewWith(func (subject, b) = if (isOwner(subject, b)) b else { b with contact = "" })
+  .scopedPerUser()
+  .build()
+```
+
+`view : (subject : Principal, row : T) -> T` reshapes the typed row; the whole
+query pipeline (filters included) evaluates the VIEWED row, so a predicate can
+never probe a value the view hides. Views run for scoped subjects only —
+pairing `.viewWith` with `.public_()` traps at `.build()` (unrestricted reads
+always see raw rows).
+
 `.ownedBy(f)` is exactly `.ownedByWith(f, OQL.Entity.ownerIsCaller)`. At most one
 owner column; it must be a real field, not also `.edge` / `.hidden`. For
 owner-keyed storage (`Map<Principal, List<T>>`) use
@@ -205,7 +269,7 @@ customers.toEntity(name, typeName, primaryKey)
   .edge(field, targetEntity)     // tag an existing field as a foreign key
   .ownedBy(field)                // (or .ownedByWith(field, canSee)) per-user scoping
   .scopedPerUser()               // auth level: .public_ / .controllerOnly (default) / .scopedPerUser / .controllerOrScoped
-  .hidden(field)                 // drop a field from schema + default projection
+  .hidden(field)                 // opaque/sensitive — drop from schema + default projection
   .build()
 ```
 
@@ -220,8 +284,16 @@ customers.toEntity(name, typeName, primaryKey)
   enabling dotted-path traversal `"name.targetField"` in queries. FK/PK types
   must be `Text`, `Nat`/`Int`, or `Bool` (`Float` keys are rejected), and the
   target's primary key must not be `.hidden`.
+- **The edge target must be an entity registered in THIS canister's `Expose`.**
+  An edge to an absent entity (a typo, or an FK into another canister) silently
+  drops the whole field from `schema()` — the column still stores and filters,
+  but no schema-driven client can discover it. A cross-canister FK belongs as a
+  plain payload field, not an `.edge`.
 - `.sample(template)` seeds schema discovery; without it an empty collection
   yields an empty schema. Only the shape matters, not the values.
+- `.hidden(name)` drops a derivable field from schema + default projection; it
+  does **not** skip `_toRow` — unsupported field types still need manual mode or
+  a `<Type>Value`.
 
 Schema fields are listed in **lexicographic order** (the `__record` combiner's
 canonical form); sort client-side if display order matters.
@@ -232,21 +304,39 @@ For non-record `T`, computed fields, or records with nested / variant / option /
 collection fields:
 
 ```mo
+// REQUIRED, top-level in this file — `.payload` / `.flatten` are Entity
+// functions reached by receiver notation, not fields of the builder:
+import Entity "mo:caffeineai-oql/Entity";
+
 authors.toEntityManual<Author>("author", "Author", "id")
   .payload("name", func a = a.name)        // one field; extract returns a _toRow value
   .flatten(func a = a.address)             // splice a nested record's fields as columns
   .payload("tagCount", func a = a.tags.size())
-  // .edge / .hidden work as in auto mode, by field name
+  // .edge tags a declared column; .hidden drops one you already added via
+  // `.payload` / `.flatten` — omit fields by not adding them
   .build()
 ```
 
-- `.payload(name, extract)` — `name` must not contain `.`. For options/variants,
-  return `Text`/`Nat` with a sentinel (see below).
+**`field payload does not exist in type Builder<…>` (M0072) means the `Entity`
+import above is missing — it is never a package-version problem.** `.payload`
+and `.flatten` have been `Entity` functions since 0.1.0; `mops add`-ing a
+different `caffeineai-oql` version will not fix this error. Importing only
+`mo:caffeineai-oql` is not enough, and neither is reaching the module through
+the `OQL.Entity.…` re-export: receiver notation resolves against **top-level
+imports** only, so a file that calls `OQL.Entity.manual(...).payload(...)`
+still needs its own `import Entity "mo:caffeineai-oql/Entity";`. Unlike
+`.toEntity`, this failure carries no "Did you mean to import …?" hint.
+
+- `.payload(name, extract)` — `name` must not contain `.`. Prefer
+  `func r = r.field` (let Motoko infer; avoid redundant annotations). For
+  options/variants, return `Text`/`Nat` with a sentinel (see below).
 - `.flatten(extract : T -> S)` — `S` must be flat; each of its fields becomes a
   top-level column. Drop unwanted ones with `.hidden`. Name collisions get
   `__1`, `__2` suffixes (nothing is dropped).
 - `OQL.Entity.manual<T>(name, iter, typeName, primaryKey)` for arbitrary row
-  sources (custom flatteners, filtered iterators).
+  sources (custom flatteners, filtered iterators). The qualified call resolves
+  through the `OQL` import, but any `.payload` / `.flatten` chained onto its
+  result still needs the top-level `Entity` import.
 
 `OQL.Value` is `{ #null_; #bool; #nat; #int; #float; #text }`. Numeric variants
 compare across each other, so a JSON integer threshold matches a `Float` value.
@@ -262,8 +352,9 @@ compare across each other, so a JSON integer threshold matches a `Float` value.
 
 To keep a record on the auto-derive path, give each non-primitive field type a
 `_toRow : T -> OQL.Value`: one file per type named `<TypeName>Value.mo`, a single
-`public func _toRow`, imported **top-level** in the file that declares entities
-(the resolver does not walk submodules). Parent records then ride `.toEntity(...)`
+`public func _toRow`, imported **top-level** in the file that declares entities —
+the same top-level rule as the built-in value modules (see `## Setup` → Imports);
+the resolver does not walk submodules. Parent records then ride `.toEntity(...)`
 with no per-field `.payload`.
 
 ```mo
@@ -307,16 +398,181 @@ OQL.Entity.manual<(Article, Text)>("articleTag", func () = flattenTags(articles)
   .build()
 ```
 
+## Larger data — `OQL.Table`
+
+For a table expected to grow large (tens of thousands of rows and up — events,
+transactions, logs, imported datasets), store it in an `OQL.Table`. It scales
+far past what heap collections hold; rows are keyed by their append position.
+
+Declaring one is three decisions — **columns, indexes, row function**:
+
+```motoko filepath=src/backend/tables_demo.mo
+import OQL    "mo:caffeineai-oql";
+import Expose "mo:caffeineai-oql/Expose";
+import Entity "mo:caffeineai-oql/Entity";   // the builder chain — always import
+import Table  "mo:caffeineai-oql/Table";
+
+actor {
+  type Event = { kind : Nat; amount : Nat; note : Text };
+
+  // 1. Columns: (name, type) pairs. Order matters and the set is FIXED for the
+  //    table's life. Types: #nat / #int / #float / #bool (64-bit cells) + #text.
+  // 2. Indexes: the columns queries will filter or order by —
+  //    #hash for equality, #ordered for ranges / orderBy.
+  let events = Table.new(
+    [("kind", #nat), ("amount", #nat), ("note", #text)],   // columns
+    [("kind", #hash), ("amount", #ordered)],               // indexes
+  );
+
+  // 3. Row function: your record → one (name, Value) per column, names matching.
+  func eventRow(e : Event) : [(Text, OQL.Value)] =
+    [("kind", #nat(e.kind)), ("amount", #nat(e.amount)), ("note", #text(e.note))];
+
+  // Writes: the returned position is the row's primary key.
+  // A modify is delete + append.
+  public func addEvent(e : Event) : async Nat {
+    Table.append(events, e, eventRow);
+  };
+
+  // REQUIRED: register the table's entity in the Expose mixin — schema() and
+  // execute() only see what Expose registers; a Table that is not in this list
+  // exists but is invisible to every query. Same list, same auth levels, and
+  // FK edges to other entities, as for any entity. `entity` defaults the type
+  // name to the entity name and the primary key to "id";
+  // `entityWith(events, "event", "Event", "id")` overrides either.
+  include Expose({
+    entities = [
+      Table.entity(events, "event").public_().build(),
+      // ... the app's other entities ...
+    ];
+  });
+};
+```
+
+Rules that matter:
+
+- **The schema is fixed once data is flushed** — no adding, dropping, or
+  retyping columns; a different shape means a new table.
+- **A value's kind must equal its column's type** — a mismatch traps loudly at
+  `append` rather than storing corrupt cells; numeric cells are 64-bit.
+- **A table that will be bulk-loaded is declared with NO indexes** — index
+  after the load (next section).
+- **A `Table` is queryable only through its entity in `Expose`** — declaring
+  the table alone stores data but exposes nothing; `schema()` / `execute()`
+  see exactly the `entities` list.
+
+Beyond what the index serves, a `Table` answers whole-column **`sum` / `avg`
+straight from segment stats** — flat in table size — and reads only the columns
+a query touches.
+
+## Bulk upload (`ImportData`) — load existing data into a `Table`
+
+When the user's data already exists (a CSV export from a spreadsheet or the
+system the app replaces), don't trickle it through `append` — include the
+`ImportData` mixin and load it as pre-built **segment images**: the loader lays
+rows out off-chain in exactly a flushed segment's byte layout and the canister
+validates and copies the bytes, so one message costs O(columns) instead of
+O(rows), and the heap stays flat throughout.
+
+```motoko filepath=src/backend/bulk_load_demo.mo
+import Expose     "mo:caffeineai-oql/Expose";
+import Entity     "mo:caffeineai-oql/Entity";   // the builder chain — always import
+import Table      "mo:caffeineai-oql/Table";
+import ImportData "mo:caffeineai-oql/ImportData";
+
+actor {
+  // Declare the table INDEX-FREE for the load — loadSegment traps on a table
+  // that declares an index (a ready index missing the loaded rows would
+  // silently under-fetch). The index is built after the load, in the background.
+  let events = Table.new([("kind", #nat), ("amount", #nat), ("note", #text)], []);
+
+  include Expose({
+    entities = [
+      Table.entity(events, "event").public_().build(),
+      // ... the app's other entities ...
+    ];
+  });
+  include ImportData([ events.importTarget("event") ]);
+};
+```
+
+The mixin adds **controller-only** endpoints (`layout`, `rows`, `putSegment`,
+`importFlush`, `buildIndex`, `indexStatus`) — the image's stats are trusted
+answers, so the load surface belongs to the principal that could install code
+anyway.
+
+**Running the loader.** The tool ships with this skill in `scripts/` — plain
+Node (≥ 20) with **no dependencies to install**; every call goes through
+`icp canister call`, so icp-cli must be set up:
+
+```bash
+node <this skill's directory>/scripts/ingest.mjs \
+  --canister <canister-id> --target event --file events.csv \
+  -e ic --index kind:hash
+```
+
+- `--target` is the `importTarget` name declared in the canister; the canister's
+  `layout()` is the schema authority — the CSV header is matched to the columns
+  **by name**, so file column order never matters (extra CSV columns are
+  ignored; a declared column missing from the file is an error).
+- Connection flags pass through to icp-cli, the same way every other canister
+  call works: `-e <environment>` (`-e ic` for the deployed app), `-n <network>`,
+  `--identity <name>` (default: your current one). The endpoints are
+  controller-only, so the identity must be a **controller** of the canister.
+  With none of them, your icp defaults apply — a canister NAME then resolves
+  against the project's default environment, so run the tool from the app's
+  project directory.
+- `--index col:kind` (repeatable, `kind` = `hash`) builds and uploads that
+  column's index off-chain after the rows. For anything it can't build
+  (`#ordered`, composites), build on-chain instead through the mixin's
+  endpoint: `icp canister call <id> buildIndex '("event", vec {"kind"},
+  variant {hash})'` — queries scan (correctly, just slower) until the build
+  completes, then the index serves; `indexStatus '("event")'` reports progress.
+- Verify a load the same way clients will read it:
+  `icp canister call <id> execute '("{\"start\":\"event\",\"aggregate\":[{\"fn\":\"count\"}]}")' --query`
+  must return the CSV's row count.
+- CSV cells decode by declared type. An unquoted empty field is a **null**
+  cell; a quoted `""` in a `#text` column is the empty string; a `#bytes(w)`
+  column's field is **base64** and must decode to exactly `w` bytes.
+- **Re-running the same command resumes**: rows the table already holds are
+  skipped, and `putSegment`'s expect-first-row guard turns any double-send into
+  a loud trap instead of duplicated rows.
+
+**Operating rules** (violations refuse loudly rather than corrupt):
+
+1. **Finish the first load completely — data and indexes — before the app
+   starts writing.** If writes land mid-load, a re-run cannot finish the index;
+   rebuild it in-canister with `buildIndex` (slower, always works).
+2. **After that, load and write in turns.** Between loads the app writes
+   freely; the next run of the same command picks up the growth as a delta
+   load, nothing to prepare.
+3. **Never both at once** — the canister refuses, it does not mis-answer.
+4. **Queries keep working throughout**, including mid-load; a column whose
+   index is still uploading scans until it finishes.
+
 ## Checklist
 
-- [ ] `mops add caffeineai-oql@0.4.0` in the same batch as the first import
+- [ ] `mops add caffeineai-oql@0.5.0` in the same batch as the first import
+- [ ] Resolver modules imported top-level (see `## Setup` → Imports): `Entity`
+      (**always** — every builder method including `.payload` / `.flatten`
+      resolves through it), the collection module(s) (`MapEntity` / …), and
+      `RecordValue` + a `<Type>Value` per primitive field type of each
+      auto-derived record
 - [ ] Each entity: row iterator exists; `.toEntity` (all-primitive) or
       `.toEntityManual` / `OQL.Entity.manual` otherwise
 - [ ] `<Type>Value.mo` for every non-primitive field reused across entities,
       imported top-level
 - [ ] `.sample(template)` whenever the collection may be empty at build time
-- [ ] FK fields `.edge(name, target)`; filter-only fields `.hidden(name)`
+- [ ] FK fields `.edge(name, target)`; opaque/sensitive auto-derived fields
+      `.hidden(name)` (manual: omit via no `.payload`, or `.hidden` only columns
+      you did add)
 - [ ] Every sentinel conversion returns ONE `Value` variant
 - [ ] Per-user entities use `.ownedBy` / `.ownedByWith` **and** a scoped level
       (`.scopedPerUser()` / `.controllerOrScoped()`) — never bare
       `.controllerOnly()`
+- [ ] Large, append-mostly table → `OQL.Table`; keep the handle in a persistent
+      field and thread it through migrations
+- [ ] Existing dataset to import → declare the `Table` **index-free**, add
+      `ImportData([t.importTarget(name)])`, load with `scripts/ingest.mjs`,
+      index after the load (`--index` or `buildIndex`) — data and indexes done
+      **before** the app starts writing

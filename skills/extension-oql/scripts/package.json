@@ -1,0 +1,14 @@
+{
+	"name": "oql-ingest",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"description": "Ingest a CSV into a columnar OQL table through the ImportData mixin, as pre-built segment images.",
+	"bin": {
+		"oql-ingest": "./ingest.mjs"
+	},
+	"dependencies": {},
+	"scripts": {
+		"test": "node test-index-upload.mjs"
+	}
+}
