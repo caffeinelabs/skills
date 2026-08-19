@@ -19,6 +19,13 @@
 import {test} "mo:test";
 import Principal "mo:core/Principal";
 import OQL      "../src";
+// moc 1.11.2: implicits & contextual-dot calls no longer resolve through re-exports — import leaves directly.
+import _Entity "../src/Entity";
+import _BoolValue "../src/BoolValue";
+import _NatValue "../src/NatValue";
+import _PrincipalValue "../src/PrincipalValue";
+import _TextValue "../src/TextValue";
+import _RecordValue "../src/RecordValue";
 import Executor "../src/Executor";
 import Query    "../src/Query";
 import Registry "../src/Registry";

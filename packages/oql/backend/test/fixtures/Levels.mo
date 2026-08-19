@@ -10,6 +10,14 @@ import Principal "mo:core/Principal";
 import Text      "mo:core/Text";
 import OQL       "../../src";
 import Expose    "../../src/Expose";
+// moc 1.11.2: implicits & contextual-dot calls no longer resolve through re-exports — import leaves directly.
+import _Entity "../../src/Entity";
+import _MapEntity "../../src/MapEntity";
+import _BoolValue "../../src/BoolValue";
+import _NatValue "../../src/NatValue";
+import _PrincipalValue "../../src/PrincipalValue";
+import _TextValue "../../src/TextValue";
+import _RecordValue "../../src/RecordValue";
 
 actor class Levels() = self {
 

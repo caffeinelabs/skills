@@ -56,10 +56,10 @@ module {
   /// arrays. Text is quoted and escaped; numbers/bools/null are bare.
   func valueToJson(v : Types.Value) : Text = switch v {
     case (#null_)   { "null" };
-    case (#bool b)  { Bool.toText(b) };
-    case (#nat n)   { Nat.toText(n) };
-    case (#int i)   { Int.toText(i) };
-    case (#float f) { Float.toText(f) };
+    case (#bool b)  { b.toText() };
+    case (#nat n)   { n.toText() };
+    case (#int i)   { i.toText() };
+    case (#float f) { f.toText() };
     case (#text t)  { "\"" # escape(t) # "\"" };
   };
 

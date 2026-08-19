@@ -218,14 +218,10 @@ module {
     let path = switch (pathField(entries, "missing 'field'")) {
       case (#ok p) { p }; case (#err e) { return #err(e) };
     };
-    let value = switch (field(entries, "value")) {
-      case null     { return #err("missing 'value'") };
-      case (?node)  {
-        switch (parseValue(node)) {
-          case (#err e) { return #err(e) };
-          case (#ok v)  { v };
-        };
-      };
+    let ?node = field(entries, "value") else return #err("missing 'value'");
+    let value = switch (parseValue(node)) {
+      case (#err e) { return #err(e) };
+      case (#ok v)  { v };
     };
     #ok(build(path, value));
   };

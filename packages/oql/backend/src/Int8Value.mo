@@ -5,5 +5,5 @@ import Int8  "mo:core/Int8";
 import Types "Types";
 
 module {
-  public func _toRow(self : Int8) : Types.Value = #int (Int8.toInt(self));
+  public func _toRow(self : Int8) : Types.Value = #int (self.toInt());
 };

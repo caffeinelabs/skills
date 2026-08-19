@@ -32,6 +32,17 @@ import Set      "mo:core/Set";
 import Text     "mo:core/Text";
 import VarArray "mo:core/VarArray";
 import OQL      "../../src";
+// moc 1.11.2: implicits & contextual-dot calls no longer resolve through re-exports — import leaves directly.
+import _Entity "../../src/Entity";
+import _ArrayEntity "../../src/ArrayEntity";
+import _ListEntity "../../src/ListEntity";
+import _SetEntity "../../src/SetEntity";
+import _VarArrayEntity "../../src/VarArrayEntity";
+import _BoolValue "../../src/BoolValue";
+import _IntValue "../../src/IntValue";
+import _NatValue "../../src/NatValue";
+import _TextValue "../../src/TextValue";
+import _RecordValue "../../src/RecordValue";
 import Expose   "../../src/Expose";
 
 actor class Library() = self {

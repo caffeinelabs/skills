@@ -15,6 +15,17 @@
 import {test}    "mo:test";
 import Principal "mo:core/Principal";
 import OQL      "../src";
+// moc 1.11.2: implicits & contextual-dot calls no longer resolve through re-exports — import leaves directly.
+import _Entity "../src/Entity";
+import _BoolValue "../src/BoolValue";
+import _NatValue "../src/NatValue";
+import _PrincipalValue "../src/PrincipalValue";
+import _TextValue "../src/TextValue";
+import _RecordValue "../src/RecordValue";
+import Iter "mo:core/Iter";
+import Runtime "mo:core/Runtime";
+import Predicate "../src/Predicate";
+import SecondaryIndex "../src/SecondaryIndex";
 import Executor "../src/Executor";
 import Query    "../src/Query";
 import Registry "../src/Registry";
@@ -202,4 +213,74 @@ test("a custom-scheme owner column is still tagged role #owner", func () {
     };
   };
   assert checked;
+});
+
+// ── newScoped: already O(subject rows); no served path may reach a scoped read ──
+// The source itself is subject-keyed, so a scoped read iterates ONE bucket and
+// applies no owner filter. These pins hold the executor to that: (1) the
+// behavioral contract, (2) the subject-null gates — a hand-attached Served
+// whose every accessor traps must never be consulted by a scoped read, even
+// though it advertises an index for every column.
+
+
+type Task = { id : Nat; title : Text };
+
+func bucketOf(p : ?Principal) : [Task] = switch p {
+  case (?q) {
+    if (q == pA) [{ id = 1; title = "a1" }, { id = 2; title = "a2" }]
+    else if (q == pB) [{ id = 3; title = "b1" }]
+    else [];
+  };
+  // null = unrestricted: every bucket (schema seeding + controller reads)
+  case null [{ id = 1; title = "a1" }, { id = 2; title = "a2" }, { id = 3; title = "b1" }];
+};
+
+func hostileServed() : _Entity.Served = {
+  kindOf = func (_ : Text) : ?SecondaryIndex.Kind = ?#ordered;   // advertises every column
+  point  = func (_ : Text, _ : OQL.Value) : Iter.Iter<Predicate.Row> = Runtime.trap("hostile Served consulted: point");
+  points = func (_ : Text, _ : [OQL.Value]) : Iter.Iter<Predicate.Row> = Runtime.trap("hostile Served consulted: points");
+  range  = func (_ : Text, _ : ?OQL.Value, _ : ?OQL.Value, _ : _Entity.Dir) : Iter.Iter<Predicate.Row> = Runtime.trap("hostile Served consulted: range");
+  composites = null;
+  stats  = null;
+  prune  = ?(func (_ : ?OQL.Predicate) : Iter.Iter<Predicate.Row> = Runtime.trap("hostile Served consulted: prune"));
+};
+
+// Hostile Served attached: an UNRESTRICTED read may legitimately consult it
+// (and would trap), so unrestricted assertions use the clean registry below.
+func sreg() : Registry.Registry = Registry.build([
+  OQL.Entity.newScoped<Task>("task", func (p : ?Principal) = bucketOf(p).values(), "Task", "id")
+    .scopedPerUser()
+    .withServed(func (_ : Task -> Predicate.Row) : _Entity.Served = hostileServed())
+    .build(),
+]);
+func cleanSreg() : Registry.Registry = Registry.build([
+  OQL.Entity.newScoped<Task>("task", func (p : ?Principal) = bucketOf(p).values(), "Task", "id")
+    .scopedPerUser()
+    .build(),
+]);
+
+test("newScoped: each scoped caller sees exactly its own bucket", func () {
+  let ra = Executor.runWith(sreg(), q("task", null), scoped(pA));
+  assert ra.rows.size() == 2;
+  let rb = Executor.runWith(sreg(), q("task", null), scoped(pB));
+  assert rb.rows.size() == 1;
+  assert cell(rb.rows[0], "id") == ?(#nat 3);
+  assert Executor.runWith(cleanSreg(), q("task", null), unrestricted).rows.size() == 3;
+});
+
+test("newScoped: a scoped read never consults a Served — sargable predicate included", func () {
+  // #eq on an "indexed" column would seek the hostile Served and trap if the
+  // subject-null gates ever loosened for subject-honouring sources.
+  let qq : Query.Query = {
+    start = "task"; where_ = ?(#eq(["id"], #nat(3))); groupBy = []; aggregate = [];
+    orderBy = []; offset = null; limit = null; select = null;
+  };
+  assert Executor.runWith(sreg(), qq, scoped(pA)).rows.size() == 0;   // not A's row
+  assert Executor.runWith(sreg(), qq, scoped(pB)).rows.size() == 1;   // B's own
+  // A scoped aggregate folds the bucket, never stats:
+  let cq : Query.Query = {
+    start = "task"; where_ = null; groupBy = []; aggregate = [{ fn = #count; field = null; as_ = null }];
+    orderBy = []; offset = null; limit = null; select = null;
+  };
+  assert cell(Executor.runWith(sreg(), cq, scoped(pA)).rows[0], "count") == ?(#nat 2);
 });

@@ -11,6 +11,8 @@ import { test } "mo:test";
 import Array    "mo:core/Array";
 import Nat      "mo:core/Nat";
 import OQL      "../src";
+// moc 1.11.2: implicits & contextual-dot calls no longer resolve through re-exports — import leaves directly.
+import _Entity "../src/Entity";
 import Executor "../src/Executor";
 import Query    "../src/Query";
 import Registry "../src/Registry";

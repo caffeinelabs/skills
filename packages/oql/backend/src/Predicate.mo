@@ -52,16 +52,21 @@ module {
     values : [Value];
   };
 
-  /// Missing fields fail every relation **except `#ne`** — strict
-  /// three-valued logic is a later change.
+  /// Total Boolean semantics — no three-valued logic. A stored `#null_` fails
+  /// every ordered relation (see `ordered`), `eq`/`ne` against `#null_` are the
+  /// explicit is-null / is-not-null tests, and `ne` against a value matches
+  /// null rows (every `ne` is the exact complement of its `eq`). A MISSING
+  /// field fails every relation except `#ne`, which is true for any operand.
+  /// The statement of record, with the deliberate differences from SQL, is the
+  /// "Null semantics" section of the README.
   public func eval(p : Predicate, row : Row) : Bool {
     switch p {
       case (#eq  (path, v)) { test(row.get(path), false, func a = compare(a, v) == #equal) };
       case (#ne  (path, v)) { test(row.get(path), true,  func a = compare(a, v) != #equal) };
-      case (#lt  (path, v)) { test(row.get(path), false, func a = compare(a, v) == #less) };
-      case (#le  (path, v)) { test(row.get(path), false, func a = compare(a, v) != #greater) };
-      case (#gt  (path, v)) { test(row.get(path), false, func a = compare(a, v) == #greater) };
-      case (#ge  (path, v)) { test(row.get(path), false, func a = compare(a, v) != #less) };
+      case (#lt  (path, v)) { ordered(row.get(path), v, func o = o == #less) };
+      case (#le  (path, v)) { ordered(row.get(path), v, func o = o != #greater) };
+      case (#gt  (path, v)) { ordered(row.get(path), v, func o = o == #greater) };
+      case (#ge  (path, v)) { ordered(row.get(path), v, func o = o != #less) };
       case (#in_ (path, vs)) {
         test(row.get(path), false, func a = vs.values().any(func v = compare(a, v) == #equal))
       };
@@ -80,6 +85,24 @@ module {
   /// strict 3VL is a single-flag change at every call site.
   func test(actual : ?Value, onNull : Bool, ok : Value -> Bool) : Bool =
     switch actual { case null { onNull }; case (?a) { ok(a) } };
+
+  /// An ordered relation (`lt`/`le`/`gt`/`ge`), null-hostile on BOTH sides: a
+  /// row whose value is `#null_` matches no range, and a `#null_` operand
+  /// bounds nothing. This cannot be `test` over a raw `compare`: `compare`'s
+  /// total order ranks kinds (`null < bool < number < text`) so SORTS stay
+  /// total, and under that order a raw comparison happily calls a null "less
+  /// than 0" — admitting every null row into `col < 0`, an answer no reader
+  /// expects and one the columnar zone map (whose min/max exclude nulls) would
+  /// contradict by pruning. The kind rank gives null a position in a sort, not
+  /// on the number line. An explicit null test remains `#eq`/`#ne` against a
+  /// `#null_` operand.
+  func ordered(actual : ?Value, v : Value, ok : Order.Order -> Bool) : Bool =
+    switch (actual, v) {
+      case (?#null_, _) { false };
+      case (_, #null_) { false };
+      case (?a, _) { ok(compare(a, v)) };
+      case (null, _) { false };
+    };
 
   /// Text-only relation: true only when both the row value (haystack) and
   /// the operand (needle) are `#text` and `rel` accepts them. Missing or
@@ -110,6 +133,13 @@ module {
   /// the float edge cases — NaN sorts greatest and equals only itself,
   /// `-0.0` equals `+0.0` — so no NaN special-casing is needed here. (Both
   /// properties are pinned by the test suite.)
+  ///
+  /// The `Float`↔`Int`/`Nat` bridge is EXACT (`cmpFloatInt`), not
+  /// `Float.fromInt`: past 2^53 that conversion is lossy and would make one
+  /// float `#equal` to two distinct integer keys, breaking transitivity — and
+  /// with it any ordered structure keyed on `compare`, so an index probe would
+  /// under-fetch. So `#eq(#float 2^53)` matches the integer `2^53` only, never
+  /// also `2^53 + 1`. Below 2^53 the two bridges agree exactly.
   public func compare(a : Value, b : Value) : Order.Order =
     switch (a, b) {
       case (#null_,  #null_ ) { #equal };
@@ -119,16 +149,36 @@ module {
       case (#nat   x, #int   y) { Int.compare(x, y) };
       case (#int   x, #nat   y) { Int.compare(x, y) };
       case (#float x, #float y) { Float.compare(x, y) };
-      case (#float x, #nat   y) { Float.compare(x, Float.fromInt(y)) };
-      case (#nat   x, #float y) { Float.compare(Float.fromInt(x), y) };
-      case (#float x, #int   y) { Float.compare(x, Float.fromInt(y)) };
-      case (#int   x, #float y) { Float.compare(Float.fromInt(x), y) };
+      case (#float x, #nat   y) { cmpFloatInt(x, y) };
+      case (#nat   x, #float y) { flipOrder(cmpFloatInt(y, x)) };
+      case (#float x, #int   y) { cmpFloatInt(x, y) };
+      case (#int   x, #float y) { flipOrder(cmpFloatInt(y, x)) };
       case (#text x, #text y) { x.compare(y) };
       // Different kinds: order by kind rank. (Same-kind pairs — including
       // every numeric combination — are all handled above, so this only
       // ever sees distinct ranks and is therefore strictly ±.)
       case _ { Nat.compare(rank(a), rank(b)) };
     };
+
+  /// Compare a `Float` against an integer EXACTLY, so the numeric bridge stays a
+  /// valid total order past 2^53. `Float.fromInt` is lossy there — `fromInt(2^53)
+  /// == fromInt(2^53 + 1)` — which would make one float `#equal` to two distinct
+  /// integer keys, breaking transitivity and with it every ordered `Map`/`Set`
+  /// keyed on `compare` (a secondary-index point probe would land on one bucket
+  /// and silently drop the other). An integral float compares as an integer; a
+  /// non-integral float falls strictly between its integer neighbours. Non-finite
+  /// floats (NaN/±inf) can't collide with an integer, so they keep the plain
+  /// `Float.compare` bridge (already total over those).
+  func cmpFloatInt(f : Float, i : Int) : Order.Order {
+    if (Float.isNaN(f - f)) { return Float.compare(f, Float.fromInt(i)) }; // NaN or ±inf
+    let fl = Float.floor(f);
+    if (f == fl) { Int.compare(f.toInt(), i) }        // integral float → integer compare
+    else if (i <= fl.toInt()) { #greater }            // f ∈ (floor, floor+1): f > i
+    else { #less };                                        // i ≥ ceil: f < i
+  };
+
+  func flipOrder(o : Order.Order) : Order.Order =
+    switch o { case (#less) { #greater }; case (#equal) { #equal }; case (#greater) { #less } };
 
   /// Fixed kind ordering for cross-kind comparisons. Numbers share a rank
   /// so the bridge cases above stay authoritative for numeric pairs.

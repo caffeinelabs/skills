@@ -5,5 +5,5 @@ import Nat64 "mo:core/Nat64";
 import Types "Types";
 
 module {
-  public func _toRow(self : Nat64) : Types.Value = #nat (Nat64.toNat(self));
+  public func _toRow(self : Nat64) : Types.Value = #nat (self.toNat());
 };

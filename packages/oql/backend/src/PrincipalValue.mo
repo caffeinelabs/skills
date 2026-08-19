@@ -5,5 +5,5 @@ import Principal "mo:core/Principal";
 import Types     "Types";
 
 module {
-  public func _toRow(self : Principal) : Types.Value = #text (Principal.toText(self));
+  public func _toRow(self : Principal) : Types.Value = #text (self.toText());
 };

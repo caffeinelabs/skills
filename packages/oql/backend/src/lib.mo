@@ -46,6 +46,10 @@ import _ArrayEntity    "ArrayEntity";
 import _ListEntity     "ListEntity";
 import _SetEntity      "SetEntity";
 import _VarArrayEntity "VarArrayEntity";
+import _SecondaryIndex "SecondaryIndex";
+import _IndexedMap     "IndexedMap";
+import _Backfill       "Backfill";
+import _Table          "Table";
 
 module {
 
@@ -82,6 +86,11 @@ module {
   public let ListEntity     = _ListEntity;
   public let SetEntity      = _SetEntity;
   public let VarArrayEntity = _VarArrayEntity;
+  public let SecondaryIndex = _SecondaryIndex;
+  public let IndexedMap     = _IndexedMap;
+  public let Backfill       = _Backfill;
+  /// Columnar, Region-backed OQL table (append + query; not a key-value map).
+  public let Table          = _Table;
 
   public type Value     = _Types.Value;
   public type Path      = _Types.Path;
@@ -96,5 +105,7 @@ module {
   public type TableAuth = _Auth.TableAuth;
   /// App-defined ownership predicate for `.ownedByWith` — see Entity.
   public type OwnerCheck = _Entity.OwnerCheck;
+  /// Access kind for a declared secondary index (`#ordered` / `#hash`).
+  public type IndexKind = _SecondaryIndex.Kind;
 
 };

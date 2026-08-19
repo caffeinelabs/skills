@@ -7,6 +7,13 @@
 import Map     "mo:core/Map";
 import Nat     "mo:core/Nat";
 import OQL     "../../src";
+// moc 1.11.2: implicits & contextual-dot calls no longer resolve through re-exports — import leaves directly.
+import _Entity "../../src/Entity";
+import _MapEntity "../../src/MapEntity";
+import _BoolValue "../../src/BoolValue";
+import _NatValue "../../src/NatValue";
+import _TextValue "../../src/TextValue";
+import _RecordValue "../../src/RecordValue";
 import Expose  "../../src/Expose";
 
 actor class Catalog() = self {

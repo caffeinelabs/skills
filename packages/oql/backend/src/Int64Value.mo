@@ -5,5 +5,5 @@ import Int64 "mo:core/Int64";
 import Types "Types";
 
 module {
-  public func _toRow(self : Int64) : Types.Value = #int (Int64.toInt(self));
+  public func _toRow(self : Int64) : Types.Value = #int (self.toInt());
 };
