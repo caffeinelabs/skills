@@ -11,6 +11,7 @@
 /// No adversarial concern: bucket contents are fixed at build time, so a query
 /// key can never lengthen a probe chain.
 import Blob  "mo:core/Blob";
+import Nat  "mo:core/Nat";
 import Nat8  "mo:core/Nat8";
 
 module {

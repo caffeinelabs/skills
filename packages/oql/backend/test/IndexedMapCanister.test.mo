@@ -8,6 +8,7 @@
 import { test } "mo:test/async";
 import Array        "mo:core/Array";
 import IndexedStore "./fixtures/IndexedStore";
+import Nat "mo:core/Nat";
 
 actor {
 

@@ -19,6 +19,7 @@ import Region "mo:core/Region";
 import Cell "../src/columnar/Cell";
 import HashSegment "../src/columnar/HashSegment";
 import F "./fixtures/HashSegmentFixture";
+import Text "mo:core/Text";
 
 actor {
 

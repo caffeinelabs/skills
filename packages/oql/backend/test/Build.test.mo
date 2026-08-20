@@ -4,6 +4,7 @@
 /// replica suite (Expose.test.mo via BuildInvariants), since a build trap
 /// cannot be caught synchronously.
 
+import Int "mo:core/Int";
 import {test}    "mo:test";
 import Map       "mo:core/Map";
 import Principal "mo:core/Principal";

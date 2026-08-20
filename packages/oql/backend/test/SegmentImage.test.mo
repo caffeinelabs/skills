@@ -25,6 +25,7 @@
 import { test } "mo:test/async";
 import Array "mo:core/Array";
 import Int64 "mo:core/Int64";
+import List "mo:core/List";
 import Nat64 "mo:core/Nat64";
 import Int "mo:core/Int";
 import Region "mo:core/Region";

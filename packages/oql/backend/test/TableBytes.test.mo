@@ -10,6 +10,7 @@
 import { test } "mo:test/async";
 import Array     "mo:core/Array";
 import Blob      "mo:core/Blob";
+import Nat64 "mo:core/Nat64";
 import Nat8      "mo:core/Nat8";
 import Region    "mo:core/Region";
 import OQL       "../src";

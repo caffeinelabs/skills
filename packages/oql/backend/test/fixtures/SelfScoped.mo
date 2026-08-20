@@ -6,6 +6,8 @@
 /// `document` carries a custom `.ownedByWith` team rule to prove custom
 /// access composes with a scoped level.
 
+import Array "mo:core/Array";
+import Iter "mo:core/Iter";
 import Map       "mo:core/Map";
 import List      "mo:core/List";
 import Nat       "mo:core/Nat";

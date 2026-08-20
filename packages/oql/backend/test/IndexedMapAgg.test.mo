@@ -16,6 +16,7 @@ import Executor   "../src/Executor";
 import Query      "../src/Query";
 import Predicate  "../src/Predicate";
 import Registry   "../src/Registry";
+import Text "mo:core/Text";
 
 type E = { id : Nat; status : Text; amount : Nat };
 

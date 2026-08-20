@@ -72,6 +72,7 @@
 import Array   "mo:core/Array";
 import Blob    "mo:core/Blob";
 import Int     "mo:core/Int";
+import Nat  "mo:core/Nat";
 import Nat16   "mo:core/Nat16";
 import Nat32   "mo:core/Nat32";
 import Nat64   "mo:core/Nat64";

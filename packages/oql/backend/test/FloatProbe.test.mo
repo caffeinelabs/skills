@@ -7,6 +7,7 @@
 /// valid total order again and index == scan by construction.
 
 import { test } "mo:test";
+import Iter "mo:core/Iter";
 import Nat         "mo:core/Nat";
 import IndexedMap  "../src/IndexedMap";
 import Predicate   "../src/Predicate";

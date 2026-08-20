@@ -22,6 +22,7 @@ import Blob     "mo:core/Blob";
 import Nat      "mo:core/Nat";
 import Nat64    "mo:core/Nat64";
 import Region   "mo:core/Region";
+import Runtime "mo:core/Runtime";
 import Text     "mo:core/Text";
 import Cell     "../src/columnar/Cell";
 import Columnar "../src/columnar/Columnar";

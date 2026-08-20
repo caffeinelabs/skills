@@ -73,6 +73,8 @@ import Int64   "mo:core/Int64";
 import List    "mo:core/List";
 import Map     "mo:core/Map";
 import Nat     "mo:core/Nat";
+import Nat16  "mo:core/Nat16";
+import Nat32  "mo:core/Nat32";
 import Nat64   "mo:core/Nat64";
 import Region  "mo:core/Region";
 import Runtime "mo:core/Runtime";

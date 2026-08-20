@@ -1,6 +1,7 @@
 /// Unit tests for `Predicate.eval` and `Predicate.compare`. Pure module,
 /// no actor needed — runs in the `mops test` interpreter.
 
+import Text "mo:core/Text";
 import {test} "mo:test";
 import Map    "mo:core/Map";
 import Predicate "../src/Predicate";
