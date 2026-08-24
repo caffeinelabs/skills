@@ -1,11 +1,11 @@
 ---
 name: extension-email-verification
 description: Support for sending an email with a link the recipient can click to prove they own the email address.
-version: 0.1.6
+version: 0.1.7
 compatibility:
   mops:
-    caffeineai-email-verification: "~0.1.1"
-    caffeineai-email: "~0.1.2"
+    caffeineai-email-verification: "~0.1.2"
+    caffeineai-email: "~0.2.0"
 caffeineai-subscription: [plus, pro]
 ---
 
