@@ -1,10 +1,10 @@
 ---
 name: extension-email
 description: Support for sending service/transactional emails. Don't use this for sending marketing emails or verification emails.
-version: 0.1.5
+version: 0.2.0
 compatibility:
   mops:
-    caffeineai-email: "~0.1.1"
+    caffeineai-email: "~0.2.0"
 caffeineai-subscription: [plus, pro]
 ---
 
