@@ -3,7 +3,7 @@ name: writing-motoko
 description: >-
   Motoko language reference, architecture patterns, and dependency tooling
   (mops). Load when writing or modifying backend .mo files.
-version: 0.1.9
+version: 0.1.10
 compatibility:
   toolchain:
     moc: ">=1.11.2"
@@ -100,7 +100,7 @@ Principal.equal(a, b) // OK
 
 ```
 
-**Prefer `equal` / `compare` over `==`.** `==` is compiler-generated structural equality and exists only for **shared** types, so one `var` field takes a record out of shared and `==` stops compiling (M0060). Use `==` only for the numeric primitives that have no receiver form: `Nat`, `Int`, `Float`, and the sized int types declare `equal(x, y)` without a `self` parameter, so `myNat.equal(other)` fails with M0070 and `a == b` is the right call. Other receiver methods on those types (`myNat.toText()`) are fine.
+**`equal` / `compare` vs `==`.** Collections take `equal` and `compare` as implicit arguments, so those are the functions to write for your own records and variants. `==` is compiler-generated structural equality and exists only for **shared** types — one `var` field takes a record out of shared and `==` stops compiling (M0060) — so do not build record comparisons on it. Comparing primitives and shared fields directly with `==` is fine, and on `Nat`, `Int`, `Float`, and the sized int types it is the only form: those declare `equal(x, y)` without a `self` parameter, so `myNat.equal(other)` fails with M0070. Other receiver methods on those types (`myNat.toText()`) are fine.
 
 Your own records and variants get nothing derived — a record `compare` must be an explicit function, and custom variants need both `equal` and `compare` written out. See [references/equality.md](references/equality.md).
 
@@ -247,6 +247,7 @@ note: Did you mean to import mo:core/Int or mo:core/Nat?
 Do **not** pass the comparator explicitly when it can be inferred; that is M0237, which `mops check --fix` removes:
 
 ```motoko
+let ages = Map.empty<Text, Nat>();   // Text.compare resolved at add, from the imported Text
 ages.add("Alice", 30);               // CORRECT
 ages.add(Text.compare, "Alice", 30); // WRONG (M0237)
 ```
@@ -254,6 +255,7 @@ ages.add(Text.compare, "Alice", 30); // WRONG (M0237)
 A custom key type works the same way — give its module a `compare` and it is inferred:
 
 ```motoko
+type Point = { x : Nat; y : Nat };
 module Point {
   public func compare(a : Point, b : Point) : Order.Order { ... };
 };
