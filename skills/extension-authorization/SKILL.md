@@ -1,12 +1,12 @@
 ---
 name: extension-authorization
 description: Authorization system with role-based access control. Must-have for all apps that manage personal or access-restricted data.
-version: 1.2.0
+version: 1.3.0
 compatibility:
   mops:
     caffeineai-authorization: "~1.0.0"
   npm:
-    "@caffeineai/core-infrastructure": "^1.2.0"
+    "@caffeineai/core-infrastructure": "^1.3.0"
 caffeineai-subscription: [none]
 ---
 
@@ -168,6 +168,7 @@ Which attributes arrive depends on the sign-in variant the frontend used (see th
 
 - `login()` (plain Internet Identity): `email` is present when the user has a verified email in II; `sso` is null.
 - `login({ provider: 'google' })`: verified `name` and `email` from the user's Google account; `sso` is null.
+- `login({ provider: 'microsoft' })`: verified `name` and `email` from the user's Microsoft account; `sso` is null.
 - `login({ ssoDomain: 'acme.com' })`: verified `name` and `email` from the company's identity provider; `sso` holds the domain (e.g. `"acme.com"`). Use `attrs.sso` to gate features to company members or auto-assign roles by domain.
 
 Store them in your own state and expose a getter to read them back:
@@ -219,12 +220,12 @@ Authentication system with role-based access control.
 
 ## Sign-In Options
 
-Sign-in goes through the `useInternetIdentity` hook from `@caffeineai/core-infrastructure` (see the `extension-core-infrastructure` skill for the full API and UI pattern). Default to plain `login()` unless Google or company/workspace SSO sign-in was requested.
+Sign-in goes through the `useInternetIdentity` hook from `@caffeineai/core-infrastructure` (see the `extension-core-infrastructure` skill for the full API and UI pattern). Default to plain `login()` unless Google, Microsoft, or company/workspace SSO sign-in was requested.
 
 Rules:
 
-- When Google or SSO sign-in **is** requested, the sign-in screen must show the requested direct option (Google button and/or SSO domain input) **and** keep a plain `login()` "Sign in with Internet Identity" button as a fallback — users without a Google account or a registered company domain must still be able to sign in.
-- Never remove the Internet Identity option from an existing app that already has users. The principal is derived from the user's Internet Identity: a user whose II identity is Google-backed gets the **same principal** through either button, but a user who signed up with a passkey-based II identity gets a **different principal** if they authenticate with a Google account that is not linked to that identity — their data would appear missing. Keeping both buttons lets every existing user sign in the way they always have.
+- When Google, Microsoft, or SSO sign-in **is** requested, the sign-in screen must show the requested direct option (Google button, Microsoft button, and/or SSO domain input) **and** keep a plain `login()` "Sign in with Internet Identity" button as a fallback — users without a Google or Microsoft account or a registered company domain must still be able to sign in.
+- Never remove the Internet Identity option from an existing app that already has users. The principal is derived from the user's Internet Identity: a user whose II identity is Google- or Microsoft-backed gets the **same principal** through either button, but a user who signed up with a passkey-based II identity gets a **different principal** if they authenticate with a Google or Microsoft account that is not linked to that identity — their data would appear missing. Keeping both buttons lets every existing user sign in the way they always have.
 
 ## User Profile Setup
 
@@ -326,7 +327,7 @@ export default function LoginButton() {
 
 The `login()` and `clear()` functions are fire-and-forget (they don't return promises that track the full flow). The hook's `isLoggingIn` / `isInitializing` states track the async lifecycle — do **not** wrap them in local `useState` / `isPending` logic.
 
-When the app calls for Google sign-in or company/workspace SSO, use the same hook with options: `login({ provider: 'google' })` or `login({ ssoDomain: 'acme.com' })`. All variants produce the same identity and session behavior; see the `extension-core-infrastructure` skill for the full sign-in UI pattern.
+When the app calls for Google or Microsoft sign-in or company/workspace SSO, use the same hook with options: `login({ provider: 'google' })`, `login({ provider: 'microsoft' })`, or `login({ ssoDomain: 'acme.com' })`. All variants produce the same identity and session behavior; see the `extension-core-infrastructure` skill for the full sign-in UI pattern.
 
 Gate authenticated UI on `isAuthenticated` (covers both fresh login and restored sessions on page reload):
 ```typescript
