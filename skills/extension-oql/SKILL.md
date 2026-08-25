@@ -1,10 +1,10 @@
 ---
 name: extension-oql
 description: Make a canister's data queryable by the Caffeine Data Intelligence agent. Use whenever an app stores structured data (Maps/Lists/arrays of records) that should be answerable in natural language — "top customers", "revenue by region", "active projects". Adds a discoverable `schema()` and a JSON `execute()` query endpoint via the `caffeineai-oql` mops package's `Expose` mixin.
-version: 0.5.1
+version: 0.5.3
 compatibility:
   mops:
-    caffeineai-oql: "~0.5.1"
+    caffeineai-oql: "~0.5.3"
 caffeineai-subscription: [none]
 ---
 
@@ -22,7 +22,7 @@ your entities first, then pick a level per entity — see `## Auth`.
 
 ## Setup
 
-Run `mops add caffeineai-oql@0.5.1` in the **same write batch** as your first
+Run `mops add caffeineai-oql@0.5.3` in the **same write batch** as your first
 `mo:caffeineai-oql/...` import. Auto-derivation requires `moc >= 1.11` (the
 generated-app template already satisfies this).
 
@@ -66,6 +66,13 @@ queryable entity; the compiler auto-derives the fields. Each entity sets its own
 authorization level (see `## Auth`); the example below shows one table per level.
 `Expose` adds only the OQL query methods (`schema` / `execute`) — your existing
 state, types, and `shared` methods are untouched.
+
+- Always call `.sample({...})` on every `.toEntity` / `Entity.manual` chain; dummy values are fine. Empty collection + no sample → empty schema (`fields: []` / `"record { }"`).
+
+<!-- motoko-check:skip -->
+```motoko filepath=src/backend/sample_required.mo
+include Expose({ entities = [tasks.toEntity("task", "Task", "id").sample({ id = 0; title = "" }).public_().build()] })
+```
 
 ```motoko filepath=src/backend/main.mo
 import Map       "mo:core/Map";
@@ -127,6 +134,7 @@ actor {
       // .entries() in manual mode, promote each side's id, and .edge both — a
       // query can then traverse "product.name" and "vendor.name".
       OQL.Entity.manual<(Product, Vendor)>("supply", func () = supplies.entries(), "Supply", "key")
+        .sample(({ id = 0; name = ""; priceUsd = 0 }, { id = 0; name = "" }))
         .payload("key",     func ((p, v)) = p.id.toText() # ":" # v.id.toText())
         .payload("product", func ((p, _)) = p.id) .edge("product", "product")
         .payload("vendor",  func ((_, v)) = v.id) .edge("vendor",  "vendor")
@@ -220,6 +228,7 @@ notes.toEntity("note", "Note", "id")
 // everyone's, and the platform controller sees all (#controllerOrScoped).
 // `owner` is the field's Value — a Principal column arrives as #text(principal).
 docs.toEntity("doc", "Doc", "id")
+  .sample({ id = 0; owner = Principal.fromText("aaaaa-aa"); title = "" })
   .ownedByWith("owner", func (caller, owner) =
     admins.get(caller) != null or owner == #text(caller.toText()))
   .controllerOrScoped()
@@ -235,6 +244,7 @@ on rows the ownership check already admitted:
 // not needed here — but coarsen the contact field for non-owners of a shared
 // calendar, say:
 bookings.toEntity("booking", "Booking", "id")
+  .sample({ id = 0; calendarId = 0; contact = "" })
   .ownedByWith("calendarId", canSeeCalendar)
   .viewWith(func (subject, b) = if (isOwner(subject, b)) b else { b with contact = "" })
   .scopedPerUser()
@@ -265,7 +275,7 @@ For records whose fields are all primitives with a built-in `_toRow` (`Nat`,
 
 ```mo
 customers.toEntity(name, typeName, primaryKey)
-  .sample(template)              // REQUIRED if the collection may be empty at build
+  .sample(template)              // REQUIRED — empty collection + no sample → empty schema
   .edge(field, targetEntity)     // tag an existing field as a foreign key
   .ownedBy(field)                // (or .ownedByWith(field, canSee)) per-user scoping
   .scopedPerUser()               // auth level: .public_ / .controllerOnly (default) / .scopedPerUser / .controllerOrScoped
@@ -289,8 +299,9 @@ customers.toEntity(name, typeName, primaryKey)
   drops the whole field from `schema()` — the column still stores and filters,
   but no schema-driven client can discover it. A cross-canister FK belongs as a
   plain payload field, not an `.edge`.
-- `.sample(template)` seeds schema discovery; without it an empty collection
-  yields an empty schema. Only the shape matters, not the values.
+- `.sample(template)` seeds schema discovery. Always call it; without it an
+  empty collection yields an empty schema (`fields: []`). Only the shape
+  matters, not the values.
 - `.hidden(name)` drops a derivable field from schema + default projection; it
   does **not** skip `_toRow` — unsupported field types still need manual mode or
   a `<Type>Value`.
@@ -309,6 +320,7 @@ collection fields:
 import Entity "mo:caffeineai-oql/Entity";
 
 authors.toEntityManual<Author>("author", "Author", "id")
+  .sample({ id = 0; name = ""; address = { street = ""; city = "" }; tags = [] })
   .payload("name", func a = a.name)        // one field; extract returns a _toRow value
   .flatten(func a = a.address)             // splice a nested record's fields as columns
   .payload("tagCount", func a = a.tags.size())
@@ -334,9 +346,10 @@ still needs its own `import Entity "mo:caffeineai-oql/Entity";`. Unlike
   top-level column. Drop unwanted ones with `.hidden`. Name collisions get
   `__1`, `__2` suffixes (nothing is dropped).
 - `OQL.Entity.manual<T>(name, iter, typeName, primaryKey)` for arbitrary row
-  sources (custom flatteners, filtered iterators). The qualified call resolves
-  through the `OQL` import, but any `.payload` / `.flatten` chained onto its
-  result still needs the top-level `Entity` import.
+  sources (custom flatteners, filtered iterators). Always chain `.sample(...)`
+  with one dummy row of type `T`. The qualified call resolves through the
+  `OQL` import, but any `.payload` / `.flatten` chained onto its result still
+  needs the top-level `Entity` import.
 
 `OQL.Value` is `{ #null_; #bool; #nat; #int; #float; #text }`. Numeric variants
 compare across each other, so a JSON integer threshold matches a `Float` value.
@@ -393,6 +406,7 @@ The same storage can back several entities — pick what the client should see:
 
 ```mo
 OQL.Entity.manual<(Article, Text)>("articleTag", func () = flattenTags(articles), "Pair", "pair")
+  .sample(({ id = 0 }, ""))
   .payload("article", func ((a, _)) = a.id) .edge("article", "article")
   .payload("tag",     func ((_, t)) = t)    .edge("tag", "tag")
   .build()
@@ -552,7 +566,7 @@ node <this skill's directory>/scripts/ingest.mjs \
 
 ## Checklist
 
-- [ ] `mops add caffeineai-oql@0.5.1` in the same batch as the first import
+- [ ] `mops add caffeineai-oql@0.5.3` in the same batch as the first import
 - [ ] Resolver modules imported top-level (see `## Setup` → Imports): `Entity`
       (**always** — every builder method including `.payload` / `.flatten`
       resolves through it), the collection module(s) (`MapEntity` / …), and
@@ -562,7 +576,7 @@ node <this skill's directory>/scripts/ingest.mjs \
       `.toEntityManual` / `OQL.Entity.manual` otherwise
 - [ ] `<Type>Value.mo` for every non-primitive field reused across entities,
       imported top-level
-- [ ] `.sample(template)` whenever the collection may be empty at build time
+- [ ] `.sample(template)` on every `.toEntity` / `Entity.manual` chain (dummy values are fine)
 - [ ] FK fields `.edge(name, target)`; opaque/sensitive auto-derived fields
       `.hidden(name)` (manual: omit via no `.payload`, or `.hidden` only columns
       you did add)
