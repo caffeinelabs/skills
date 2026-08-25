@@ -36,10 +36,12 @@ export type Status =
  */
 export type LoginOptions = {
 	/**
-	 * One-click Google sign-in: Internet Identity opens the Google OAuth flow
-	 * directly instead of showing its own landing page first.
+	 * One-click Google or Microsoft sign-in: Internet Identity opens that
+	 * provider's OAuth flow directly instead of showing its own landing page
+	 * first. Apple is deliberately not offered — Internet Identity returns no
+	 * email or name claims for it, so the attribute callback would be empty.
 	 */
-	provider?: "google";
+	provider?: "google" | "microsoft";
 
 	/**
 	 * Company/workspace SSO sign-in, e.g. `login({ ssoDomain: 'acme.com' })`.
@@ -59,6 +61,7 @@ export type InternetIdentityContext = {
 	 *
 	 * - `login()` — plain Internet Identity sign-in.
 	 * - `login({ provider: 'google' })` — one-click Google sign-in via Internet Identity.
+	 * - `login({ provider: 'microsoft' })` — one-click Microsoft sign-in via Internet Identity.
 	 * - `login({ ssoDomain: 'acme.com' })` — company/workspace SSO via Internet Identity.
 	 */
 	login: (options?: LoginOptions) => void;
@@ -142,8 +145,8 @@ const InternetIdentityReactContext = createContext<ProviderValue | undefined>(
 
 /**
  * Single constructor for every `AuthClient` — the shared client built at
- * provider initialization and the per-login clients for the Google/SSO
- * variants (`identityProvider` and `openIdProvider` are constructor-only
+ * provider initialization and the per-login clients for the one-click and
+ * SSO variants (`identityProvider` and `openIdProvider` are constructor-only
  * options on `@icp-sdk/auth`, so variants need their own client).
  * Delegation storage is shared across all clients, so a variant sign-in is
  * still restored by the shared client on reload and cleared by `clear()`.
@@ -193,7 +196,7 @@ function buildAuthClient(
 		// the /authorize normalization applied above.
 		identityProvider: identityProviderUrl,
 		// SSO is driven by the query param; openIdProvider only applies to
-		// the Google variant (the SDK ignores undefined).
+		// the one-click variants (the SDK ignores undefined).
 		openIdProvider: ssoDomain ? undefined : loginOptions?.provider,
 	});
 }
@@ -214,10 +217,10 @@ function resolveAttributeKeys(
 	if (ssoDomain) {
 		return [`sso:${ssoDomain}:name`, `sso:${ssoDomain}:email`];
 	}
-	if (loginOptions?.provider === "google") {
-		// name, email, verified_email scoped to Google, e.g.
+	if (loginOptions?.provider) {
+		// name, email, verified_email scoped to the provider, e.g.
 		// `openid:https://accounts.google.com:verified_email`.
-		return scopedKeys({ openIdProvider: "google" });
+		return scopedKeys({ openIdProvider: loginOptions.provider });
 	}
 	return DEFAULT_ATTRIBUTE_KEYS;
 }
@@ -370,7 +373,7 @@ export function InternetIdentityProvider({
 			}
 
 			// The authenticated flag is shared across all sign-in variants,
-			// so checking the default client covers Google and SSO sessions too.
+			// so checking the default client covers one-click and SSO sessions too.
 			if (authClient.isAuthenticated()) {
 				setErrorMessage("User is already authenticated");
 				return;

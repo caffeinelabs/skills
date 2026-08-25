@@ -19,8 +19,8 @@ const DEFAULT_ATTRIBUTE_KEYS = ["verified_email"];
 const InternetIdentityReactContext = createContext(undefined);
 /**
  * Single constructor for every `AuthClient` — the shared client built at
- * provider initialization and the per-login clients for the Google/SSO
- * variants (`identityProvider` and `openIdProvider` are constructor-only
+ * provider initialization and the per-login clients for the one-click and
+ * SSO variants (`identityProvider` and `openIdProvider` are constructor-only
  * options on `@icp-sdk/auth`, so variants need their own client).
  * Delegation storage is shared across all clients, so a variant sign-in is
  * still restored by the shared client on reload and cleared by `clear()`.
@@ -60,7 +60,7 @@ function buildAuthClient(config, loginOptions, createOptions) {
         // the /authorize normalization applied above.
         identityProvider: identityProviderUrl,
         // SSO is driven by the query param; openIdProvider only applies to
-        // the Google variant (the SDK ignores undefined).
+        // the one-click variants (the SDK ignores undefined).
         openIdProvider: ssoDomain ? undefined : loginOptions?.provider,
     });
 }
@@ -77,10 +77,10 @@ function resolveAttributeKeys(attrs, loginOptions) {
     if (ssoDomain) {
         return [`sso:${ssoDomain}:name`, `sso:${ssoDomain}:email`];
     }
-    if (loginOptions?.provider === "google") {
-        // name, email, verified_email scoped to Google, e.g.
+    if (loginOptions?.provider) {
+        // name, email, verified_email scoped to the provider, e.g.
         // `openid:https://accounts.google.com:verified_email`.
-        return scopedKeys({ openIdProvider: "google" });
+        return scopedKeys({ openIdProvider: loginOptions.provider });
     }
     return DEFAULT_ATTRIBUTE_KEYS;
 }
@@ -175,7 +175,7 @@ export function InternetIdentityProvider({ children, createOptions, withAttribut
             return;
         }
         // The authenticated flag is shared across all sign-in variants,
-        // so checking the default client covers Google and SSO sessions too.
+        // so checking the default client covers one-click and SSO sessions too.
         if (authClient.isAuthenticated()) {
             setErrorMessage("User is already authenticated");
             return;

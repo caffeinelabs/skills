@@ -2,6 +2,10 @@
 
 ### Features
 
+- **core-infrastructure**: one-click Microsoft sign-in (APP-2369) (#204)
+
+### Features
+
 - Google and workspace-SSO login variants (#193)
 
 ### Bug Fixes

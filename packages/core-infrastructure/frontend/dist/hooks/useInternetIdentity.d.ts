@@ -9,10 +9,12 @@ export type Status = "initializing" | "idle" | "logging-in" | "success" | "login
  */
 export type LoginOptions = {
     /**
-     * One-click Google sign-in: Internet Identity opens the Google OAuth flow
-     * directly instead of showing its own landing page first.
+     * One-click Google or Microsoft sign-in: Internet Identity opens that
+     * provider's OAuth flow directly instead of showing its own landing page
+     * first. Apple is deliberately not offered — Internet Identity returns no
+     * email or name claims for it, so the attribute callback would be empty.
      */
-    provider?: "google";
+    provider?: "google" | "microsoft";
     /**
      * Company/workspace SSO sign-in, e.g. `login({ ssoDomain: 'acme.com' })`.
      * Internet Identity discovers the company's OpenID Connect provider from
@@ -29,6 +31,7 @@ export type InternetIdentityContext = {
      *
      * - `login()` — plain Internet Identity sign-in.
      * - `login({ provider: 'google' })` — one-click Google sign-in via Internet Identity.
+     * - `login({ provider: 'microsoft' })` — one-click Microsoft sign-in via Internet Identity.
      * - `login({ ssoDomain: 'acme.com' })` — company/workspace SSO via Internet Identity.
      */
     login: (options?: LoginOptions) => void;
