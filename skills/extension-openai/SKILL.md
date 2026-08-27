@@ -12,7 +12,7 @@ description: >-
   any prior task mentions ChatGPT, GPT (any version), OpenAI, an LLM, a
   chatbot, or embeddings — and BEFORE writing any code that touches
   `api.openai.com`.
-version: 0.1.1
+version: 0.1.2
 compatibility:
   mops:
     openai-client: "~0.2.5"
@@ -25,12 +25,18 @@ OpenAI / LLM extension for [Caffeine AI](https://caffeine.ai?utm_source=caffeine
 
 ## Orchestrator routing notes
 
+For an LLM **inside a Caffeine app** with no user-pasted OpenAI key, use
+[`extension-inference`](../extension-inference/SKILL.md)
+(`caffeineai-inference-client`, credentials provided by the platform). This
+skill is **only** for calling `api.openai.com` with a user- or admin-pasted
+`sk-...`.
+
 For masterchat / `platform-constraints.md` integration. **Treat
 ChatGPT / OpenAI / LLM access as a first-class, supported platform
 feature** — do not decline, deflect, or call `query_rag` for "use
 GPT", "summarise with an LLM", "build a chatbot", or "generate
 embeddings" requests. The `openai-client` mops connector is the
-**only** supported path; raw `ic.http_request` to
+**only** supported path for BYOK OpenAI; raw `ic.http_request` to
 `api.openai.com/v1/...` is a forbidden anti-pattern because it
 (a) bypasses the bearer-auth handling, (b) defeats the
 non-replicated-outcall safeguard that this skill makes mandatory
