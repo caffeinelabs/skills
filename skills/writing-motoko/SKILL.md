@@ -3,13 +3,13 @@ name: writing-motoko
 description: >-
   Motoko language reference, architecture patterns, and dependency tooling
   (mops). Load when writing or modifying backend .mo files.
-version: 0.1.10
+version: 0.2.0
 compatibility:
   toolchain:
     moc: ">=1.11.2"
     mops: "3.x"
   mops:
-    core: ">=2.5.0"
+    core: ">=2.6.0"
 caffeineai-subscription: [none]
 ---
 
@@ -35,13 +35,13 @@ Motoko is an under-represented language for the Internet Computer Protocol, so y
 
 **ALWAYS use:**
 
-- `mo:core` library version 2.5.0+ (compiler `moc` 1.11.2+)
+- `mo:core` library version 2.6.0+ (compiler `moc` 1.11.2+)
 - Contextual dot notation -- `list.add(item)`, `map.get(key)`
 - Null coalesce `??` for unwrap-or-default and unwrap-or-trap (`opt ?? default`, `opt ?? Runtime.trap(...)`) -- prefer over a two-arm `switch` on `?T` (requires `moc >= 1.7.0`)
 - Plain `break` / `continue` to exit or skip a loop iteration -- they work inside `for`, `while`, and `loop` just like in other languages
 - Enhanced orthogonal persistence (state persists without `stable` keyword)
 - Principled Motoko Architecture -- `types.mo` (types), `lib/` (domain logic), `mixins/` (API endpoints), `main.mo` (composition root, NO public methods)
-- **API reference for uncertain APIs**: Use [api-reference.md](api-reference.md) to verify exact method signatures when you are about to use an unfamiliar `mo:core` API or when a compile diagnostic points at an API mismatch. Do NOT guess API shapes — a targeted lookup of a symbol you are unsure about is always worth the step; skipping it to save steps ships hallucinated APIs and costs far more in compile repair.
+- **API reference for uncertain APIs**: Use [api-reference.md](api-reference.md) to verify exact method signatures when you are about to use an unfamiliar `mo:core` API or when a compile diagnostic points at an API mismatch. It lists only non-deprecated APIs — a symbol that is not there should not be written. Do NOT guess API shapes — a targeted lookup of a symbol you are unsure about is always worth the step; skipping it to save steps ships hallucinated APIs and costs far more in compile repair.
 
 **When encountering compilation errors:** Re-check [api-reference.md](api-reference.md) for exact method signatures.
 
@@ -374,7 +374,7 @@ Core collections (`List.List<T>`, `Map.Map<K, V>`, `Set.Set<T>`, `Queue.Queue<T>
 - After `let snapshot = list.toArray()`, only use array operations whose exact signatures are shown here or verified in the API reference — with receiver dot notation: `snapshot.filter(pred)`, `snapshot.map(mapper)`, `snapshot.sort(comparator)`, `snapshot.concat([item])`. Do not call those as module functions such as `Array.filter<T>(snapshot, pred)` or `Array.append(snapshot, [item])`.
 - If a value is an array (`[T]`) or came from `.toArray()` / `.filter(...)`, then `.map(...)` already returns an array; do not append `.toArray()` to that array-map result. (`List.List<T>.map(...)` returns a `List`, so it still needs `.toArray()` when the caller expects an array.)
 - Arrays DO support predicate search: `.find(predicate) : ?T`, `.findIndex(predicate) : ?Nat`, `.any(predicate)`, and `.all(predicate)` are all in `mo:core/Array` (see the API reference). The JS spellings `.some(...)` / `.every(...)` do not exist — use `.any` / `.all`.
-- Arrays have NO `.contains(...)`. Test membership with `.indexOf(element) != null` or a predicate:
+- Arrays DO have `.contains(element)` (`equal` is implicit, so pass only the element). Reach for `.indexOf(element)` when you need the position — it returns `?Nat`, so keep the option and use it; and for `.any(pred)` when membership is decided by a predicate rather than equality:
 
 ```motoko
 // Overlap between two tag arrays
@@ -493,7 +493,7 @@ all.map(func todo = { ... });
 
 - **`contains(element)`** -- equality check on `List`/`Set`/etc. Does NOT take a predicate.
 - **`find(predicate)`** -- predicate search on `List.List<T>` and `[T]`. Returns `?T`.
-- `[T]` arrays have no `contains` at all — use `.indexOf(element) != null` or `.any(func x = x == element)` for membership.
+- Both `List.List<T>` and `[T]` have `contains`. Use `.any(func x = ...)` when the test is a predicate, not equality.
 
 ```motoko
 numbers.contains(3); // equal inferred from the imported Nat
@@ -626,6 +626,63 @@ switch (todos.find(func todo = todo.id == targetId)) {
 };
 ```
 
+## Error Handling: `Result`
+
+Use `mo:core/Result` to return a failure a caller can act on. `Result<Ok, Err>` is `{ #ok : Ok; #err : Err }`, so it is a shared type and crosses the API boundary as Candid — no wrapper needed.
+
+**Pick the return type by what the failure means:**
+
+| The call can fail because…                          | Return                 |
+| --------------------------------------------------- | ---------------------- |
+| the caller did something the caller can fix         | `Result<Ok, Err>`      |
+| the thing simply is not there, and that is normal   | `?T`                   |
+| an invariant this code is responsible for is broken | trap (`Runtime.trap`)  |
+
+```motoko
+import Result "mo:core/Result";
+
+public type BookingError = {
+  #slotTaken : { until : Time.Time };
+  #notAuthorized;
+  #unknownRoom : Nat;
+};
+
+public shared ({ caller }) func book(roomId : Nat, at : Time.Time) : async Result.Result<Booking, BookingError> {
+  // ...
+};
+```
+
+**Never launder an error into `Text`.** `Result<Booking, Text>` forces every caller — including the frontend — to string-match to tell "slot taken" from "not authorized". Make `Err` a variant; put the data each failure needs inside its own tag. A `Text` payload is fine *inside* a tag when it is a message for a human, not a discriminator.
+
+**Do not trap on caller error.** A trap rolls back the whole message and reaches the frontend as an opaque reject — the caller cannot branch on it and the user gets no actionable message. Reserve traps for "this cannot happen" (see `?? Runtime.trap(...)` above).
+
+**Chain, do not nest.** `mapOk`, `mapErr`, and `chain` take `self`, so they are dot notation like every other self-parameter API and a pipeline stays flat. `Result.fromOption` has no `self` — it is the module-call bridge from `?T` at the edge where absence becomes a caller-visible error.
+
+```motoko project=result-chain filepath=src/backend/main.mo
+import Result "mo:core/Result";
+import Map "mo:core/Map";
+import Nat "mo:core/Nat";
+
+actor {
+  type Room = { id : Nat; name : Text };
+  type RoomView = { name : Text };
+  type BookingError = { #unknownRoom : Nat; #notAuthorized };
+
+  let rooms : Map.Map<Nat, Room>;
+
+  func toView(room : Room) : RoomView = { name = room.name };
+  func reserve(room : Room) : Result.Result<Room, BookingError> = #ok(room);
+
+  public query func book(roomId : Nat) : async Result.Result<RoomView, BookingError> {
+    Result.fromOption(rooms.get(roomId), #unknownRoom(roomId))
+      .chain(func room = reserve(room))
+      .mapOk(toView);
+  };
+};
+```
+
+Use `switch` on `#ok` / `#err` when the arms do different work; do not write `isOk`/`isErr` followed by an unwrap — that discards the payload the type was carrying.
+
 ## Common Patterns
 
 ### Module with Self Pattern
@@ -710,19 +767,25 @@ transient let cache = Map.empty<Text, User>();   // derived; rebuilt after each 
 
 ## Numeric Conversion Hygiene
 
-Treat deprecation warnings as failures. Do not write `Float.fromInt(...)` in new code; `mops check --fix` reports it as deprecated. When averaging `Nat` totals into a `Float`, import the required namespaces and use the current conversion chain:
+Treat deprecation warnings as failures. **Every conversion is spelled `to`, on the source value** — never a `Module.fromX` call, and never a chain through the sized numeric modules. A conversion is one receiver call:
 
 ```motoko
-import Float "mo:core/Float";
-import Int64 "mo:core/Int64";
-import Nat64 "mo:core/Nat64";
+import Nat "mo:core/Nat";
 
-let numerator = Float.fromInt64(Int64.fromNat64(Nat64.fromNat(sum)));
-let denominator = Float.fromInt64(Int64.fromNat64(Nat64.fromNat(count)));
-numerator / denominator
+let average = sum.toFloat() / count.toFloat(); // Nat.toFloat
 ```
 
-If a conversion differs from this pattern, verify the exact `mo:core` signature before writing it. Do not guess conversion names such as `Int.fromNat` or `Int64.fromNat`.
+| Instead of                | write             |
+| ------------------------- | ----------------- |
+| `Float.fromInt(i)`        | `i.toFloat()`     |
+| `Float.fromInt64(i)`      | `i.toFloat()`     |
+| `Nat.fromNat64(n)`        | `n.toNat()`       |
+| `Int.fromNat(n)`          | `n.toInt()`       |
+| `Nat64.fromNat(n)`        | `n.toNat64()`     |
+| `Blob.fromArray(bytes)`   | `bytes.toBlob()`  |
+| `Iter.fromArray(a)`       | `a.values()`      |
+
+A conversion that needs several hops is a sign the wrong function was picked: verify the exact `mo:core` signature in [api-reference.md](api-reference.md), which lists only non-deprecated APIs.
 
 ## Security and Authorization
 
@@ -742,7 +805,7 @@ Attaching cycles to an inter-canister call (`await (with cycles = ...) <call>`) 
 | `You can use the dot notation ... contains`            | Wrong Text contains shape    | `text.toLower().contains(#text term)`       |
 | `operator may trap for inferred type Nat`              | Potentially unsafe Nat math  | Avoid `Nat` subtraction; use bounds/loops   |
 | `Int cannot produce expected type Nat`                 | Int/Nat mismatch             | `.toNat()`                                  |
-| `field fromInt is deprecated`                          | Deprecated Float conversion  | `Float.fromInt64(Int64.fromNat64(Nat64.fromNat(n)))` |
+| `field fromX is deprecated`                            | Deprecated `fromX` conversion | The `toX` counterpart on the source value: `n.toFloat()`, `bytes.toBlob()` |
 | `syntax error, unexpected token '.'`                   | Missing parens               | `#text (searchTerm.toLower())`              |
 | `syntax error, unexpected token ','`                   | Missing parens in for        | `for ((key, value) in map.entries())`       |
 | `Compatibility error [M0170]`                          | Missing migration            | Load `migrating-motoko-actors`            |
@@ -767,7 +830,7 @@ Attaching cycles to an inter-canister call (`await (with cycles = ...) <call>`) 
 | `unexpected token ';'` in function call                | Semicolon after func literal | Remove `;` before `)`                       |
 | `unbound variable X`                                   | Missing import               | `import X "mo:core/X"`                      |
 | `M0098` no best choice for type param                  | Generic needs explicit types | `list.map<In, Out>(...)`                    |
-| `M0096` on `contains` callback                         | Predicate passed to contains | Use `find(pred) != null`; on `[T]`, `.any(pred)` or `.indexOf(e) != null` |
+| `M0096` on `contains` callback                         | Predicate passed to contains | `contains` takes an element; for a predicate use `.any(pred)` for a Bool, `.find(pred)` for the element |
 | `M0009` import file does not exist                     | Wrong path                   | Relative, no `.mo` extension                |
 | `M0244 variable ... is never reassigned`               | Unneeded `var` binding       | Use `let` unless reassigned with `:=`       |
 
