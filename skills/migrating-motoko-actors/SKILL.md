@@ -4,7 +4,7 @@ description: >-
   Motoko actor migration and schema evolution with the enhanced migration
   chain (migrations/). Load when upgrading canisters or changing actor
   state shape.
-version: 0.2.2
+version: 0.2.3
 compatibility:
   toolchain:
     moc: ">=1.11.2"
@@ -82,7 +82,7 @@ Add a NEW timestamped file to `src/backend/migrations/`; the chain replays autom
 - **Codomain** `NewActor`: record of new stable fields; each field must exist in the new actor with the same name and a supertype of the codomain type. Use `var x = ...` or `x = ...` in the output to match the actor's `var` vs `let`.
 - On fresh install, the entire chain replays in order starting from an empty actor (`OldActor = {}` for the first migration); on upgrade, only entries newer than the deployed tail run. Exception: in a project converted from legacy persistence the first file's `OldActor` is the pre-conversion stable shape, not `{}` — leave it alone (see `troubleshooting-motoko-migrations`).
 - Each `NewActor` field's value comes from the migration body. The actor body has no initializers in enhanced mode.
-- List every stable field in both `OldActor` and `NewActor` (including unchanged ones). A field in `OldActor` but not in `NewActor` is treated as an explicit discard (possible data loss).
+- List every stable field in both `OldActor` and `NewActor` (including unchanged ones) is the canonical form for clarity. A partial `OldActor`/`NewActor` that lists only the fields being changed (subset form) is also supported: unchanged fields carry through automatically. Either way, a field in `OldActor` but not in `NewActor` is an explicit discard (possible data loss).
 - If the migration function traps, the upgrade is aborted and the canister remains on the old version. Keep the migration pure and free of operations that can trap unexpectedly.
 
 Multi-step upgrades (e.g. v1 to v2 to v3): Each upgrade step has one migration from the previously deployed version. The next version can use a new migration (or none if the change is stable-compatible).
@@ -109,6 +109,8 @@ module {
 ## Actor body: types only, no initializers
 
 Stable vars are declared with types, no initial values. Transient let/var fields use initializers as usual.
+
+> This no-initializer rule applies to enhanced-migration projects (this skill's subject), where the migration chain owns initial values. In a plain project without the enhanced-migration chain, stable fields are initialized with inline values in the actor body as usual (e.g. `persistent actor { let m = Map.empty<Nat, Text>(); }`).
 
 ```motoko
 actor {
