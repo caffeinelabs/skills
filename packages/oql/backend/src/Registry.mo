@@ -51,6 +51,7 @@ module {
       if (visible(d)) {
         out.add({
           name = d.name; typeName = d.typeName; primaryKey = d.primaryKey;
+          auth = d.auth;
           fields = d.fields.filter(keepField);
         });
       };

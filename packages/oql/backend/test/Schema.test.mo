@@ -15,6 +15,7 @@ let doc : Schema.Document = {
       name = "customer";
       typeName = "Customer";
       primaryKey = "id";
+      auth = #scopedPerUser;
       fields = [
         { name = "id";      typeName = "Nat";  role = (#payload : Schema.Role); domain = null },
         { name = "country"; typeName = "Text"; role = (#payload : Schema.Role); domain = null },
@@ -28,6 +29,7 @@ let doc : Schema.Document = {
       name = "order";
       typeName = "Order";
       primaryKey = "id";
+      auth = #public_;
       fields = [
         { name = "id";         typeName = "Nat"; role = (#payload : Schema.Role); domain = null },
         { name = "customerId"; typeName = "Nat"; role = (#edge({ to = "customer" }) : Schema.Role); domain = null },
@@ -47,6 +49,25 @@ test("Schema.toJson surfaces primaryKey and typeName", func () {
   assert contains(json, "\"primaryKey\":\"id\"");
   assert contains(json, "\"typeName\":\"Customer\"");
   assert contains(json, "\"typeName\":\"Order\"");
+});
+
+test("Schema.toJson surfaces entity authorization", func () {
+  let json = Schema.toJson(doc);
+  assert contains(json, "\"name\":\"customer\",\"typeName\":\"Customer\",\"primaryKey\":\"id\",\"auth\":\"scopedPerUser\"");
+  assert contains(json, "\"name\":\"order\",\"typeName\":\"Order\",\"primaryKey\":\"id\",\"auth\":\"public\"");
+});
+
+test("Schema.toJson serializes controllerOrScoped authorization", func () {
+  let mixed : Schema.Document = {
+    entities = [{
+      name = "note";
+      typeName = "Note";
+      primaryKey = "id";
+      auth = #controllerOrScoped;
+      fields = [{ name = "id"; typeName = "Nat"; role = #payload; domain = null }];
+    }];
+  };
+  assert contains(Schema.toJson(mixed), "\"auth\":\"controllerOrScoped\"");
 });
 
 test("payload / hidden / edge / owner roles are distinguishable in output", func () {
@@ -82,6 +103,7 @@ test("escape: quotes and backslashes don't break the JSON", func () {
       name = "weird\"name";
       typeName = "T";
       primaryKey = "k";
+      auth = #controllerOnly;
       fields = [{ name = "back\\slash"; typeName = "Text"; role = #payload; domain = null }];
     }];
   };

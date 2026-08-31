@@ -51,10 +51,12 @@ actor {
 
     await test("controller schema() sees every level's entity and keeps the edge", func() : async () {
       let json = await levels.schema();
-      assert contains(json, "\"name\":\"pub\"");
-      assert contains(json, "\"name\":\"priv\"");
-      assert contains(json, "\"name\":\"mine\"");
-      assert contains(json, "\"name\":\"both\"");
+      // asserting the auth suffix per entity also proves Registry.build wires
+      // each declared level into the schema document end to end.
+      assert contains(json, "\"name\":\"pub\",\"typeName\":\"Item\",\"primaryKey\":\"id\",\"auth\":\"public\"");
+      assert contains(json, "\"name\":\"priv\",\"typeName\":\"Item\",\"primaryKey\":\"id\",\"auth\":\"controllerOnly\"");
+      assert contains(json, "\"name\":\"mine\",\"typeName\":\"Item\",\"primaryKey\":\"id\",\"auth\":\"scopedPerUser\"");
+      assert contains(json, "\"name\":\"both\",\"typeName\":\"Item\",\"primaryKey\":\"id\",\"auth\":\"controllerOrScoped\"");
       // the pub.privId edge points at priv, which the controller may read.
       assert contains(json, "\"to\":\"priv\"");
     });

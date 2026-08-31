@@ -12,6 +12,7 @@ import Int   "mo:core/Int";
 import Iter  "mo:core/Iter";
 import Nat   "mo:core/Nat";
 import Text  "mo:core/Text";
+import Auth  "Auth";
 import Types "Types";
 
 module {
@@ -22,7 +23,13 @@ module {
   /// e.g. the arms of a variant rendered as text. Lets a client offer exact
   /// filter values without a probe query. `null` means "unbounded / unknown".
   public type FieldDecl  = { name : Text; typeName : Text; role : Role; domain : ?[Types.Value] };
-  public type EntityDecl = { name : Text; typeName : Text; primaryKey : Text; fields : [FieldDecl] };
+  public type EntityDecl = {
+    name : Text;
+    typeName : Text;
+    primaryKey : Text;
+    auth : Auth.TableAuth;
+    fields : [FieldDecl];
+  };
   public type Document   = { entities : [EntityDecl] };
 
   public func toJson(doc : Document) : Text =
@@ -30,9 +37,16 @@ module {
 
   func entityToJson(e : EntityDecl) : Text {
     let fields = e.fields.values().map(fieldToJson).join(",");
+    let auth = switch (e.auth) {
+      case (#public_) { "public" };
+      case (#controllerOnly) { "controllerOnly" };
+      case (#scopedPerUser) { "scopedPerUser" };
+      case (#controllerOrScoped) { "controllerOrScoped" };
+    };
     "{\"name\":\""        # escape(e.name)
     # "\",\"typeName\":\""   # escape(e.typeName)
     # "\",\"primaryKey\":\"" # escape(e.primaryKey)
+    # "\",\"auth\":\"" # auth
     # "\",\"fields\":[" # fields # "]}"
   };
 
