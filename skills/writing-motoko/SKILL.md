@@ -3,7 +3,7 @@ name: writing-motoko
 description: >-
   Motoko language reference, architecture patterns, and dependency tooling
   (mops). Load when writing or modifying backend .mo files.
-version: 0.2.0
+version: 0.2.1
 compatibility:
   toolchain:
     moc: ">=1.11.2"
@@ -87,17 +87,25 @@ array.filter(func x = x > 0); // CORRECT
 Map.get(map, key);
 List.add(list, item); // WRONG (M0236)
 
-// Applies to conversions too
-caller.toText() myNat.toText() "hello".concat(" world") // CORRECT
-Principal.toText(caller) Nat.toText(myNat) // WRONG (M0236)
-
 // Chaining
 let doubled = numbers.map(func x = x * 2).filter(func x = x > 10);
 
-// Equality: Principal declares `equal` with a self parameter, so it is dot notation too
-a.equal(b) // PREFERRED
-Principal.equal(a, b) // OK
+```
 
+Conversions are receiver calls too, but only when the module is imported — without `mo:core/Nat`, `mo:core/Text`, etc. in scope, moc reports M0070/M0072 and the call does not compile:
+
+```motoko project=dot-notation filepath=src/backend/main.mo
+import Principal "mo:core/Principal";
+import Nat "mo:core/Nat";
+import Text "mo:core/Text";
+
+func conversions(caller : Principal, myNat : Nat) {
+  ignore caller.toText();            // CORRECT
+  ignore myNat.toText();             // CORRECT
+  ignore "hello".concat(" world");   // CORRECT
+  ignore Principal.toText(caller);   // WRONG (M0236)
+  ignore Nat.toText(myNat);          // WRONG (M0236)
+};
 ```
 
 **`equal` / `compare` vs `==`.** Collections take `equal` and `compare` as implicit arguments, so those are the functions to write for your own records and variants. `==` is compiler-generated structural equality and exists only for **shared** types — one `var` field takes a record out of shared and `==` stops compiling (M0060) — so do not build record comparisons on it. Comparing primitives and shared fields directly with `==` is fine, and on `Nat`, `Int`, `Float`, and the sized int types it is the only form: those declare `equal(x, y)` without a `self` parameter, so `myNat.equal(other)` fails with M0070. Other receiver methods on those types (`myNat.toText()`) are fine.
@@ -628,7 +636,7 @@ switch (todos.find(func todo = todo.id == targetId)) {
 
 ## Error Handling: `Result`
 
-Use `mo:core/Result` to return a failure a caller can act on. `Result<Ok, Err>` is `{ #ok : Ok; #err : Err }`, so it is a shared type and crosses the API boundary as Candid — no wrapper needed.
+Use `mo:core/Result` to return a failure a caller can act on. `Result<Ok, Err>` is `{ #ok : Ok; #err : Err }`, so it crosses the API boundary as Candid whenever `Ok` and `Err` are themselves shared, which for `Ok` usually means the view type, not the internal record.
 
 **Pick the return type by what the failure means:**
 
@@ -673,7 +681,7 @@ actor {
   func toView(room : Room) : RoomView = { name = room.name };
   func reserve(room : Room) : Result.Result<Room, BookingError> = #ok(room);
 
-  public query func book(roomId : Nat) : async Result.Result<RoomView, BookingError> {
+  public shared ({ caller }) func book(roomId : Nat) : async Result.Result<RoomView, BookingError> {
     Result.fromOption(rooms.get(roomId), #unknownRoom(roomId))
       .chain(func room = reserve(room))
       .mapOk(toView);
@@ -870,6 +878,7 @@ Attaching cycles to an inter-canister call (`await (with cycles = ...) <call>`) 
 - **Equality & comparison**: [references/equality.md](references/equality.md) — which types support receiver `.equal`, and when `==` differs from `equal`
 - **Type conversions**: [references/type-conversions.md](references/type-conversions.md) — Nat/Int size conversions
 - **Project setup**: [references/project-setup.md](references/project-setup.md) — one-time `[moc] args` flags. Skip this if your platform manages `mops.toml`
+- **Design review**: Load `reviewing-motoko` when reviewing, auditing, or refactoring existing `.mo` files — type-encoded invariants, state/persistence discipline, and file structure
 - **Actor migrations**: Load `migrating-motoko-actors` when upgrading canisters or changing actor state shape
 - **Migration failures**: Load `troubleshooting-motoko-migrations` for unexplained compatibility diagnostics, frozen migration files, or converted legacy projects
 - **API signatures**: [api-reference.md](api-reference.md) — complete function signatures
