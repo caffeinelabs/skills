@@ -80,9 +80,13 @@
 
 import Prim      "mo:⛔";
 import Auth      "Auth";
-import Map       "mo:core/Map";
+import Iter       "mo:core/Iter";
+import List       "mo:core/List";
+import Map        "mo:core/Map";
+import Nat        "mo:core/Nat";
 import RegionIndex "RegionIndex";
 import Runtime   "mo:core/Runtime";
+import Set       "mo:core/Set";
 import Table     "Table";
 import Text      "mo:core/Text";
 import Timer     "mo:core/Timer";
