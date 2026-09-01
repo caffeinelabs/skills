@@ -1,7 +1,7 @@
 ---
 name: extension-http-outcalls
 description: HTTP outcalls performed by the backend canister (not in the frontend), including mandatory local verification of external REST API requests.
-version: 0.1.8
+version: 0.1.9
 compatibility:
   mops:
     caffeineai-http-outcalls: "~0.1.4"
@@ -135,6 +135,7 @@ replicated execution. The backward-compatible helper stays the shortest path for
 a simple GET:
 
 ```motoko filepath=src/backend/main.mo
+import Text "mo:core/Text";
 import OutCall "mo:caffeineai-http-outcalls/outcall";
 
 actor {
