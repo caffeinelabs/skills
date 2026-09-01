@@ -12,7 +12,7 @@ description: >-
   mentions sending email, Gmail, "notify via email", "forward results by
   email", or any equivalent phrasing — and BEFORE writing any code that
   touches a Google endpoint.
-version: 0.2.4
+version: 0.2.5
 caffeineai-subscription: [none]
 compatibility:
   mops:
@@ -310,6 +310,7 @@ mixin (
 ```
 
 ```motoko filepath=src/backend/lib/gmail.mo
+import Error "mo:core/Error";
 import Map "mo:core/Map";
 import Nat64 "mo:core/Nat64";
 import Principal "mo:core/Principal";
