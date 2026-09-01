@@ -1,5 +1,9 @@
 
 
+### Bug Fixes
+
+- **LANG-1384**: make OQL package imports explicit (#265)
+
 ### Features
 
 - **oql**: per-table auth + token removal, ported tests, CI (#141)
