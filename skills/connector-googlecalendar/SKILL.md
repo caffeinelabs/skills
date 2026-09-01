@@ -12,7 +12,7 @@ description: >-
   or any prior task mentions scheduling, calendar events, appointments,
   meetings, "add to calendar", or any equivalent phrasing — and BEFORE
   writing any code that touches a Google endpoint.
-version: 0.2.7
+version: 0.2.8
 caffeineai-subscription: [none]
 compatibility:
   mops:
@@ -313,9 +313,11 @@ mixin (
 
 ```motoko filepath=src/backend/lib/calendar.mo
 import Array "mo:core/Array";
+import Error "mo:core/Error";
 import Map "mo:core/Map";
 import Nat64 "mo:core/Nat64";
 import Principal "mo:core/Principal";
+import PureMap "mo:core/pure/Map";
 import Runtime "mo:core/Runtime";
 import Text "mo:core/Text";
 import OAuth "mo:google-oauth/OAuth";
