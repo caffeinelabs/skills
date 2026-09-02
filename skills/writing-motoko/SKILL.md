@@ -3,7 +3,7 @@ name: writing-motoko
 description: >-
   Motoko language reference, architecture patterns, and dependency tooling
   (mops). Load when writing or modifying backend .mo files.
-version: 0.2.3
+version: 0.2.4
 compatibility:
   toolchain:
     moc: ">=1.11.2"
