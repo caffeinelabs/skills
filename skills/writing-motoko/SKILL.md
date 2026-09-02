@@ -3,7 +3,7 @@ name: writing-motoko
 description: >-
   Motoko language reference, architecture patterns, and dependency tooling
   (mops). Load when writing or modifying backend .mo files.
-version: 0.2.2
+version: 0.2.3
 compatibility:
   toolchain:
     moc: ">=1.11.2"
@@ -80,6 +80,12 @@ module actually defines — verify against [api-reference.md](api-reference.md)
 rather than inferring JavaScript-style helpers. `.some(...)` and `.every(...)`
 do not exist in Motoko; the `mo:core` names are `.any(...)` and `.all(...)`.
 
+The module a dot call resolves against is the module that **defines** the
+function — usually the receiver's type's module (`map.get`, `list.add`), but
+sometimes a different one: `arr.values().toList()` resolves against `List` (the
+target), not the array's module. The import needed (if any) is the defining
+module's, not the receiver's.
+
 ```motoko
 map.get(key);
 list.add(item);
@@ -92,7 +98,12 @@ let doubled = numbers.map(func x = x * 2).filter(func x = x > 10);
 
 ```
 
-Conversions are receiver calls too, but only when the module is imported — without `mo:core/Nat`, `mo:core/Text`, etc. in scope, moc reports M0070/M0072 and the call does not compile:
+Conversions are receiver calls too, but the `toX` functions are split across
+modules: some are defined on the **source** module (`Nat8.toNat`), others on the
+**target** (`"42".toNat()` and `"-5".toInt()` are defined by `Nat` and `Int`,
+not `Text`). So `Text`-receiver conversions need the target imported (`import
+Nat "mo:core/Nat"`, `import Int "mo:core/Int"`); without it, moc reports
+M0070/M0072 and the call does not compile:
 
 ```motoko project=dot-notation filepath=src/backend/main.mo
 import Principal "mo:core/Principal";
@@ -102,6 +113,7 @@ import Text "mo:core/Text";
 func conversions(caller : Principal, myNat : Nat) {
   ignore caller.toText();            // CORRECT
   ignore myNat.toText();             // CORRECT
+  ignore "42".toNat();               // CORRECT (defined by Nat, imported above)
   ignore "hello".concat(" world");   // CORRECT
   ignore Principal.toText(caller);   // WRONG (M0236)
   ignore Nat.toText(myNat);          // WRONG (M0236)
