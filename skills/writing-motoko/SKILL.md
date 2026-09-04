@@ -3,7 +3,7 @@ name: writing-motoko
 description: >-
   Motoko language reference, architecture patterns, and dependency tooling
   (mops). Load when writing or modifying backend .mo files.
-version: 0.2.4
+version: 0.2.5
 compatibility:
   toolchain:
     moc: ">=1.11.2"
@@ -329,6 +329,42 @@ Imports and `type`/`let` declarations may precede the actor. Nothing may follow 
 ### Import Hygiene
 
 Add an import only to the file that uses the imported identifier. `Time.now()` usually belongs in a domain `lib/*.mo` implementation file, so `import Time "mo:core/Time";` belongs in that file, not `main.mo`, unless `main.mo` itself calls `Time.now()`. Every capitalized namespace call must have a matching import in the same file: if a mixin calls `TodosLib.listTodos(...)`, the file must import `TodosLib "../lib/todos"` (or use the alias it actually imported). Treat unused-import warnings as failures: remove stale `Debug`, `Time`, or helper-module imports before finishing.
+
+## Query Functions
+
+`query` marks a public function as a read-only call: it executes fast and unreplicated, and **every state change it makes is silently discarded when the call completes** — a write inside a query compiles, runs, and vanishes with no error or warning. Declare pure reads as `query func`; any function that must persist a change is a plain update func (no `query`). `public query func` is shorthand for `public shared query func`; both forms take `({ caller })` the same way.
+
+```motoko
+public query func getPosts() : async [Types.PostView] { ... };          // read: query
+public shared ({ caller }) func addPost(t : Text) : async Nat { ... };  // persists: update
+public query func resetAll() : async () { posts.clear() };              // WRONG: compiles, but the clear is discarded
+```
+
+### When await is allowed
+
+A plain `query func` cannot call any other canister function, whether that callee is a query or an update. Writing `await someCall()` inside one fails with a paired `M0038` (misplaced await) + `M0188` (send capability required: "cannot call a `shared` function from a `query` function"), always on the same statement. Pick the function kind by what the body must call:
+
+| Body must call                          | Declare                                 | Can `await`                              |
+| --------------------------------------- | --------------------------------------- | ---------------------------------------- |
+| another canister's `query`/`composite query` | `public shared composite query func` | those query callees                     |
+| an update (`shared` func) or oneway     | a normal `public shared func`           | that update                              |
+| nothing across canisters                | `public shared query func`              | nothing                                  |
+
+A `composite query` is a read-only function that can `await` other canisters' queries. Loop over callees and `await` each:
+
+```motoko
+public shared composite query func sum(counters : [Counter]) : async Nat {
+  var total = 0;
+  for (counter in counters.values()) {
+    total += await counter.peek();
+  };
+  total
+};
+```
+
+A `composite query` can call `query` and `composite query` callees but not updates or other `shared` functions; awaiting an update there is `M0187` ("send capability required ... only calls to `query` and `composite query` functions are allowed"). If the body must `await` an update, no flavor of query works — make it an update func.
+
+A composite query can only be initiated as an ingress call, e.g. from a frontend — calling one from an update or oneway func is `M0186`, from a plain `query func` `M0188`. Within the call tree it composes: it may call other canisters' `query`/`composite query` functions.
 
 ## Shared Types
 
@@ -833,7 +869,10 @@ Attaching cycles to an inter-canister call (`await (with cycles = ...) <call>`) 
 | `M0254` / `M0267` initial actor requires field         | Stable field no migration supplies | Add it to the pending migration's `NewActor` |
 | `M0255` stable signature downgrade                     | Chain or migrations config removed | Restore it — enhanced migration is one-way; load `troubleshooting-motoko-migrations` |
 | `shared function has non-shared parameter/return type` | Mutable type in API          | Return `[T]` not `List<T>`, no `var` fields |
-| `send capability required`                             | Async in non-async           | Add `<system>` capability                   |
+| `send capability required`                             | Async in non-async (`async*`/local non-shared target) | Add `<system>` capability                   |
+| M0038 misplaced await + M0188 send capability (paired) | `await <call>` inside a plain `query func` | Make it a `composite query func` (queries) or a plain update func (updates) |
+| `M0187` send capability in a composite query           | calling/awaiting an update from a `composite query func` | Make it a plain update func                |
+| `M0186` composite send capability required             | calling a `composite query func` from a non-composite func | Only ingress calls initiate composite queries; call it from the frontend, or make the callee a plain `query` |
 | `unexpected token '<name>'` at an identifier declaration | Reserved word used as an identifier | Rename it consistently across its contract and callers; see [references/reserved-keywords.md](references/reserved-keywords.md) |
 | `unexpected token 'public'` after a function           | Missing declaration `;`      | End function declarations with `};`         |
 | `M0219` implicitly transient                           | Actor not persistent         | Write `persistent actor`; see [references/project-setup.md](references/project-setup.md) |
