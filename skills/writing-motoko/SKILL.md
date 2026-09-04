@@ -3,7 +3,7 @@ name: writing-motoko
 description: >-
   Motoko language reference, architecture patterns, and dependency tooling
   (mops). Load when writing or modifying backend .mo files.
-version: 0.2.5
+version: 0.2.6
 compatibility:
   toolchain:
     moc: ">=1.11.2"
@@ -23,6 +23,7 @@ Motoko is an under-represented language for the Internet Computer Protocol, so y
 
 - `stable` keyword -- Not needed in enhanced orthogonal persistence mode
 - `mo:base` library -- Deprecated. Use `mo:core` instead
+- `.vals()` -- The deprecated `mo:base` iterator name. Always `.values()`. On arrays `.vals()` still compiles, so nothing flags it; on core collections it fails with M0072
 - `system func preupgrade/postupgrade` -- Not needed with enhanced orthogonal persistence
 - `(with migration = ...)` actor-attached migration syntax -- Use the mops-managed migration chain in `migrations/`
 - Inline initializers on stable actor fields -- Initial values come from the migration chain (see `migrating-motoko-actors`)
@@ -37,6 +38,7 @@ Motoko is an under-represented language for the Internet Computer Protocol, so y
 
 - `mo:core` library version 2.6.0+ (compiler `moc` 1.11.2+)
 - Contextual dot notation -- `list.add(item)`, `map.get(key)`
+- An import of the key type's module in every file that operates on a `Map`/`Set` -- the implicit `compare` is resolved from the imported module (`import Nat "mo:core/Nat"` for a `Map.Map<Nat, _>`), never from the type alone. A missing key-module import is the usual cause of M0230; a record or variant key needs its own module with a `compare` (see Implicit Parameters)
 - Null coalesce `??` for unwrap-or-default and unwrap-or-trap (`opt ?? default`, `opt ?? Runtime.trap(...)`) -- prefer over a two-arm `switch` on `?T` (requires `moc >= 1.7.0`)
 - Plain `break` / `continue` to exit or skip a loop iteration -- they work inside `for`, `while`, and `loop` just like in other languages
 - Enhanced orthogonal persistence (state persists without `stable` keyword)
@@ -882,7 +884,7 @@ Attaching cycles to an inter-canister call (`await (with cycles = ...) <call>`) 
 | `M0145` `does not cover value`                         | Non-exhaustive switch        | Add the missing cases or a `case _`         |
 | `M0060` operator not defined for `{#tag : T}`          | Unparenthesized variant tag  | `#tag(x)`, never `#tag x`                   |
 | `M0060` operator not defined, on `==`                  | `==` on a record with a `var` field (not shared) | Use an `equal` function instead |
-| `M0230` cannot determine implicit argument `compare`   | Record/variant key with no findable `compare` | Add `compare` to the type's module; or `import` the module for a primitive key |
+| `M0230` cannot determine implicit argument `compare`   | Key type's module not in scope | Usually a missing import: `import` the key type's module (`Nat`, `Text`, …) in that file. For a record/variant key, add `compare` to the type's own module |
 | `M0070` expected object type, produces `Nat`           | Receiver `.equal`/`.compare` on a number | Use `==` or `Nat.equal(a, b)`   |
 | `M0096` actor cannot produce expected type `()`        | Declaration after the actor  | The actor must be the last declaration in the file |
 | `field compare does not exist` on Time                 | No Time.compare              | Use `Int.compare`                           |
