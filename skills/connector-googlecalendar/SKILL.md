@@ -12,7 +12,7 @@ description: >-
   or any prior task mentions scheduling, calendar events, appointments,
   meetings, "add to calendar", or any equivalent phrasing — and BEFORE
   writing any code that touches a Google endpoint.
-version: 0.2.8
+version: 0.2.9
 caffeineai-subscription: [none]
 compatibility:
   mops:
@@ -499,7 +499,7 @@ module {
         for ((_id, cal) in calendars.entries()) {
           switch (cal.busy) {
             case (?periods) {
-              for (p in periods.vals()) {
+              for (p in periods.values()) {
                 switch (p.start, p.end) {
                   case (?s, ?e) busy := Array.concat(busy, [(s, e)]);
                   case _ {};
