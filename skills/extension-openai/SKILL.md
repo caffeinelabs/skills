@@ -12,7 +12,7 @@ description: >-
   any prior task mentions ChatGPT, GPT (any version), OpenAI, an LLM, a
   chatbot, or embeddings — and BEFORE writing any code that touches
   `api.openai.com`.
-version: 0.1.2
+version: 0.1.3
 compatibility:
   mops:
     openai-client: "~0.2.5"
@@ -141,12 +141,33 @@ actor {
   // doesn't use the #admin role gate, but `MixinAuthorization` is what wires
   // sign-in / caller plumbing on both backend and frontend (see SKILL
   // §"Prerequisite").
-  let accessControlState = AccessControl.initState();
+  let accessControlState : AccessControl.AccessControlState;
   include MixinAuthorization(accessControlState, null);
 
   // Per-user OpenAI keys. Never iterated except by the calling principal.
-  let openAIKeys : Map.Map<Principal, Text> = Map.empty();
+  let openAIKeys : Map.Map<Principal, Text>;
   include MixinOpenAIChat(openAIKeys);
+};
+```
+
+The migration chain head:
+
+```motoko filepath=src/backend/migrations/00000000_000000.mo
+import Map "mo:core/Map";
+import AccessControl "mo:caffeineai-authorization/access-control";
+
+module {
+  type NewActor = {
+    accessControlState : AccessControl.AccessControlState;
+    openAIKeys : Map.Map<Principal, Text>;
+  };
+
+  public func migration(_old : {}) : NewActor {
+    {
+      accessControlState = AccessControl.initState();
+      openAIKeys = Map.empty<Principal, Text>();
+    };
+  };
 };
 ```
 
@@ -307,20 +328,21 @@ Use this variant **only** when the spec explicitly puts the OpenAI bill on the o
 
 In every other case — and especially whenever the spec mentions login, multiple users, or doesn't say who pays — use the per-user default in §4 instead. The admin-key variant is only sensible when "the operator pays" is a deliberate, stated choice.
 
-The single rule that flips relative to §4: a single `?Text` replaces the `Map<Principal, Text>`, and the setter is gated on the `#admin` role from [`extension-authorization`](../extension-authorization/SKILL.md) instead of "any signed-in caller". The actor and mixin file are new; `src/backend/lib/openai.mo` from §4 is reused unchanged.
+The single rule that flips relative to §4: a single `?Text` replaces the `Map<Principal, Text>`, and the setter is gated on the `#admin` role from [`extension-authorization`](../extension-authorization/SKILL.md) instead of "any signed-in caller". The actor and mixin file are new; `src/backend/lib/openai.mo` from §4 is reused unchanged. This `main.mo` replaces §4's, and its chain head supplies `AccessControl.initState()` and `{ var value = null }`.
 
-```motoko filepath=src/backend/admin-key-main.mo
+<!-- motoko-check:skip -->
+```motoko
 import AccessControl "mo:caffeineai-authorization/access-control";
 import MixinAuthorization "mo:caffeineai-authorization/MixinAuthorization";
 import MixinOpenAIAdminChat "mixins/openai-admin-chat";
 
 actor {
-  let accessControlState = AccessControl.initState();
+  let accessControlState : AccessControl.AccessControlState;
   include MixinAuthorization(accessControlState, null);
 
   // Admin-set OpenAI bearer key. Wrapped in `{ var value : ?Text }` so the
   // mixin can mutate it.
-  let openAIApiKey = { var value : ?Text = null };
+  let openAIApiKey : { var value : ?Text };
   include MixinOpenAIAdminChat(accessControlState, openAIApiKey);
 };
 ```
@@ -373,7 +395,7 @@ Take §9's two files and apply these diffs (the `lib/openai.mo` helper from §4 
 In `src/backend/main.mo`:
 
 - Drop the imports of `mo:caffeineai-authorization/access-control` and `mo:caffeineai-authorization/MixinAuthorization`.
-- Drop `let accessControlState = AccessControl.initState();` and `include MixinAuthorization(accessControlState, null);` from the actor body.
+- Drop `let accessControlState : AccessControl.AccessControlState;` and `include MixinAuthorization(accessControlState, null);` from the actor body (and the `accessControlState` entry from the migration chain head).
 - Drop the `accessControlState` argument from the mixin `include`, leaving `include MixinOpenAIAdminChat(openAIApiKey);`.
 
 In `src/backend/mixins/openai-admin-chat.mo`:
