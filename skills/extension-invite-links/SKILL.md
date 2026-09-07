@@ -1,7 +1,7 @@
 ---
 name: extension-invite-links
 description: Requests invite-link / RSVP based access where guests can submit responses without login while admin can view responses with login.
-version: 1.0.0
+version: 1.0.1
 compatibility:
   mops:
     caffeineai-invite-links: "~1.0.0"
@@ -71,12 +71,33 @@ import MixinInviteLinks "mo:caffeineai-invite-links/MixinInviteLinks";
 import InviteLinksModule "mo:caffeineai-invite-links/invite-links-module";
 
 actor {
-    let accessControlState = AccessControl.initState();
+    let accessControlState : AccessControl.AccessControlState;
     include MixinAuthorization(accessControlState, null);
-    let inviteState = InviteLinksModule.initState();
+    let inviteState : InviteLinksModule.InviteLinksSystemState;
     include MixinInviteLinks(accessControlState, inviteState);
 
     // Write additional application-specific code here.
+};
+```
+
+The migration chain head:
+
+```motoko filepath=src/backend/migrations/00000000_000000.mo
+import AccessControl "mo:caffeineai-authorization/access-control";
+import InviteLinksModule "mo:caffeineai-invite-links/invite-links-module";
+
+module {
+    type NewActor = {
+        accessControlState : AccessControl.AccessControlState;
+        inviteState : InviteLinksModule.InviteLinksSystemState;
+    };
+
+    public func migration(_old : {}) : NewActor {
+        {
+            accessControlState = AccessControl.initState();
+            inviteState = InviteLinksModule.initState();
+        };
+    };
 };
 ```
 
