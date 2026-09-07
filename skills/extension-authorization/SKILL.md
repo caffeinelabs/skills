@@ -1,7 +1,7 @@
 ---
 name: extension-authorization
 description: Authorization system with role-based access control. Must-have for all apps that manage personal or access-restricted data.
-version: 1.3.0
+version: 1.3.1
 compatibility:
   mops:
     caffeineai-authorization: "~1.0.0"
@@ -64,12 +64,37 @@ import Types "types";
 import ProfileMixin "mixins/Profile";
 
 actor {
-  let accessControlState = AccessControl.initState();
+  let accessControlState : AccessControl.AccessControlState;
   include MixinAuthorization(accessControlState, null);
 
-  let userProfiles = Map.empty<Principal, Types.UserProfile>();
+  let userProfiles : Map.Map<Principal, Types.UserProfile>;
 
   include ProfileMixin(accessControlState, userProfiles);
+};
+```
+
+The migration chain head:
+
+```motoko filepath=src/backend/migrations/00000000_000000.mo
+import Map "mo:core/Map";
+import AccessControl "mo:caffeineai-authorization/access-control";
+
+module {
+  type UserProfile = {
+    name : Text;
+  };
+
+  type NewActor = {
+    accessControlState : AccessControl.AccessControlState;
+    userProfiles : Map.Map<Principal, UserProfile>;
+  };
+
+  public func migration(_old : {}) : NewActor {
+    {
+      accessControlState = AccessControl.initState();
+      userProfiles = Map.empty<Principal, UserProfile>();
+    };
+  };
 };
 ```
 
@@ -173,16 +198,17 @@ Which attributes arrive depends on the sign-in variant the frontend used (see th
 
 Store them in your own state and expose a getter to read them back:
 
-```
+<!-- motoko-check:skip -->
+```motoko
 import Map "mo:core/Map";
 import Principal "mo:core/Principal";
 import AccessControl "mo:caffeineai-authorization/access-control";
 import MixinAuthorization "mo:caffeineai-authorization/MixinAuthorization";
 
 actor {
-  let accessControlState = AccessControl.initState();
+  let accessControlState : AccessControl.AccessControlState;
 
-  let emails = Map.empty<Principal, Text>();
+  let emails : Map.Map<Principal, Text>;
 
   include MixinAuthorization(
     accessControlState,
