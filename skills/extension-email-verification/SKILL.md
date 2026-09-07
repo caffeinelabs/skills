@@ -1,7 +1,7 @@
 ---
 name: extension-email-verification
 description: Support for sending an email with a link the recipient can click to prove they own the email address.
-version: 0.1.7
+version: 0.1.8
 compatibility:
   mops:
     caffeineai-email-verification: "~0.1.2"
@@ -93,13 +93,13 @@ import VerifiedEmails "mo:caffeineai-email-verification/verifiedEmails";
 
 actor {
   // Stores which emails are verified
-  let verifiedEmails = VerifiedEmails.new();
+  let verifiedEmails : VerifiedEmails.State;
 
   // User profiles storage
-  let users = Map.empty<Principal, User>();
+  let users : Map.Map<Principal, User>;
 
   // Email to principal mapping for uniqueness check
-  let emailToPrincipal = Map.empty<Text, Principal>();
+  let emailToPrincipal : Map.Map<Text, Principal>;
 
   // Handles the verification link and updates the verifiedEmails store
   include MixinEmailVerification(verifiedEmails);
@@ -141,6 +141,34 @@ actor {
   public shared ({ caller }) func isEmailVerified() : async Bool {
     let user = users.get(caller) ?? Runtime.trap("User not registered");
     VerifiedEmails.contains(verifiedEmails, user.email);
+  };
+};
+```
+
+The migration chain head:
+
+```motoko filepath=src/backend/migrations/00000000_000000.mo
+import Map "mo:core/Map";
+import VerifiedEmails "mo:caffeineai-email-verification/verifiedEmails";
+
+module {
+  type User = {
+    name : Text;
+    email : Text;
+  };
+
+  type NewActor = {
+    verifiedEmails : VerifiedEmails.State;
+    users : Map.Map<Principal, User>;
+    emailToPrincipal : Map.Map<Text, Principal>;
+  };
+
+  public func migration(_old : {}) : NewActor {
+    {
+      verifiedEmails = VerifiedEmails.new();
+      users = Map.empty<Principal, User>();
+      emailToPrincipal = Map.empty<Text, Principal>();
+    };
   };
 };
 ```
