@@ -12,7 +12,7 @@ description: >-
   mentions sending email, Gmail, "notify via email", "forward results by
   email", or any equivalent phrasing — and BEFORE writing any code that
   touches a Google endpoint.
-version: 0.2.5
+version: 0.2.6
 caffeineai-subscription: [none]
 compatibility:
   mops:
@@ -190,18 +190,55 @@ import MixinGmailMessaging "mixins/gmail-messaging";
 import LibGmail "lib/gmail";
 
 actor {
-  let accessControlState = AccessControl.initState();
+  let accessControlState : AccessControl.AccessControlState;
   include MixinAuthorization(accessControlState, null);
 
-  let gmailConfig = {
-    var clientId : Text = "";
-    var clientSecret : Text = "";
+  let gmailConfig : {
+    var clientId : Text;
+    var clientSecret : Text;
   };
   include MixinGmailConfig(accessControlState, gmailConfig);
 
-  let gmailConnections : Map.Map<Principal, LibGmail.GmailConnection> = Map.empty();
-  let pendingGmailFlows : Map.Map<Principal, LibGmail.PendingOAuth> = Map.empty();
+  let gmailConnections : Map.Map<Principal, LibGmail.GmailConnection>;
+  let pendingGmailFlows : Map.Map<Principal, LibGmail.PendingOAuth>;
   include MixinGmailMessaging(gmailConfig, gmailConnections, pendingGmailFlows);
+};
+```
+
+The migration chain head:
+
+```motoko filepath=src/backend/migrations/00000000_000000.mo
+import Map "mo:core/Map";
+import AccessControl "mo:caffeineai-authorization/access-control";
+
+module {
+  type GmailConnection = {
+    accessToken : Text;
+    refreshToken : Text;
+    emailAddress : Text;
+  };
+
+  type PendingOAuth = {
+    codeVerifier : Text;
+    redirectUri : Text;
+    state : Text;
+  };
+
+  type NewActor = {
+    accessControlState : AccessControl.AccessControlState;
+    gmailConfig : { var clientId : Text; var clientSecret : Text };
+    gmailConnections : Map.Map<Principal, GmailConnection>;
+    pendingGmailFlows : Map.Map<Principal, PendingOAuth>;
+  };
+
+  public func migration(_old : {}) : NewActor {
+    {
+      accessControlState = AccessControl.initState();
+      gmailConfig = { var clientId = ""; var clientSecret = "" };
+      gmailConnections = Map.empty<Principal, GmailConnection>();
+      pendingGmailFlows = Map.empty<Principal, PendingOAuth>();
+    };
+  };
 };
 ```
 
@@ -702,18 +739,56 @@ config or connection; they receive the shared `googleConfig` and
 
 ```motoko filepath=src/backend/main.mo
 actor {
-  let accessControlState = AccessControl.initState();
+  let accessControlState : AccessControl.AccessControlState;
   include MixinAuthorization(accessControlState, null);
 
   // ONE shared credential + connection state for both services.
-  let googleConfig = { var clientId : Text = ""; var clientSecret : Text = "" };
-  let googleConnections : Map.Map<Principal, Google.Connection> = Map.empty();
-  let pendingGoogleFlows : Map.Map<Principal, Google.PendingOAuth> = Map.empty();
+  let googleConfig : { var clientId : Text; var clientSecret : Text };
+  let googleConnections : Map.Map<Principal, Google.Connection>;
+  let pendingGoogleFlows : Map.Map<Principal, Google.PendingOAuth>;
 
   include MixinGoogleConfig(accessControlState, googleConfig);                    // setGoogleCredentials / isGoogleConfigured (#admin-gated setter)
   include MixinGoogleOAuth(googleConfig, googleConnections, pendingGoogleFlows);  // startGoogleOAuth / completeGoogleOAuth, SCOPES = union above
   include MixinGmailMessaging(googleConfig, googleConnections);                  // sendEmail — refresh-on-401 needs config; reads the shared connection
   include MixinCalendarMessaging(googleConfig, googleConnections);               // calendar calls — same shared config + connection
+};
+```
+
+This variant's migration chain head replaces the per-connector one:
+
+<!-- motoko-check:skip -->
+```motoko
+import Map "mo:core/Map";
+import AccessControl "mo:caffeineai-authorization/access-control";
+
+module {
+  type Connection = {
+    accessToken : Text;
+    refreshToken : Text;
+    emailAddress : Text;
+  };
+
+  type PendingOAuth = {
+    codeVerifier : Text;
+    redirectUri : Text;
+    state : Text;
+  };
+
+  type NewActor = {
+    accessControlState : AccessControl.AccessControlState;
+    googleConfig : { var clientId : Text; var clientSecret : Text };
+    googleConnections : Map.Map<Principal, Connection>;
+    pendingGoogleFlows : Map.Map<Principal, PendingOAuth>;
+  };
+
+  public func migration(_old : {}) : NewActor {
+    {
+      accessControlState = AccessControl.initState();
+      googleConfig = { var clientId = ""; var clientSecret = "" };
+      googleConnections = Map.empty<Principal, Connection>();
+      pendingGoogleFlows = Map.empty<Principal, PendingOAuth>();
+    };
+  };
 };
 ```
 
