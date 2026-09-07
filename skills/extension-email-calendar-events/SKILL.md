@@ -1,7 +1,7 @@
 ---
 name: extension-email-calendar-events
 description: Support for organising events/meetings and sending invitations by email.
-version: 0.1.6
+version: 0.1.7
 compatibility:
   mops:
     caffeineai-email-calendar-events: "~0.1.1"
@@ -160,17 +160,17 @@ actor {
   };
 
   // Include authorization component
-  let accessControlState = AccessControl.initState();
+  let accessControlState : AccessControl.AccessControlState;
   include MixinAuthorization(accessControlState, null);
 
   // Store a map of caller principal to UserProfile
-  var userProfiles = Map.empty<Principal, UserProfile>();
+  var userProfiles : Map.Map<Principal, UserProfile>;
 
   // Store a set of emails for uniqueness check
-  var emails = Set.empty<Text>();
+  var emails : Set.Set<Text>;
 
   // Store the calendar events
-  let calendarEvents = CalendarEvents.new();
+  let calendarEvents : CalendarEvents.State;
 
   public shared ({ caller }) func registerUser(name : Text, email : Text) : async () {
     // Check if the user already exists
@@ -310,6 +310,38 @@ actor {
       "no-reply",
       event
     );
+  };
+};
+```
+
+The migration chain head:
+
+```motoko filepath=src/backend/migrations/00000000_000000.mo
+import Map "mo:core/Map";
+import Set "mo:core/Set";
+import AccessControl "mo:caffeineai-authorization/access-control";
+import CalendarEvents "mo:caffeineai-email-calendar-events/calendarEvents";
+
+module {
+  type UserProfile = {
+    name : Text;
+    email : Text;
+  };
+
+  type NewActor = {
+    accessControlState : AccessControl.AccessControlState;
+    var userProfiles : Map.Map<Principal, UserProfile>;
+    var emails : Set.Set<Text>;
+    calendarEvents : CalendarEvents.State;
+  };
+
+  public func migration(_old : {}) : NewActor {
+    {
+      accessControlState = AccessControl.initState();
+      var userProfiles = Map.empty<Principal, UserProfile>();
+      var emails = Set.empty<Text>();
+      calendarEvents = CalendarEvents.new();
+    };
   };
 };
 ```
