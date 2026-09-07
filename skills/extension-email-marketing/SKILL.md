@@ -1,7 +1,7 @@
 ---
 name: extension-email-marketing
 description: Send personalised marketing emails to subscribers with an unsubscribe link.
-version: 0.1.6
+version: 0.1.7
 compatibility:
   mops:
     caffeineai-email-marketing: "~0.1.1"
@@ -154,24 +154,24 @@ actor {
   };
 
   // Include authorization component
-  let accessControlState = AccessControl.initState();
+  let accessControlState : AccessControl.AccessControlState;
   include MixinAuthorization(accessControlState, null);
 
   // Store a map of caller principal to UserProfile
-  let userProfiles = Map.empty<Principal, UserProfile>();
+  let userProfiles : Map.Map<Principal, UserProfile>;
 
   // Store a set of emails for uniqueness check
-  let emails = Set.empty<Text>();
+  let emails : Set.Set<Text>;
 
   // Stores which emails are verified
-  let verifiedEmails = VerifiedEmails.new();
+  let verifiedEmails : VerifiedEmails.State;
 
   // In this example we use a single hardcoded topic.
   // In general there could be CRUD endpoints for the admin to manage email subscription topics.
-  let newsletterTopic = "Newsletter";
+  transient let newsletterTopic = "Newsletter";
 
   // Store the email subscribers per topic
-  let emailSubscribers = EmailSubscribers.new([newsletterTopic]);
+  let emailSubscribers : EmailSubscribers.State;
 
   // Include this mixin to handle the unsubscribe link which updates the EmailSubscribers state
   include MixinEmailUnsubscribe(emailSubscribers);
@@ -316,6 +316,41 @@ actor {
   public query ({ caller }) func isCallerEmailVerified() : async Bool {
     let userProfile = getUserInternal(caller);
     VerifiedEmails.contains(verifiedEmails, userProfile.email);
+  };
+};
+```
+
+The migration chain head — `newsletterTopic` is `transient`, so the migration repeats the topic literal instead of referencing it:
+
+```motoko filepath=src/backend/migrations/00000000_000000.mo
+import Map "mo:core/Map";
+import Set "mo:core/Set";
+import AccessControl "mo:caffeineai-authorization/access-control";
+import EmailSubscribers "mo:caffeineai-email-marketing/subscribers";
+import VerifiedEmails "mo:caffeineai-email-verification/verifiedEmails";
+
+module {
+  type UserProfile = {
+    name : Text;
+    email : Text;
+  };
+
+  type NewActor = {
+    accessControlState : AccessControl.AccessControlState;
+    userProfiles : Map.Map<Principal, UserProfile>;
+    emails : Set.Set<Text>;
+    verifiedEmails : VerifiedEmails.State;
+    emailSubscribers : EmailSubscribers.State;
+  };
+
+  public func migration(_old : {}) : NewActor {
+    {
+      accessControlState = AccessControl.initState();
+      userProfiles = Map.empty<Principal, UserProfile>();
+      emails = Set.empty<Text>();
+      verifiedEmails = VerifiedEmails.new();
+      emailSubscribers = EmailSubscribers.new(["Newsletter"]);
+    };
   };
 };
 ```
