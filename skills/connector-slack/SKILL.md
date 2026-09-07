@@ -11,7 +11,7 @@ description: >-
   a fully supported platform feature yet. Hand-rolling `ic.http_request` calls to `slack.com/api` is still the wrong
   move — prefer the generated client so bearer auth, percent-encoding, and JSON
   parsing come for free.
-version: 0.1.0
+version: 0.1.1
 caffeineai-subscription: [none]
 compatibility:
   mops:
@@ -191,13 +191,33 @@ import MixinSlackConfig "mixins/slack-config";
 import MixinSlackMessaging "mixins/slack-messaging";
 
 actor {
-  let accessControlState = AccessControl.initState();
+  let accessControlState : AccessControl.AccessControlState;
   include MixinAuthorization(accessControlState, null);
 
   // Admin-held Slack token, `xoxb-…` or `xoxp-…` — never returned to the frontend.
-  let slackConfig = { var token : Text = "" };
+  let slackConfig : { var token : Text };
   include MixinSlackConfig(accessControlState, slackConfig);
   include MixinSlackMessaging(slackConfig);
+};
+```
+
+The migration chain head:
+
+```motoko filepath=src/backend/migrations/00000000_000000.mo
+import AccessControl "mo:caffeineai-authorization/access-control";
+
+module {
+  type NewActor = {
+    accessControlState : AccessControl.AccessControlState;
+    slackConfig : { var token : Text };
+  };
+
+  public func migration(_old : {}) : NewActor {
+    {
+      accessControlState = AccessControl.initState();
+      slackConfig = { var token = "" };
+    };
+  };
 };
 ```
 
