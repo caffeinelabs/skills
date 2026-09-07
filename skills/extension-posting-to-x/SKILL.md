@@ -11,11 +11,11 @@ description: >-
   tweeting, live-tweeting, posting-to-X, posting-a-status,
   sharing-to-Twitter, or any equivalent phrasing — and BEFORE writing
   any code that touches `api.x.com`.
-version: 0.1.0
+version: 0.1.1
 compatibility:
   mops:
     x-client: "~0.2.3"
-    caffeineai-authorization: "~0.1.1"
+    caffeineai-authorization: "~1.0.0"
 caffeineai-subscription: [none]
 ---
 
@@ -194,9 +194,10 @@ into a canister-level config; every end-user runs the OAuth 2.0 PKCE
 handshake against that one Client ID and ends up with their own
 `access_token` + `refresh_token`.
 
-The example spans four files:
+The example spans five files:
 
 - `src/backend/main.mo` — the actor: state + `include`s only.
+- `src/backend/migrations/00000000_000000.mo` — the migration chain head.
 - `src/backend/mixins/x-config.mo` — admin Client ID (`isXClientIdConfigured`, `setXClientId`).
 - `src/backend/mixins/x-posting.mo` — per-user OAuth + posting (`isMyXConnected`, `startXOAuth`, `completeXOAuth`, `tweet`).
 - `src/backend/lib/x.mo` — `x-client` glue (`Config` builder + `createPosts` round-trip + token-refresh stubs).
@@ -214,18 +215,48 @@ actor {
   // Authorization plumbing from extension-authorization. Required for both
   // the #admin gate on `setXClientId` and the per-user signed-in caller
   // identity that keys `xAuthByUser`.
-  let accessControlState = AccessControl.initState();
-  include MixinAuthorization(accessControlState);
+  let accessControlState : AccessControl.AccessControlState;
+  include MixinAuthorization(accessControlState, null);
 
   // Admin-set X Developer App Client ID. Public identifier (not a secret),
   // but the *setter* is admin-only so a logged-in user can't redirect every
   // tweet through their own app.
-  let xClientId = { var value : ?Text = null };
+  let xClientId : { var value : ?Text };
   include MixinXConfig(accessControlState, xClientId);
 
   // Per-user OAuth tokens. Never iterated except by the calling principal.
-  let xAuthByUser : Map.Map<Principal, LibX.XAuth> = Map.empty();
+  let xAuthByUser : Map.Map<Principal, LibX.XAuth>;
   include MixinXPosting(xClientId, xAuthByUser);
+};
+```
+
+The migration chain head:
+
+```motoko filepath=src/backend/migrations/00000000_000000.mo
+import Map "mo:core/Map";
+import AccessControl "mo:caffeineai-authorization/access-control";
+
+module {
+  type XAuth = {
+    access_token : Text;
+    refresh_token : Text;
+    expires_at : Nat64;
+    scope : [Text];
+  };
+
+  type NewActor = {
+    accessControlState : AccessControl.AccessControlState;
+    xClientId : { var value : ?Text };
+    xAuthByUser : Map.Map<Principal, XAuth>;
+  };
+
+  public func migration(_old : {}) : NewActor {
+    {
+      accessControlState = AccessControl.initState();
+      xClientId = { var value : ?Text = null };
+      xAuthByUser = Map.empty<Principal, XAuth>();
+    };
+  };
 };
 ```
 
@@ -540,16 +571,49 @@ import MixinXPostingPerUserClientId "mixins/x-posting-per-user-clientid";
 import LibX "lib/x";
 
 actor {
-  let accessControlState = AccessControl.initState();
-  include MixinAuthorization(accessControlState);
+  let accessControlState : AccessControl.AccessControlState;
+  include MixinAuthorization(accessControlState, null);
 
   // Per-user X Developer App Client IDs.
-  let xClientIdByUser : Map.Map<Principal, Text> = Map.empty();
+  let xClientIdByUser : Map.Map<Principal, Text>;
   include MixinXClientIdPerUser(xClientIdByUser);
 
   // Per-user OAuth tokens — same shape as §4.
-  let xAuthByUser : Map.Map<Principal, LibX.XAuth> = Map.empty();
+  let xAuthByUser : Map.Map<Principal, LibX.XAuth>;
   include MixinXPostingPerUserClientId(xClientIdByUser, xAuthByUser);
+};
+```
+
+This variant's migration chain head replaces §4's (same
+`src/backend/migrations/00000000_000000.mo` path in a real app —
+in this variant `xClientIdByUser` takes the place of `xClientId`):
+
+<!-- motoko-check:skip -->
+```motoko
+import Map "mo:core/Map";
+import AccessControl "mo:caffeineai-authorization/access-control";
+
+module {
+  type XAuth = {
+    access_token : Text;
+    refresh_token : Text;
+    expires_at : Nat64;
+    scope : [Text];
+  };
+
+  type NewActor = {
+    accessControlState : AccessControl.AccessControlState;
+    xClientIdByUser : Map.Map<Principal, Text>;
+    xAuthByUser : Map.Map<Principal, XAuth>;
+  };
+
+  public func migration(_old : {}) : NewActor {
+    {
+      accessControlState = AccessControl.initState();
+      xClientIdByUser = Map.empty<Principal, Text>();
+      xAuthByUser = Map.empty<Principal, XAuth>();
+    };
+  };
 };
 ```
 
