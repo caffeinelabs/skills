@@ -1,7 +1,7 @@
 ---
 name: extension-oql
 description: Make a canister's data queryable by the Caffeine Data Intelligence agent. Use whenever an app stores structured data (Maps/Lists/arrays of records) that should be answerable in natural language — "top customers", "revenue by region", "active projects". Adds a discoverable `schema()` and a JSON `execute()` query endpoint via the `caffeineai-oql` mops package's `Expose` mixin.
-version: 0.6.1
+version: 0.6.2
 compatibility:
   mops:
     caffeineai-oql: "~0.6.1"
@@ -28,11 +28,12 @@ generated-app template already satisfies this).
 
 ### Build flags
 
-`--default-persistent-actors` and `--implicit-package=core` are mandatory —
-without them the library does not compile. If the app uses `OQL.Table` and needs
-more than 4 GiB of `Region`, add `--max-stable-pages 1638400` as well; a
-dependency's own flags are not applied to the project that depends on it, so it
-has to be set in the app's own build.
+`--default-persistent-actors` is mandatory. `--implicit-package=core` is
+optional convenience; every snippet and source file must import the `mo:core`
+modules it uses. If the app uses `OQL.Table` and needs more than 4 GiB of
+`Region`, add `--max-stable-pages 1638400` as well; a dependency's own flags are
+not applied to the project that depends on it, so it has to be set in the app's
+own build.
 
 ### Imports — one per resolver module
 
@@ -97,17 +98,17 @@ actor {
   type Document = { id : Nat; owner : Principal; title : Text; ciphertext : Text };
   type User     = { id : Principal; isAdmin : Bool };
 
-  let products  = Map.empty<Nat, Product>();
-  let vendors   = Map.empty<Nat, Vendor>();
-  let supplies  = Map.empty<Product, Vendor>();
-  let auditLogs = Map.empty<Nat, AuditLog>();
-  let notes     = Map.empty<Nat, Note>();
-  let documents = Map.empty<Nat, Document>();
+  let products  : Map.Map<Nat, Product>;
+  let vendors   : Map.Map<Nat, Vendor>;
+  let supplies  : Map.Map<Product, Vendor>;
+  let auditLogs : Map.Map<Nat, AuditLog>;
+  let notes     : Map.Map<Nat, Note>;
+  let documents : Map.Map<Nat, Document>;
   // not all collections need to be exposed if there is no need — `users` backs
   // auth only, so it is intentionally never turned into an entity below
-  let users     = Map.empty<Principal, User>();
+  let users     : Map.Map<Principal, User>;
 
-  let anyP = Principal.fromText("aaaaa-aa");   // sample owner; the value is ignored
+  transient let anyP = Principal.fromText("aaaaa-aa");   // sample owner; the value is ignored
 
   // Look up whether a caller is an admin.
   func isAdmin(p : Principal) : Bool =
@@ -162,6 +163,43 @@ actor {
     ];
   });
 }
+```
+
+The migration chain head:
+
+```motoko filepath=src/backend/migrations/00000000_000000.mo
+import Map "mo:core/Map";
+
+module {
+  type Product  = { id : Nat; name : Text; priceUsd : Nat };
+  type Vendor   = { id : Nat; name : Text };
+  type AuditLog = { id : Nat; action : Text; atNs : Nat };
+  type Note     = { id : Nat; user : Principal; body : Text };
+  type Document = { id : Nat; owner : Principal; title : Text; ciphertext : Text };
+  type User     = { id : Principal; isAdmin : Bool };
+
+  type NewActor = {
+    products  : Map.Map<Nat, Product>;
+    vendors   : Map.Map<Nat, Vendor>;
+    supplies  : Map.Map<Product, Vendor>;
+    auditLogs : Map.Map<Nat, AuditLog>;
+    notes     : Map.Map<Nat, Note>;
+    documents : Map.Map<Nat, Document>;
+    users     : Map.Map<Principal, User>;
+  };
+
+  public func migration(_old : {}) : NewActor {
+    {
+      products  = Map.empty<Nat, Product>();
+      vendors   = Map.empty<Nat, Vendor>();
+      supplies  = Map.empty<Product, Vendor>();
+      auditLogs = Map.empty<Nat, AuditLog>();
+      notes     = Map.empty<Nat, Note>();
+      documents = Map.empty<Nat, Document>();
+      users     = Map.empty<Principal, User>();
+    };
+  };
+};
 ```
 
 ## Auth
@@ -429,14 +467,9 @@ import Table  "mo:caffeineai-oql/Table";
 actor {
   type Event = { kind : Nat; amount : Nat; note : Text };
 
-  // 1. Columns: (name, type) pairs. Order matters and the set is FIXED for the
-  //    table's life. Types: #nat / #int / #float / #bool (64-bit cells) + #text.
-  // 2. Indexes: the columns queries will filter or order by —
-  //    #hash for equality, #ordered for ranges / orderBy.
-  let events = Table.new(
-    [("kind", #nat), ("amount", #nat), ("note", #text)],   // columns
-    [("kind", #hash), ("amount", #ordered)],               // indexes
-  );
+  // decisions 1 + 2 (columns, indexes) are fixed where `Table.new` runs —
+  // the migration chain entry below
+  let events : Table.Table;
 
   // 3. Row function: your record → one (name, Value) per column, names matching.
   func eventRow(e : Event) : [(Text, OQL.Value)] =
@@ -460,6 +493,28 @@ actor {
       // ... the app's other entities ...
     ];
   });
+};
+```
+
+`Table.new` runs in the migration chain entry that introduces the table:
+
+<!-- motoko-check:skip -->
+```motoko
+import Table "mo:caffeineai-oql/Table";
+
+module {
+  public func migration(_old : {}) : { events : Table.Table } {
+    {
+      // 1. Columns: (name, type) pairs. Order matters and the set is FIXED for
+      //    the table's life. Types: #nat / #int / #float / #bool (64-bit cells) + #text.
+      // 2. Indexes: the columns queries will filter or order by —
+      //    #hash for equality, #ordered for ranges / orderBy.
+      events = Table.new(
+        [("kind", #nat), ("amount", #nat), ("note", #text)],   // columns
+        [("kind", #hash), ("amount", #ordered)],               // indexes
+      );
+    };
+  };
 };
 ```
 
@@ -498,7 +553,9 @@ actor {
   // Declare the table INDEX-FREE for the load — loadSegment traps on a table
   // that declares an index (a ready index missing the loaded rows would
   // silently under-fetch). The index is built after the load, in the background.
-  let events = Table.new([("kind", #nat), ("amount", #nat), ("note", #text)], []);
+  // Constructed in the migration chain entry that introduces it:
+  //   events = Table.new([("kind", #nat), ("amount", #nat), ("note", #text)], []);
+  let events : Table.Table;
 
   include Expose({
     entities = [
