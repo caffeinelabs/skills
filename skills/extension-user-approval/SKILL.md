@@ -1,7 +1,7 @@
 ---
 name: extension-user-approval
 description: Approval-based user management.
-version: 1.0.0
+version: 1.0.1
 compatibility:
   mops:
     caffeineai-user-approval: "~1.0.0"
@@ -53,7 +53,7 @@ module {
 
 ## Setup in main.mo
 
-`include MixinUserApproval(accessControlState, approvalState)` MUST be placed in `main.mo`, not in a custom mixin file. Create `approvalState` at actor top level with `UserApproval.initState(accessControlState)` and pass it into the mixin. The mixin provides these public endpoints automatically:
+`include MixinUserApproval(accessControlState, approvalState)` MUST be placed in `main.mo`, not in a custom mixin file. Declare `approvalState` at actor top level and pass it into the mixin. The mixin provides these public endpoints automatically:
 
 - `isCallerApproved()`
 - `requestApproval()`
@@ -72,9 +72,9 @@ import UserApproval "mo:caffeineai-user-approval/approval";
 import Runtime "mo:core/Runtime";
 
 actor {
-    let accessControlState = AccessControl.initState();
+    let accessControlState : AccessControl.AccessControlState;
     include MixinAuthorization(accessControlState, null);
-    let approvalState = UserApproval.initState(accessControlState);
+    let approvalState : UserApproval.UserApprovalState;
     include MixinUserApproval(accessControlState, approvalState);
 
     // Example custom endpoint with an approval guard:
@@ -83,6 +83,28 @@ actor {
     //         Runtime.trap("Unauthorized: Only approved users can perform this action");
     //     };
     // };
+};
+```
+
+The migration chain head — `UserApproval.initState` depends on the access-control state, so compute it in order inside the migration body:
+
+```motoko filepath=src/backend/migrations/00000000_000000.mo
+import AccessControl "mo:caffeineai-authorization/access-control";
+import UserApproval "mo:caffeineai-user-approval/approval";
+
+module {
+    type NewActor = {
+        accessControlState : AccessControl.AccessControlState;
+        approvalState : UserApproval.UserApprovalState;
+    };
+
+    public func migration(_old : {}) : NewActor {
+        let accessControlState = AccessControl.initState();
+        {
+            accessControlState;
+            approvalState = UserApproval.initState(accessControlState);
+        };
+    };
 };
 ```
 
