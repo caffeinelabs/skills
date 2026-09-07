@@ -16,7 +16,7 @@ description: >-
   Twilio, a Messaging Service, A2P 10DLC, toll-free verification, short codes, or
   an alphanumeric sender — and BEFORE writing any code that touches a Twilio
   endpoint.
-version: 0.1.0
+version: 0.1.1
 caffeineai-subscription: [none]
 compatibility:
   mops:
@@ -194,18 +194,48 @@ import MixinTwilioConfig "mixins/twilio-config";
 import MixinTwilioMessaging "mixins/twilio-messaging";
 
 actor {
-  let accessControlState = AccessControl.initState();
+  let accessControlState : AccessControl.AccessControlState;
   include MixinAuthorization(accessControlState, null);
 
   // Admin-held Twilio credentials — never returned to the frontend.
-  let twilioConfig = {
-    var accountSid : Text = "";   // AC… — also a positional arg on every v2010 call
-    var keySid : Text = "";       // SK… (or the Account SID again, in dev)
-    var keySecret : Text = "";    // the API-key secret (or the Auth Token, in dev)
-    var fromNumber : Text = "";   // E.164, e.g. "+15551234567"
+  let twilioConfig : {
+    var accountSid : Text;   // AC… — also a positional arg on every v2010 call
+    var keySid : Text;       // SK… (or the Account SID again, in dev)
+    var keySecret : Text;    // the API-key secret (or the Auth Token, in dev)
+    var fromNumber : Text;   // E.164, e.g. "+15551234567"
   };
   include MixinTwilioConfig(accessControlState, twilioConfig);
   include MixinTwilioMessaging(twilioConfig);
+};
+```
+
+The migration chain head:
+
+```motoko filepath=src/backend/migrations/00000000_000000.mo
+import AccessControl "mo:caffeineai-authorization/access-control";
+
+module {
+  type NewActor = {
+    accessControlState : AccessControl.AccessControlState;
+    twilioConfig : {
+      var accountSid : Text;
+      var keySid : Text;
+      var keySecret : Text;
+      var fromNumber : Text;
+    };
+  };
+
+  public func migration(_old : {}) : NewActor {
+    {
+      accessControlState = AccessControl.initState();
+      twilioConfig = {
+        var accountSid = "";
+        var keySid = "";
+        var keySecret = "";
+        var fromNumber = "";
+      };
+    };
+  };
 };
 ```
 
