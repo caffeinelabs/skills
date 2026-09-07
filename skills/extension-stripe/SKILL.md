@@ -1,7 +1,7 @@
 ---
 name: extension-stripe
 description: Payment support based on Stripe, supporting credit cards and debit cards
-version: 0.1.7
+version: 0.1.8
 compatibility:
   mops:
     caffeineai-stripe: "~0.1.3"
@@ -70,7 +70,7 @@ import Runtime "mo:core/Runtime";
 
 actor {
     // Include authorization
-    let accessControlState = AccessControl.initState();
+    let accessControlState : AccessControl.AccessControlState;
     include MixinAuthorization(accessControlState, null);
 
     // Shopping data
@@ -79,7 +79,7 @@ actor {
         // add custom fields
     };
 
-    let products = Map.empty<Text, Product>();
+    let products : Map.Map<Text, Product>;
 
     public query func getProducts() : async [Product] {
         products.values().toArray();
@@ -107,7 +107,7 @@ actor {
     };
 
     // Stripe integration
-    var configuration : ?Stripe.StripeConfiguration = null;
+    var configuration : ?Stripe.StripeConfiguration;
 
     public query func isStripeConfigured() : async Bool {
         configuration != null;
@@ -137,6 +137,38 @@ actor {
     };
 
     // Add more data and functions as needed
+};
+```
+
+The migration chain head:
+
+```motoko filepath=src/backend/migrations/00000000_000000.mo
+import Map "mo:core/Map";
+import AccessControl "mo:caffeineai-authorization/access-control";
+
+module {
+    type Product = {
+        id : Text;
+    };
+
+    type StripeConfiguration = {
+        secretKey : Text;
+        allowedCountries : [Text];
+    };
+
+    type NewActor = {
+        accessControlState : AccessControl.AccessControlState;
+        products : Map.Map<Text, Product>;
+        configuration : ?StripeConfiguration;
+    };
+
+    public func migration(_old : {}) : NewActor {
+        {
+            accessControlState = AccessControl.initState();
+            products = Map.empty<Text, Product>();
+            configuration = null;
+        };
+    };
 };
 ```
 
