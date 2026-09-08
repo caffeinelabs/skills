@@ -1,0 +1,7 @@
+name = "no-base-import"
+severity = "warning"
+description = "mo:base is deprecated. Replace `@import-path` with the mo:core equivalent (e.g. mo:core/Array)."
+query = '''
+(import (text_literal) @import-path @error
+  (#match? @import-path "^\"mo:base\."))
+'''

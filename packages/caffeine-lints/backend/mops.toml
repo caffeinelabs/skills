@@ -1,6 +1,6 @@
 [package]
 name = "caffeineai-lints"
-version = "0.1.0"
+version = "0.1.1"
 description = "Shared lintoko rules for Caffeine projects"
 license = "Apache-2.0"
 repository = "https://github.com/caffeinelabs/skills"

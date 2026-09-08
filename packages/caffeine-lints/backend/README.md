@@ -12,3 +12,13 @@ cannot be repaired by agents. Inline types and values directly in the migration
 file instead.
 
 Applies to: `**/src/backend/migrations/*.mo`
+
+### `no-base-import`
+
+`mo:base` is deprecated and kept only for backwards compatibility — all new code
+should import from `mo:core` instead. Warns on any `mo:base/...` import so
+projects get a visible nudge while migrating away from it.
+
+Severity: warning (reported but never fails `mops check` / `mops lint`).
+
+Applies to: all `.mo` files.
