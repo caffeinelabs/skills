@@ -6,7 +6,7 @@ description: >-
   mops.toml, mops.lock, running mops commands, adding/removing packages,
   pinning moc or lintoko versions, checking or building canisters,
   configuring moc flags, or setting up a new Motoko project.
-version: 0.1.2
+version: 0.1.3
 compatibility:
   toolchain:
     mops: "3.x"
@@ -36,12 +36,12 @@ Opinionated guide for Motoko projects. Covers project config, dependency managem
 
 ```toml
 [toolchain]
-moc = "1.7.0"
-lintoko = "0.10.0"
+moc = "1.15.1"
+lintoko = "0.11.0"
 pocket-ic = "15.0.0"  # required for replica tests / benchmarks / --check-deploy
 
 [dependencies]
-core = "2.5.0"
+core = "2.6.1"
 
 [moc]
 args = ["--default-persistent-actors", "-W=M0223,M0236,M0237"]
@@ -205,9 +205,9 @@ mops generate candid backend -o <path>   # single canister, ad-hoc path
 ### `mops toolchain`
 
 ```bash
-mops toolchain use moc 1.7.0         # pin specific version
+mops toolchain use moc 1.15.1        # pin specific version
 mops toolchain use moc latest        # pin latest version (non-interactive)
-mops toolchain use lintoko 0.10.0    # pin specific version
+mops toolchain use lintoko 0.11.0    # pin specific version
 mops toolchain use pocket-ic 15.0.0  # pin for replica tests / benchmarks / --check-deploy
 mops toolchain use wasm-opt 131      # Binaryen for [optimize] (or `latest`)
 mops toolchain update moc            # update to latest (requires existing [toolchain] entry)
