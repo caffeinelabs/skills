@@ -1,10 +1,10 @@
 ---
 name: extension-core-infrastructure
 description: Core infrastructure providing backend connection configuration, storage client, and React app entry point.
-version: 1.3.0
+version: 1.4.0
 compatibility:
   npm:
-    "@caffeineai/core-infrastructure": "^1.3.0"
+    "@caffeineai/core-infrastructure": "^1.4.0"
     "@caffeineai/object-storage": "^1.1.0"
 caffeineai-subscription: [none]
 ---
@@ -19,7 +19,7 @@ This component provides the foundational infrastructure for all projects: backen
 ## Requirements
 
 ```
-"@caffeineai/core-infrastructure": "^1.2.0"
+"@caffeineai/core-infrastructure": "^1.4.0"
 "@caffeineai/object-storage": "^1.1.0"
 "@icp-sdk/auth": "^7.1.0"
 "@icp-sdk/core": "^5.3.0"
@@ -198,3 +198,22 @@ function MyComponent() {
 | `isFetching` | `boolean` | `true` while the actor is being created |
 
 When the identity changes (login, logout, or session restore), the actor is automatically re-created with the new identity and all dependent queries are invalidated and refetched.
+
+### Mock backend for visual QA (`VITE_USE_MOCK=true`)
+
+`useActor` can serve an app-owned mock instead of connecting to a canister. Put the mock at `src/frontend/src/mocks/backend.ts`, exporting `mockBackend`, and pass the glob from **app source**:
+
+```typescript
+import { useActor } from "@caffeineai/core-infrastructure";
+import { createActor } from "declarations/backend";
+
+const mockModules = import.meta.glob("../mocks/backend.{ts,tsx,js,jsx}");
+
+export function useAppActor() {
+  return useActor(createActor, { mockModules });
+}
+```
+
+The glob has to be written in the app because Vite resolves `import.meta.glob` relative to the file containing the call; the package cannot see the app's `mocks/` directory. Globbing rather than importing keeps the build green when the mock file does not exist. The mock is used only when `VITE_USE_MOCK=true`; otherwise `useActor` behaves exactly as before, and the real backend configuration is loaded.
+
+Outside React, `createActorWithConfig(createActor, { mockModules })` accepts the same option, and `loadMockBackendFromModules(mockModules)` resolves the mock on its own.
