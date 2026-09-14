@@ -1,6 +1,5 @@
 import { ExternalBlob, StorageClient } from "@caffeineai/object-storage";
 import { HttpAgent } from "@icp-sdk/core/agent";
-const DEFAULT_STORAGE_GATEWAY_URL = "https://blob.caffeine.ai";
 const DEFAULT_BUCKET_NAME = "default-bucket";
 const DEFAULT_PROJECT_ID = "0000000-0000-0000-0000-00000000000";
 let configCache = null;
@@ -35,9 +34,7 @@ export async function loadConfig() {
             backend_canister_id: (config.backend_canister_id === "undefined"
                 ? backendCanisterId
                 : config.backend_canister_id),
-            storage_gateway_url: runtimeStorageGatewayUrl ??
-                process.env.STORAGE_GATEWAY_URL ??
-                "nogateway",
+            storage_gateway_url: runtimeStorageGatewayUrl ?? "nogateway",
             bucket_name: DEFAULT_BUCKET_NAME,
             project_id: config.project_id !== "undefined"
                 ? config.project_id
@@ -57,7 +54,7 @@ export async function loadConfig() {
         const fallbackConfig = {
             backend_host: undefined,
             backend_canister_id: backendCanisterId,
-            storage_gateway_url: DEFAULT_STORAGE_GATEWAY_URL,
+            storage_gateway_url: "nogateway",
             bucket_name: DEFAULT_BUCKET_NAME,
             project_id: DEFAULT_PROJECT_ID,
             ii_derivation_origin: undefined,
@@ -76,18 +73,22 @@ function processError(e) {
     }
     throw e;
 }
-async function maybeLoadMockBackend() {
+/**
+ * Load the app's mock backend when `VITE_USE_MOCK=true`.
+ * Pass `import.meta.glob("./mocks/backend.{ts,tsx,js,jsx}")` evaluated in app source:
+ * Vite resolves the pattern relative to the file containing the call,
+ * so a glob inside this package can never see the app's files.
+ * Globbing (instead of a static import) keeps builds green when the mock file is absent.
+ */
+export async function loadMockBackendFromModules(mockModules) {
     if (import.meta.env.VITE_USE_MOCK !== "true") {
         return null;
     }
+    const load = Object.values(mockModules)[0];
+    if (!load)
+        return null;
     try {
-        // If VITE_USE_MOCK is enabled, try to load a mock backend module *if it exists*.
-        // We use import.meta.glob so builds don't fail when the mock file is absent.
-        const mockModules = import.meta.glob("./mocks/backend.{ts,tsx,js,jsx}");
-        const path = Object.keys(mockModules)[0];
-        if (!path)
-            return null;
-        const mod = (await mockModules[path]());
+        const mod = (await load());
         return mod.mockBackend ?? null;
     }
     catch {
@@ -95,13 +96,14 @@ async function maybeLoadMockBackend() {
     }
 }
 export async function createActorWithConfig(createActor, options) {
-    // Attempt to load mock backend if enabled
-    const mock = await maybeLoadMockBackend();
-    if (mock) {
-        return mock;
+    const { mockModules, ...resolvedOptions } = options ?? {};
+    if (mockModules) {
+        const mock = await loadMockBackendFromModules(mockModules);
+        if (mock) {
+            return mock;
+        }
     }
     const config = await loadConfig();
-    const resolvedOptions = options ?? {};
     const agent = new HttpAgent({
         ...resolvedOptions.agentOptions,
         host: config.backend_host,

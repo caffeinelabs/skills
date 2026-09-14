@@ -3,17 +3,19 @@ import { useEffect } from "react";
 import { createActorWithConfig } from "../config";
 import { useInternetIdentity } from "./useInternetIdentity";
 const ACTOR_QUERY_KEY = "actor";
-export function useActor(createActor) {
+export function useActor(createActor, options) {
     const { identity, isAuthenticated } = useInternetIdentity();
     const queryClient = useQueryClient();
+    const mockModules = options?.mockModules;
     const actorQuery = useQuery({
         queryKey: [ACTOR_QUERY_KEY, identity?.getPrincipal().toString()],
         queryFn: async () => {
             if (!isAuthenticated) {
-                return await createActorWithConfig(createActor);
+                return await createActorWithConfig(createActor, { mockModules });
             }
             const actor = await createActorWithConfig(createActor, {
                 agentOptions: { identity },
+                mockModules,
             });
             return actor;
         },

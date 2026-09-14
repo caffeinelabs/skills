@@ -1,22 +1,27 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { createActorWithConfig } from "../config";
-import type { createActorFunction } from "../types";
+import type { createActorFunction, MockBackendOptions } from "../types";
 import { useInternetIdentity } from "./useInternetIdentity";
 
 const ACTOR_QUERY_KEY = "actor";
-export function useActor<T>(createActor: createActorFunction<T>) {
+export function useActor<T>(
+	createActor: createActorFunction<T>,
+	options?: MockBackendOptions,
+) {
 	const { identity, isAuthenticated } = useInternetIdentity();
 	const queryClient = useQueryClient();
+	const mockModules = options?.mockModules;
 	const actorQuery = useQuery<T>({
 		queryKey: [ACTOR_QUERY_KEY, identity?.getPrincipal().toString()],
 		queryFn: async () => {
 			if (!isAuthenticated) {
-				return await createActorWithConfig(createActor);
+				return await createActorWithConfig(createActor, { mockModules });
 			}
 
 			const actor = await createActorWithConfig(createActor, {
 				agentOptions: { identity },
+				mockModules,
 			});
 			return actor;
 		},

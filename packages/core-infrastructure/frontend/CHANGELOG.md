@@ -1,5 +1,10 @@
 
 
+### Bug Fixes
+
+- **core-infrastructure**: load the VITE_USE_MOCK backend from the app's own glob (#288)
+- **core-infrastructure**: resolve blob gateway URL from env.json, drop hardcoded host (#241)
+
 ### Features
 
 - **core-infrastructure**: one-click Microsoft sign-in (APP-2369) (#204)
