@@ -2,6 +2,10 @@
 
 ### Bug Fixes
 
+- make frontend packages Node ESM-safe and expose ICP SDK (#281)
+
+### Bug Fixes
+
 - **qr-code**: add missing barrel export for package entry (#154)
 
 ### Bug Fixes

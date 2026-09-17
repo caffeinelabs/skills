@@ -1,2 +1,2 @@
-export { useQRScanner, } from "./hooks/useQRScanner";
+export { useQRScanner, } from "./hooks/useQRScanner.js";
 //# sourceMappingURL=index.js.map
