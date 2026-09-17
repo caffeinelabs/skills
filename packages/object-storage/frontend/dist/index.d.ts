@@ -1,2 +1,2 @@
-export { ExternalBlob } from "./blob";
-export { StorageClient } from "./StorageClient";
+export { ExternalBlob } from "./blob.js";
+export { StorageClient } from "./StorageClient.js";

@@ -1,8 +1,8 @@
 import { Cbor, isV4ResponseBody, LookupPathStatus, lookup_path, lookupResultToBuffer, } from "@icp-sdk/core/agent";
 import { IDL } from "@icp-sdk/core/candid";
-import { formatBlobContentDisposition } from "./formatBlobContentDisposition";
-import { formatCertificateRejectionError } from "./formatCertificateRejectionError";
-import { resolveBlobContentType } from "./resolveBlobContentType";
+import { formatBlobContentDisposition } from "./formatBlobContentDisposition.js";
+import { formatCertificateRejectionError } from "./formatCertificateRejectionError.js";
+import { resolveBlobContentType } from "./resolveBlobContentType.js";
 const MAXIMUM_CONCURRENT_UPLOADS = 10;
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 1000;

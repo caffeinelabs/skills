@@ -2,6 +2,10 @@
 
 ### Bug Fixes
 
+- make frontend packages Node ESM-safe and expose ICP SDK (#281)
+
+### Bug Fixes
+
 - detect IC rejection certificates in StorageClient.getCertificate (INTK-73) (#119)
 
 ### Bug Fixes

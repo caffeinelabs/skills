@@ -9,9 +9,9 @@ import {
 } from "@icp-sdk/core/agent";
 import { IDL } from "@icp-sdk/core/candid";
 
-import { formatBlobContentDisposition } from "./formatBlobContentDisposition";
-import { formatCertificateRejectionError } from "./formatCertificateRejectionError";
-import { resolveBlobContentType } from "./resolveBlobContentType";
+import { formatBlobContentDisposition } from "./formatBlobContentDisposition.js";
+import { formatCertificateRejectionError } from "./formatCertificateRejectionError.js";
+import { resolveBlobContentType } from "./resolveBlobContentType.js";
 
 type Headers = Record<string, string>;
 
