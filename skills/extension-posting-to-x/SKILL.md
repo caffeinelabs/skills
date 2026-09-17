@@ -11,10 +11,10 @@ description: >-
   tweeting, live-tweeting, posting-to-X, posting-a-status,
   sharing-to-Twitter, or any equivalent phrasing — and BEFORE writing
   any code that touches `api.x.com`.
-version: 0.1.1
+version: 0.1.2
 compatibility:
   mops:
-    x-client: "~0.2.3"
+    x-client: "~0.3.0"
     caffeineai-authorization: "~1.0.0"
 caffeineai-subscription: [none]
 ---
@@ -97,15 +97,15 @@ variant: the bearer token belongs to the signed-in user, full stop.
 Use the mops tool, not manual file edits:
 
 ```bash
-mops add x-client@0.2.3
+mops add x-client@0.3.0
 ```
 
-This updates `mops.toml` (adds `x-client = "0.2.3"` to `[dependencies]`)
+This updates `mops.toml` (adds `x-client = "0.3.0"` to `[dependencies]`)
 and rewrites `mops.lock` in one step.
 
-**Minimum version:** `x-client ≥ 0.2.3`. Earlier versions emitted
+**Minimum version:** `x-client ≥ 0.3.0`. Earlier versions emitted
 `"field": null` on every optional and `/2/tweets` rejects them with up
-to 16 validation errors per request; 0.2.3 ships the `init`
+to 16 validation errors per request; 0.3.0 ships the `init`
 constructors that default optionals to `null` *in Motoko* and elide
 them on the wire.
 
@@ -379,11 +379,15 @@ module {
   };
 
   public func runCreatePost(config : Config, body : Text) : async* Text {
-    // `TweetCreateRequest.init()` returns a record with every optional set
-    // to `null` (≥ 0.2.3 only); rebind `text` for the value you want to post.
-    let req = { TweetCreateRequest.init() with text = ?body };
+    // `TweetCreateRequest.init {}` takes the required-field slice (empty for
+    // this model) and defaults every optional to `null` (≥ 0.3.0 only);
+    // rebind `text_` for the value you want to post.
+    let req = { TweetCreateRequest.init {} with text_ = ?body };
     let resp = await* TweetsApi.createPosts(config, req);
-    resp.data.id;
+    // `data` is optional on the response model; X only omits it on an error
+    // path that `createPosts` would already have raised, so treat it as a bug.
+    let ?data = resp.data else Runtime.trap("createPosts returned no data");
+    data.id;
   };
 
   // ------------------------------------------------------------------
@@ -395,7 +399,7 @@ module {
   // `xAuthByUser`).
   //
   // See https://developer.x.com/en/docs/authentication/oauth-2-0/authorization-code
-  // and the package's `skills/oauth-setup.md` for the full handshake.
+  // and `skills/connector-x/SKILL.md` (§ OAuth 2.0 setup) for the full handshake.
   // ------------------------------------------------------------------
 
   public func startAuthorize(clientId : Text, redirectUri : Text, caller : Principal) : async* Text {
@@ -481,7 +485,7 @@ mix them inside the same `shared` body.
 
 ## 6. Available API surface
 
-`x-client@0.2.3` ships a curated subset of the X API v2. The most
+`x-client@0.3.0` ships a curated subset of the X API v2. The most
 relevant module for this skill is `TweetsApi`:
 
 | Module        | Primary entry point | What it does                                            |
@@ -494,9 +498,9 @@ For X *reads* (timeline, search, lookup) the curated surface is much
 smaller — `x-client` focuses on writes. Pull data from X via
 `extension-http-outcalls` like any other public REST API.
 
-If a build spec needs an X *write* not covered by `x-client@0.2.3`
+If a build spec needs an X *write* not covered by `x-client@0.3.0`
 (e.g. media upload, replies-to-replies semantics, retweet endpoints),
-raise an issue on [`caffeinelabs/x-client`](https://github.com/caffeinelabs/x-client) — do not paper over it
+raise an issue on [`caffeinelabs/skills-internal`](https://github.com/caffeinelabs/skills-internal) — do not paper over it
 with hand-rolled `ic.http_request`.
 
 ## 7. Cycles and response sizes
@@ -512,9 +516,9 @@ cycles. Sufficient for a typical `createPosts` call. Bump for:
 ## 8. Things that will bite you
 
 - **`is_replicated = ?false`** — see §3. Not optional.
-- **`x-client < 0.2.3`** — older versions emit `"field": null` for
+- **`x-client < 0.3.0`** — older versions emit `"field": null` for
   every absent optional, and `/2/tweets` rejects them with up to 16
-  validation errors per request. 0.2.3 ships the `init` constructors
+  validation errors per request. 0.3.0 ships the `init` constructors
   that default optionals to `null` *in Motoko* and elide them on the
   wire (via `serde-core@^0.1.2`'s `skip_null_fields`).
 - **Don't expose the access token.** `xAuthByUser` is read only by
@@ -793,8 +797,8 @@ resolvable for the caller (admin default OR per-user override).
 
 ## Related
 
-- [`mops add x-client@0.2.3`](https://mops.one/x-client) — connector source.
-- [`caffeinelabs/x-client`](https://github.com/caffeinelabs/x-client) — generated bindings repo. Its `skills/oauth-setup.md` carries the authoritative step-by-step Developer Portal walkthrough; its `skills/tweeting-fine-points.md` documents operational gotchas (minimum version, scopes, replication, null-field serialisation, sub-object rules).
+- [`mops add x-client@0.3.0`](https://mops.one/x-client) — connector source.
+- [`skills/connector-x/SKILL.md`](../connector-x/SKILL.md) — the authoritative connector skill: step-by-step Developer Portal walkthrough (§ OAuth 2.0 setup) and the operational gotchas (non-replication, optional fields, sub-object rules, token refresh, rate limits).
 - [X Developer Portal](https://developer.x.com/en/portal/dashboard) — where the Client ID is created.
 - [OAuth 2.0 Authorization Code with PKCE (X docs)](https://developer.x.com/en/docs/authentication/oauth-2-0/authorization-code) — canonical authorise/token endpoint details.
 - [`/2/tweets` API reference](https://developer.x.com/en/docs/x-api/tweets/manage-tweets/api-reference/post-tweets) — what `createPosts` actually hits.
