@@ -1,8 +1,8 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
-import { createActorWithConfig } from "../config";
-import type { createActorFunction, MockBackendOptions } from "../types";
-import { useInternetIdentity } from "./useInternetIdentity";
+import { createActorWithConfig } from "../config.js";
+import type { createActorFunction, MockBackendOptions } from "../types.js";
+import { useInternetIdentity } from "./useInternetIdentity.js";
 
 const ACTOR_QUERY_KEY = "actor";
 export function useActor<T>(

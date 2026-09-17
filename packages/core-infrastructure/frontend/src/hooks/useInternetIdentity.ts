@@ -20,7 +20,7 @@ import {
 	useRef,
 	useState,
 } from "react";
-import { getCachedConfig, loadConfig } from "../config";
+import { getCachedConfig, loadConfig } from "../config.js";
 
 export type Status =
 	| "initializing"

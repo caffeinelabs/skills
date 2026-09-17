@@ -1,4 +1,4 @@
-import type { CreateActorOptions, createActorFunction, MockBackendOptions, MockModules } from "./types";
+import type { CreateActorOptions, createActorFunction, MockBackendOptions, MockModules } from "./types.js";
 interface Config {
     backend_host?: string;
     backend_canister_id: string;

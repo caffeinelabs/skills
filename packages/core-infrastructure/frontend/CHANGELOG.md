@@ -2,6 +2,10 @@
 
 ### Bug Fixes
 
+- make frontend packages Node ESM-safe and expose ICP SDK (#281)
+
+### Bug Fixes
+
 - **core-infrastructure**: load the VITE_USE_MOCK backend from the app's own glob (#288)
 - **core-infrastructure**: resolve blob gateway URL from env.json, drop hardcoded host (#241)
 

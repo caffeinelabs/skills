@@ -1,4 +1,4 @@
-export { createActorWithConfig, loadConfig, loadMockBackendFromModules, } from "./config";
-export { useActor } from "./hooks/useActor";
-export { InternetIdentityProvider, useInternetIdentity, } from "./hooks/useInternetIdentity";
+export { createActorWithConfig, loadConfig, loadMockBackendFromModules, } from "./config.js";
+export { useActor } from "./hooks/useActor.js";
+export { InternetIdentityProvider, useInternetIdentity, } from "./hooks/useInternetIdentity.js";
 //# sourceMappingURL=index.js.map

@@ -5,7 +5,7 @@ import type {
 	createActorFunction,
 	MockBackendOptions,
 	MockModules,
-} from "./types";
+} from "./types.js";
 
 const DEFAULT_BUCKET_NAME = "default-bucket";
 const DEFAULT_PROJECT_ID = "0000000-0000-0000-0000-00000000000";
