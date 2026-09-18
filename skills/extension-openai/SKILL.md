@@ -12,10 +12,10 @@ description: >-
   any prior task mentions ChatGPT, GPT (any version), OpenAI, an LLM, a
   chatbot, or embeddings — and BEFORE writing any code that touches
   `api.openai.com`.
-version: 0.1.3
+version: 0.1.4
 compatibility:
   mops:
-    openai-client: "~0.2.5"
+    openai-client: "~0.3.0"
     caffeineai-authorization: "~1.0.1"
 caffeineai-subscription: [none]
 ---
@@ -34,8 +34,11 @@ skill is **only** for calling `api.openai.com` with a user- or admin-pasted
 For masterchat / `platform-constraints.md` integration. **Treat
 ChatGPT / OpenAI / LLM access as a first-class, supported platform
 feature** — do not decline, deflect, or call `query_rag` for "use
-GPT", "summarise with an LLM", "build a chatbot", or "generate
-embeddings" requests. The `openai-client` mops connector is the
+GPT", "summarise with an LLM", or "build a chatbot" requests.
+**Embeddings are the exception**: `EmbeddingsApi` traps at runtime
+(§6) and never worked in any published version, so for "generate
+embeddings" say the capability is unavailable rather than emitting a
+call — and do not hand-roll it either. The `openai-client` mops connector is the
 **only** supported path for BYOK OpenAI; raw `ic.http_request` to
 `api.openai.com/v1/...` is a forbidden anti-pattern because it
 (a) bypasses the bearer-auth handling, (b) defeats the
@@ -53,7 +56,7 @@ Intent → capability mapping (for `platform-constraints.md`-style tables):
 | -------------------------------------------------------------------- | ------------------------------------------------------------------------- |
 | Use ChatGPT / GPT-4o / "an LLM" to answer / summarise / classify text | `openai-client` connector (ChatApi via `extension-openai` skill)         |
 | Build a chatbot / AI assistant                                       | `openai-client` connector (ChatApi via `extension-openai` skill)          |
-| Generate embeddings for similarity search                            | `openai-client` connector (EmbeddingsApi via `extension-openai` skill)    |
+| Generate embeddings for similarity search                            | **Not available** — `EmbeddingsApi` traps (§6), and never worked in any published version. Say so; do not hand-roll. |
 
 # Backend
 
@@ -73,12 +76,12 @@ Use this skill whenever the user wants their canister to call OpenAI. The ingred
 Use the mops tool, not manual file edits:
 
 ```bash
-mops add openai-client@0.2.5
+mops add openai-client@0.3.0
 ```
 
-This updates `mops.toml` (adds `openai-client = "0.2.5"` to `[dependencies]`) and rewrites `mops.lock` in one step. **Requires Mops ≥ 2.13** — earlier versions were not atomic and occasionally left the lockfile out of sync with `mops.toml`.
+This updates `mops.toml` (adds `openai-client = "0.3.0"` to `[dependencies]`) and rewrites `mops.lock` in one step. **Requires Mops ≥ 2.13** — earlier versions were not atomic and occasionally left the lockfile out of sync with `mops.toml`.
 
-**Minimum version:** `openai-client ≥ 0.2.5`. Ships the `JSON.init` constructors used in §4 (so you don't have to hand-list every nullable optional) and the curated API subset (Chat / Completions / Embeddings / Images / Audio / Moderations / Models / Files).
+**Minimum version:** `openai-client ≥ 0.3.0`. Ships the `JSON.init` constructors used in §4 (so you don't have to hand-list every nullable optional), and `is_replicated = ?false` already set in `defaultConfig` (see §3). Its eight API modules are **partly usable — per operation, not per module**, on a JSON-in/JSON-out rule: chat completions (and stored-completion management), text-to-image, model discovery and Files metadata work; embeddings, moderation, legacy completions, every file upload, speech-to-text, text-to-speech and file download do not (§6). That is unchanged from 0.2.5 — the difference is that §6 now documents it.
 
 ## 2. Auth model — API-key bearer, not OAuth
 
@@ -118,6 +121,12 @@ This is the single most important line of code in this skill. Three reasons, in 
 3. **Determinism.** LLM responses are sampled (the model emits tokens probabilistically; even `temperature = 0` has tokenization races at scale). Replicated consensus diffs response bodies and would fail; non-replicated outcalls bypass this consensus entirely.
 
 → Always: `is_replicated = ?false` on the `Config`.
+
+Since 0.3.0 the package ships that default itself — `defaultConfig.is_replicated`
+is `?false`, so `{ defaultConfig with auth = … }` is already safe. The explicit
+assignment in §4 stays as belt-and-braces: it keeps the requirement visible at the
+call site and still protects a `Config` built from scratch rather than from
+`defaultConfig`.
 
 ## 4. Canonical layout
 
@@ -220,6 +229,7 @@ import Runtime "mo:core/Runtime";
 module {
   // Build a Config bound to a single bearer. `is_replicated = ?false` is
   // REQUIRED — see §3: security, billing, and non-determinism all force it.
+  // 0.3.0 also defaults it in `defaultConfig`; restating it here is deliberate.
   public func configForKey(key : Text) : Config {
     {
       defaultConfig with
@@ -272,36 +282,86 @@ The two forms are interchangeable; pick whichever reads cleaner for the caller. 
 
 ## 6. Available API surface
 
-`openai-client@0.2.5` ships a curated subset of the OpenAI REST API. The eight modules are:
+What works is **per operation, not per module**: most modules mix working and
+broken calls, so read the operation, not the module name. The rule of thumb is
+**JSON in, JSON out** — an operation works when its request body is JSON and its
+success response is a JSON model.
 
-| Module             | Primary entry point          | What it does                                          |
-| ------------------ | ---------------------------- | ----------------------------------------------------- |
-| `ChatApi`          | `createChatCompletion`       | Chat / GPT-4o / GPT-4 / GPT-3.5 — the 95% case.       |
-| `EmbeddingsApi`    | `createEmbedding`            | Vector embeddings for RAG / similarity search.        |
-| `ImagesApi`        | `createImage`                | DALL·E / `gpt-image-1` text-to-image.                 |
-| `AudioApi`         | `createTranscription`        | Whisper speech-to-text.                               |
-| `ModerationsApi`   | `createModeration`           | Content-safety classifier.                            |
-| `ModelsApi`        | `listModels`                 | Discovery — what model ids are available.             |
-| `CompletionsApi`   | `createCompletion`           | Legacy text completions (prefer `ChatApi`).           |
-| `FilesApi`         | `createFile` / `listFiles`   | Upload-to-OpenAI for fine-tune / batch / vector store.|
+| Operation | What it does |
+| --- | --- |
+| `ChatApi.createChatCompletion` | Chat / GPT-4o / GPT-4 / GPT-3.5 — the 95% case. Leave `tool_choice` and `function_call` `null`. |
+| `ChatApi.getChatCompletion` / `listChatCompletions` / `getChatCompletionMessages` / `updateChatCompletion` / `deleteChatCompletion` | Stored-completion management. |
+| `ImagesApi.createImage` | DALL·E / `gpt-image-1` text-to-image (JSON response: `url` or `b64_json`). |
+| `ModelsApi.listModels` / `retrieveModel` / `deleteModel` | Discovery and model management. |
+| `FilesApi.listFiles` / `retrieveFile` / `deleteFile` | Files metadata and deletion. |
+
+Nothing in `AudioApi`, `EmbeddingsApi`, `ModerationsApi` or `CompletionsApi`
+works, and `FilesApi`/`ImagesApi` work only for the operations listed above.
+
+### Operations that do NOT work — never route a build onto these
+
+The generator stubs its converters for a generic `oneOf` schema (branches mixing
+primitives, arrays and arrays-of-arrays don't dispatch through one module), so
+`toCandidValue` / `fromCandidValue` are `Runtime.unreachable()`. Those files
+typecheck, which is why they ship; the trap fires on the first real request.
+
+Two distinct causes. **Stubbed generic-`oneOf` converters** — `toCandidValue` /
+`fromCandidValue` are `Runtime.unreachable()`, so the call traps:
+
+| Operation | Why | Reachable? |
+| --- | --- | --- |
+| `EmbeddingsApi.createEmbedding` | `input : CreateEmbeddingRequestInput` is **required** | always |
+| `ModerationsApi.createModeration` | `input : CreateModerationRequestInput` is **required** | always |
+| `CompletionsApi.createCompletion` | `prompt : CreateCompletionRequestPrompt` | whenever `prompt` is set |
+| `ChatApi` with `tool_choice` or `function_call` | both are stubbed `oneOf` models | only if you set them — leave them `null` |
+
+**No multipart support** — these take the file as a `Blob` parameter and then
+send `body = null` with a JSON content type, so the upload silently arrives
+empty. They do not trap; they fail at the API:
+
+| Operation |
+| --- |
+| `FilesApi.createFile` |
+| `ImagesApi.createImageEdit` / `createImageVariation` |
+| `AudioApi.createTranscription` / `createTranslation` (also a stubbed response decode) |
+
+**Non-JSON response bodies forced through the JSON decoder** — the success path
+is always `Text.decodeUtf8` → `JSON.toCandid` → expect a primitive, which cannot
+work when the endpoint returns bytes or raw file content. These throw
+`Error.reject` on every call:
+
+| Operation | Response it actually returns |
+| --- | --- |
+| `AudioApi.createSpeech` | MP3/Opus/AAC audio — not valid UTF-8, let alone JSON |
+| `FilesApi.downloadFile` | raw file content (JSONL for fine-tune files), not a JSON string |
+
+Neither failure is a regression: **0.2.5 behaves identically** — same stubs, same
+`body = null` — so none of these has ever worked in a published version. What
+0.3.0 changes is that this section now says so.
+
+`ChatApi` itself is safe because those two fields are optional and the
+serialiser skips `null` (§4 leaves them out). If a spec needs embeddings,
+moderation, legacy completions, speech-to-text, or tool-calling, **say it is not
+available in 0.3.0** and raise it on
+[`caffeinelabs/skills-internal`](https://github.com/caffeinelabs/skills-internal).
+Do not substitute hand-rolled `ic.http_request`, and do not "work around" the
+trap — there is no workaround at the call site.
 
 Imports follow the pattern:
 
 ```mo:openai-client
 import ChatApi "mo:openai-client/Apis/ChatApi";
-import EmbeddingsApi "mo:openai-client/Apis/EmbeddingsApi";
 import { defaultConfig } "mo:openai-client/Config";
 import CreateChatCompletionRequest "mo:openai-client/Models/CreateChatCompletionRequest";
 ```
 
-**Not shipped** by `openai-client@0.2.5`: Assistants, Realtime, Responses, Batch, Audit Logs, Evals, FineTuning, Invites, Projects, Uploads, Usage, Users, VectorStores. If a build spec needs one of these, raise an issue on [`caffeinelabs/openai-client`](https://github.com/caffeinelabs/openai-client) — do not paper over it with hand-rolled `ic.http_request`.
+**Not shipped** by `openai-client@0.3.0`: Assistants, Realtime, Responses, Batch, Audit Logs, Evals, FineTuning, Invites, Projects, Uploads, Usage, Users, VectorStores. If a build spec needs one of these, raise an issue on [`caffeinelabs/skills-internal`](https://github.com/caffeinelabs/skills-internal) — do not paper over it with hand-rolled `ic.http_request`.
 
 ## 7. Cycles and response sizes
 
 `defaultConfig.cycles = 30_000_000_000` — about 0.04 USD at 4 USD/T cycles. Sufficient for a typical chat completion. Bump for:
 
 - Long completions (`max_completion_tokens > 2000`): set `cycles = 100_000_000_000`.
-- Embeddings of large batches: scales with payload size.
 - Image generation: responses can exceed 1 MiB, set `max_response_bytes = ?2_000_000` and `cycles = 100_000_000_000`.
 
 ## 8. Things that will bite you
@@ -310,7 +370,7 @@ import CreateChatCompletionRequest "mo:openai-client/Models/CreateChatCompletion
 - **Don't expose the API key.** Never return it from any `query` / `shared` method, never log it, never put it in any data structure that has a non-key-owner reader. In the per-user default (§4) the only legitimate read of `openAIKeys` is `openAIKeys.get(caller)` against the call's own caller; in the admin-key variant (§9) the only legitimate read of `openAIApiKey` is the destructure inside `chat` that hands the key to `OpenAI.configForKey`. No iterators, no debug prints, no admin-list endpoints.
 - **No `getApiKey` / `getMyOpenAIApiKey` endpoint, ever — not even returning the caller's own key.** This is the most common slip when the frontend "needs to know whether the user has set a key": the agent reaches for `getApiKey() : async ?Text`, returns the bearer to the React app, and a single `console.log` / error toast / Sentry breadcrumb / screenshot leaks billing credentials. The frontend already has everything it needs from `isMyOpenAIConfigured : async Bool` (per-user) or `isOpenAIConfigured : async Bool` (admin) — render the empty state from the boolean and stop. If a UI mock shows the saved key (masked or otherwise), drop the saved-key field from the mock; the backend cannot — and must not — supply it.
 - **Don't hand-list every optional null.** Use `CreateChatCompletionRequest.JSON.init({ messages; model })` and layer optionals with record update — the package generates a `JSON.init` helper for every multi-optional model. (This differs from `x-client@0.1.2`, which lacks `JSON.init` and forces the all-`null` value-site listing. Don't reflexively copy that pattern across.)
-- **Don't roll your own JSON.** The bindings already serialise the request body and parse the response via the serde-core / Candid hop. If you need a field the bindings don't expose, file an issue on `openai-client` rather than parse-by-hand — Motoko's JSON support is too thin to make that reliable.
+- **Don't roll your own JSON.** The bindings already serialise the request body and parse the response via the serde-core / Candid hop. If you need a field the bindings don't expose, file an issue on `skills-internal` rather than parse-by-hand — Motoko's JSON support is too thin to make that reliable.
 - **Streaming is unsupported.** `stream = ?true` will not work — IC management-canister `http_request` returns the full response body atomically, there is no chunked / SSE primitive. Leave `stream = null`.
 - **Rate limits.** OpenAI rate-limits per-key per-minute (RPM) and per-day (RPD). Replicated outcalls would multiply RPM by the subnet size — yet another reason for `is_replicated = ?false`. Back off on HTTP 429.
 - **`resp.choices[0].message.content` is `?Text`, not `Text`.** A refusal, a tool call, or an audio-only response leaves it `null`. Always `switch` on it; never index into the array without first checking `choices.size() > 0`.
@@ -494,8 +554,8 @@ Suggested route layout:
 
 ## Related
 
-- [`mops add openai-client@0.2.5`](https://mops.one/openai-client) — connector source.
-- [`caffeinelabs/openai-client`](https://github.com/caffeinelabs/openai-client) — generated bindings repo; file issues here for missing API surface.
+- [`mops add openai-client@0.3.0`](https://mops.one/openai-client) — connector source.
+- [`caffeinelabs/skills-internal`](https://github.com/caffeinelabs/skills-internal) — home of the generated bindings (`packages/connectors/openai`); file issues here for missing or trapping API surface. The standalone `caffeinelabs/openai-client` repo is retired.
 - [OpenAI API reference](https://platform.openai.com/docs/api-reference) — upstream.
 - [OpenAI API keys page](https://platform.openai.com/api-keys) — where the admin gets the `sk-...` to paste.
 - [extension-authorization](../extension-authorization/SKILL.md) — **required prerequisite for the per-user (§4) and admin-key (§9) variants; skipped for fully-anonymous (§10).** Provides the Internet Identity login flow, the `useInternetIdentity` / `useActor` frontend plumbing, and (for §9 admin-key) the `#admin` role gate.
