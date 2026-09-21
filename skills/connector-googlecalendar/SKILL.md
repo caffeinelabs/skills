@@ -12,11 +12,11 @@ description: >-
   or any prior task mentions scheduling, calendar events, appointments,
   meetings, "add to calendar", or any equivalent phrasing — and BEFORE
   writing any code that touches a Google endpoint.
-version: 0.2.10
+version: 0.3.0
 caffeineai-subscription: [none]
 compatibility:
   mops:
-    googlecalendar-client: "~0.1.4"
+    googlecalendar-client: "~0.2.0"
     google-oauth: "~0.2.1"
     caffeineai-authorization: "~1.0.1"
 ---
@@ -74,7 +74,7 @@ Google Calendar on behalf of the signed-in user. The ingredients are:
 ## 1. Add dependencies
 
 ```bash
-mops add googlecalendar-client@0.1.4
+mops add googlecalendar-client@0.2.0
 mops add google-oauth@0.2.1
 mops add caffeineai-authorization@1.0.1
 ```
@@ -161,6 +161,18 @@ logic: just persist the new `access_token`, keep the old `refresh_token`.
    fail; non-replicated bypasses consensus entirely.
 
 → Always: `is_replicated = ?false` on every `Config`.
+
+**Since 0.2.0 the package ships that default**, so `{ defaultConfig with auth = … }`
+is already safe. Keep the explicit assignment anyway: it keeps the requirement
+visible at the call site.
+
+**Upgrading from 0.1.x — check your code.** Before 0.2.0 `defaultConfig` carried
+`is_replicated = null`, which *means replicated*. The generator pins
+non-replication per request only for PUT, PATCH and DELETE; the 14 POST
+operations — `events.insert`, `events.quickAdd`, `calendars.insert` among them —
+inherited the default. An app that took `defaultConfig` as it came created
+roughly 13 duplicate events per call. Code that followed this skill was fine;
+code that did not was not.
 
 ## 4. Canonical layout
 
@@ -477,9 +489,9 @@ module {
     };
     let events : Events = try {
       await* calendar_events_list(
-        configForToken(connection.accessToken), "primary", #json,
+        configForToken(connection.accessToken), "primary", ?#json,
         "", "", "", false, "", "",
-        false, [], "", 10, maxResults, #starttime,
+        false, [], "", 10, maxResults, ?#starttime,
         "", [], "", [], false, false, true, "",
         timeMax, timeMin, "", "",
       );
@@ -488,9 +500,9 @@ module {
         clientId, clientSecret, connection, caller, calendarConnections, e.message(),
       ) else Runtime.trap("Calendar API failed");
       await* calendar_events_list(
-        configForToken(newToken), "primary", #json,
+        configForToken(newToken), "primary", ?#json,
         "", "", "", false, "", "",
-        false, [], "", 10, maxResults, #starttime,
+        false, [], "", 10, maxResults, ?#starttime,
         "", [], "", [], false, false, true, "",
         timeMax, timeMin, "", "",
       );
@@ -517,14 +529,14 @@ module {
     };
     let response : FreeBusyResponse = try {
       await* calendar_freebusy_query(
-        configForToken(connection.accessToken), #json, "", "", "", false, "", "", request,
+        configForToken(connection.accessToken), ?#json, "", "", "", false, "", "", request,
       );
     } catch e {
       let ?newToken = await* refreshIfNeeded(
         clientId, clientSecret, connection, caller, calendarConnections, e.message(),
       ) else Runtime.trap("Calendar API failed");
       await* calendar_freebusy_query(
-        configForToken(newToken), #json, "", "", "", false, "", "", request,
+        configForToken(newToken), ?#json, "", "", "", false, "", "", request,
       );
     };
     // The response map is keyed by the RESOLVED calendar id (the user's email),
@@ -579,18 +591,18 @@ module {
     };
     let created : Event = try {
       await* calendar_events_insert(
-        configForToken(connection.accessToken), "primary", #json,
+        configForToken(connection.accessToken), "primary", ?#json,
         "", "", "", false, "", "",
-        0, 10, true, #all, false, event,
+        0, 10, true, ?#all, false, event,
       );
     } catch e {
       let ?newToken = await* refreshIfNeeded(
         clientId, clientSecret, connection, caller, calendarConnections, e.message(),
       ) else Runtime.trap("Calendar API failed");
       await* calendar_events_insert(
-        configForToken(newToken), "primary", #json,
+        configForToken(newToken), "primary", ?#json,
         "", "", "", false, "", "",
-        0, 10, true, #all, false, event,
+        0, 10, true, ?#all, false, event,
       );
     };
     created.id ?? "";
@@ -685,6 +697,61 @@ func availableSlots(
 ```
 
 ## 5. Available API surface
+
+### 0.2.0 is a breaking change for optional enum parameters
+
+Optional enum **query** parameters are now `?T` rather than bare `T`, so that
+`null` means "omit from the wire" — previously they were always sent, which is
+what the generator's optional-parameter normalisation exists to fix. Every
+call site passing such a parameter needs a `?`:
+
+```mo:googlecalendar-client
+// 0.1.x
+await* calendar_events_list(cfg, "primary", #json, …, #starttime, …);
+// 0.2.0
+await* calendar_events_list(cfg, "primary", ?#json, …, ?#starttime, …);
+```
+
+Affected parameters include `alt` on every operation, `orderBy` on
+`events.list`, and `sendUpdates` on `events.insert` / `events.update` /
+`events.delete`. Non-enum parameters are unchanged: empty `Text` and `0` still
+mean "omit". The samples below use the new form.
+
+### Two call styles since 0.2.0
+
+0.2.0 adds `src/Client.mo`, a nested-class facade grouping the operations by
+Calendar's dotted operationIds, as googledrive already had:
+
+```mo:googlecalendar-client
+import { Client } "mo:googlecalendar-client/Client";
+
+let cal = Client({ defaultConfig with auth = ?#bearer accessToken });
+
+// events.insert takes 14 parameters; `alt` and `sendUpdates` are the optional enums.
+let created = await cal.events.insert(
+  calendarId, ?#json, "", "", "", false, "", "",
+  0, 1, false, null, false, event);
+
+// NB `query_`, not `query` — `query` is a Motoko keyword, so the generator escapes it.
+let busy = await cal.freebusy.query_(?#json, "", "", "", false, "", "", request);
+```
+
+The resources are `acl`, `calendarList`, `calendars`, `channels`, `colors`,
+`events`, `freebusy` and `settings`.
+
+Two things to know when choosing between the styles:
+
+- the facade binds `Config` once at construction, so a `shared` method making
+  several Calendar calls does not thread it through every call;
+- **facade methods are `async`, the flat `Apis/*.mo` free functions are
+  `async*`**. Inside an `async*` helper the facade adds an extra `await`
+  boundary, so the mixin layout in §4 stays on the flat form.
+
+The facade is **additive** — no flat entry point is removed — but that does not
+mean 0.1.x code compiles untouched: the optional-enum signature change above
+applies to the flat functions too. Expect to add `?` at those call sites when
+upgrading, whichever style you use.
+
 
 ### `google-oauth` (OAuth 2.0 mechanics)
 
@@ -821,15 +888,15 @@ large payloads.
   `Map.get(calendarConnections, ..., caller)` inside API calls. No
   `getMyCalendarConnection`, no `getMyAccessToken`, no iterator. A leaked
   bearer is a per-user account compromise.
-- **`alt = #json`** for all Calendar API v3 calls. Leave optional string
-  parameters `""` and `prettyPrint = false`.
-- **API query parameters are plain positional values, not `?T` — never pass
-  `null` for one.** The client's function parameters are `Text` / `Bool` / enum /
-  `Nat` (e.g. `alt`, `fields`, `prettyPrint`); pass real values like `#json`,
-  `""`, `false`, `10` — `null` will not type-check. (Respect each param's
-  documented minimum: `maxAttendees` / `maxResults` must be ≥ 1, see below.) Only
-  **model** values (`Event`, `EventDateTime`, `FreeBusyRequest`) are optional
-  `?T`.
+- **`alt = ?#json`** for all Calendar API v3 calls (bare `#json` before 0.2.0).
+  Leave optional string parameters `""` and `prettyPrint = false`.
+- **Query parameters are positional, and since 0.2.0 the optional *enum* ones
+  are `?T`.** Pass `Text` as `""`, `Bool` as `false`, `Nat` as a real number
+  (respect each documented minimum: `maxAttendees` / `maxResults` must be ≥ 1),
+  and optional enums as `?#json` / `?#starttime` / `?#all` — or `null` to omit
+  them, which is what the `?` is for. Non-enum parameters still take no `null`.
+  Model values (`Event`, `EventDateTime`, `FreeBusyRequest`) are passed
+  directly as before.
 - **Combined Gmail + Calendar apps: request the scope union, and learn the
   address via `OAuth.getUserEmail`.** The union of `openid email` + `.../calendar`
   + `.../gmail.send` covers availability, sending, and the connected address (via
@@ -1120,7 +1187,7 @@ the user explicitly asks to connect two different Google accounts.
 
 ## Related
 
-- [`mops add googlecalendar-client@0.1.4`](https://mops.one/googlecalendar-client) — Calendar REST API v3 bindings.
+- [`mops add googlecalendar-client@0.2.0`](https://mops.one/googlecalendar-client) — Calendar REST API v3 bindings.
 - [`mops add google-oauth@0.2.1`](https://mops.one/google-oauth) — Google OAuth 2.0 library (token exchange, refresh, PKCE, `getUserEmail` userinfo, `DateTime` RFC 3339 helpers).
 - [Google OAuth 2.0 for Web Server Applications](https://developers.google.com/identity/protocols/oauth2/web-server) — Web-client redirect URI and authorization-code flow reference.
 - [Google Calendar API v3 reference](https://developers.google.com/calendar/api/v3/reference) — what `googlecalendar-client` wraps.
