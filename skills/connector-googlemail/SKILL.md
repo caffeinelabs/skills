@@ -12,11 +12,11 @@ description: >-
   mentions sending email, Gmail, "notify via email", "forward results by
   email", or any equivalent phrasing — and BEFORE writing any code that
   touches a Google endpoint.
-version: 0.2.6
+version: 0.2.8
 caffeineai-subscription: [none]
 compatibility:
   mops:
-    googlemail-client: "~0.1.6"
+    googlemail-client: "~0.2.0"
     google-oauth: "~0.2.1"
     caffeineai-authorization: "~1.0.1"
 ---
@@ -70,7 +70,7 @@ Gmail on behalf of the signed-in user. The ingredients are:
 ## 1. Add dependencies
 
 ```bash
-mops add googlemail-client@0.1.6
+mops add googlemail-client@0.2.0
 mops add google-oauth@0.2.1
 mops add caffeineai-authorization@1.0.1
 ```
@@ -163,6 +163,17 @@ logic: just persist the new `access_token`, keep the old `refresh_token`.
    fail; non-replicated bypasses consensus entirely.
 
 → Always: `is_replicated = ?false` on every `Config`.
+
+**Since 0.2.0 the package ships that default.** `defaultConfig.is_replicated`
+is `?false`, so `{ defaultConfig with auth = … }` is already safe; the explicit
+assignment stays worthwhile because it keeps the requirement visible.
+
+**If you are upgrading from 0.1.x, check your code for this.** Before 0.2.0
+`defaultConfig` carried `is_replicated = null`, which *means replicated*, and
+the generator forces non-replication only for PUT and DELETE —
+`messages.send` is a POST. Any app that took `defaultConfig` as it came sent
+each mail once per replica. Code that followed this skill was fine; code that
+did not was sending ~13 copies of every email.
 
 ## 4. Canonical layout
 
@@ -427,7 +438,7 @@ module {
     let message : Message = { Message.init {} with raw = ?rawMessage.encodeUtf8() };
     try {
       messageIdOf(await* gmail_users_messages_send(
-        configForToken(connection.accessToken), "me", #_1_, "", #json, "", "", "", "", true, "", "", "", message,
+        configForToken(connection.accessToken), "me", ?#_1_, "", ?#json, "", "", "", "", true, "", "", "", message,
       ));
     } catch e {
       let msg = e.message();
@@ -440,7 +451,7 @@ module {
         connection with accessToken = newToken;
       });
       messageIdOf(await* gmail_users_messages_send(
-        configForToken(newToken), "me", #_1_, "", #json, "", "", "", "", true, "", "", "", message,
+        configForToken(newToken), "me", ?#_1_, "", ?#json, "", "", "", "", true, "", "", "", message,
       ));
     };
   };
@@ -485,6 +496,9 @@ message sending. For another generated operation, keep bearer authentication
 and `is_replicated = ?false`, then apply the same single-refresh-retry pattern
 as `sendEmail`.
 
+Two equivalent surfaces. The flat free functions are what the canonical actor
+above uses and remain fully supported:
+
 | Function | Purpose |
 | --- | --- |
 | `gmail_users_messages_send` | Send an RFC 5322 message |
@@ -495,6 +509,60 @@ as `sendEmail`.
 | `gmail_users_drafts_get` | Get a draft by id |
 | `gmail_users_drafts_list` | List drafts |
 | `gmail_users_getProfile` | Get the user's profile (email, totals) |
+
+0.2.0 also ships the nested-class `Client.mo` facade that googledrive and
+googlecalendar have, mirroring Gmail's hierarchical operationIds. It captures
+`Config` once and only re-namespaces — the `Apis` modules stay the source of
+truth, so mixing the two surfaces in one actor is fine:
+
+```mo:googlemail-client
+import { type Config } "mo:googlemail-client/Config";
+import { Client } "mo:googlemail-client/Client";
+import { type Message; JSON = Message } "mo:googlemail-client/Models/Message";
+
+module {
+  // `messages.send` takes 13 parameters: userId, the 11 shared Google query
+  // parameters, then the Message. `$.xgafv` is spelled `DollarPeriodxgafv`.
+  public func send(config : Config, mime : Blob) : async Text {
+    let gmail = Client(config);
+    let message : Message = { Message.init {} with raw = ?mime };
+    let sent = await gmail.messages.send(
+      "me", ?#_1_, "", ?#json, "", "", "", "", true, "", "", "", message,
+    );
+    sent.id ?? "";
+  };
+
+  public func profile(config : Config) : async Text {
+    let gmail = Client(config);
+    let me = await gmail.getProfile("me", ?#_1_, "", ?#json, "", "", "", "", true, "", "", "");
+    me.emailAddress ?? "";
+  };
+}
+```
+
+`gmail.drafts` carries `create` / `get` / `list` / `send`; `gmail.messages`
+carries `get` / `list` / `send`; `getProfile` sits directly on `Client` because
+it has no resource segment of its own.
+
+**Migrating from 0.1.6.** Three optional enum query parameters —
+`DollarPeriodxgafv` (`$.xgafv`), `alt`, and `format` on the two `get`
+operations — are now `?T` on both surfaces, so every call site needs a `?`:
+
+```mo:googlemail-client
+// 0.1.6
+await* gmail_users_messages_send(cfg, "me", #_1_, "", #json, …, message);
+// 0.2.0
+await* gmail_users_messages_send(cfg, "me", ?#_1_, "", ?#json, …, message);
+```
+
+Pass `null` instead to omit the parameter from the query string entirely, which
+is what the `?` buys you. Non-enum parameters are unchanged and still take no
+`null`. This is the same break googlecalendar took in its 0.2.0; earlier
+drafts of this skill said googlemail would escape it, because
+`src/Apis/UsersApi.mo` used to be frozen by `.openapi-generator-ignore` and
+kept its pre-`?T` signatures. Nothing is frozen any more — both hand patches
+it carried are generated now, the second of them (base64url for `raw`) as of
+this release.
 
 ## 6. Cycles and response sizes
 
@@ -537,21 +605,25 @@ may include large payloads.
   `redirect_uri_mismatch`.
 - **RFC 5322 `raw` Blob.** Pass the message as a plain `Blob` in the
   `raw` field (`?Text.encodeUtf8(mime)`). The `googlemail-client`
-  base64-encodes it for the API — do **not** base64-encode it yourself
-  (that double-encodes and Gmail rejects it).
+  base64url-encodes it for the API — RFC 4648 §5, which is what Gmail
+  requires — and decodes `raw` back from base64url when you read a message
+  with `format = ?#full`/`?#raw`. Do **not** encode it yourself (that
+  double-encodes and Gmail rejects it). Before 0.2.0 the read direction was
+  broken: a `raw` coming back from Gmail decoded to `null`.
 - **HTTP 429 rate-limit.** Surface the error to the caller; never
   silently retry inside the canister — a send retry may deliver duplicates.
 - **Don't expose the access token.** `gmailConnections` is read only by
   `Map.get(gmailConnections, ..., caller)` inside `sendEmail`. No
   `getMyGmailConnection`, no `getMyAccessToken`,
   no iterator. A leaked bearer is a per-user account compromise.
-- **`xgafv = #_1_`, `alt = #json`** for all Gmail API v1 calls. Leave
-  optional string parameters `""` and `prettyPrint = false`.
-- **API query parameters are plain positional values, not `?T` — never pass
-  `null` for one.** The client's function parameters are `Text` / `Bool` / enum
-  (e.g. `xgafv`, `alt`, `fields`, `prettyPrint`); pass `#_1_`, `#json`, `""`,
-  `false` — `null` will not type-check. Only **model** values (`Message`) are
-  optional `?T`.
+- **`xgafv = ?#_1_`, `alt = ?#json`** for all Gmail API v1 calls (bare `#_1_`
+  and `#json` before 0.2.0 — see the migration note in §5). Leave optional
+  string parameters `""` and `prettyPrint = false`.
+- **Only the enum query parameters are `?T`; the rest are plain positional
+  values.** `DollarPeriodxgafv`, `alt` and `format` take `?#_1_` / `?#json` /
+  `?#full` — or `null` to omit them from the query string. `Text` and `Bool`
+  parameters (`fields`, `prettyPrint`, `quotaUser`, …) take `""` / `false`;
+  `null` will not type-check for those.
 - **`userId = "me"`** refers to the authenticated user.
 
 # Frontend
@@ -821,7 +893,7 @@ the user explicitly asks to connect two different Google accounts.
 
 ## Related
 
-- [`mops add googlemail-client@0.1.6`](https://mops.one/googlemail-client) — Gmail REST API bindings.
+- [`mops add googlemail-client@0.2.0`](https://mops.one/googlemail-client) — Gmail REST API bindings.
 - [`mops add google-oauth@0.2.1`](https://mops.one/google-oauth) — Google OAuth 2.0 library (token exchange, refresh, PKCE, `getUserEmail` userinfo, `DateTime` RFC 3339 helpers).
 - [Google OAuth 2.0 for Web Server Applications](https://developers.google.com/identity/protocols/oauth2/web-server) — Web-client redirect URI and authorization-code flow reference.
 - [Gmail API v1 reference](https://developers.google.com/gmail/api/reference/rest) — what `googlemail-client` wraps.
