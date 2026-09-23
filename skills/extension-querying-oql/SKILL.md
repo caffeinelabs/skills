@@ -6,7 +6,7 @@ description: >-
   against the project's `backend` canister: read the schema, form JSON
   queries (filter / order / paginate / aggregate / dotted-path edges),
   and parse the Candid result rows.
-version: 0.6.1
+version: 0.7.0
 compatibility:
   mops: {}
   npm: {}
@@ -338,8 +338,9 @@ which case over-asking is silently truncated.
 |---|---|
 | `execute` traps `OQL: unknown entity '...'` | `start` doesn't match any `name` from `schema()` — entity names are case-sensitive. Re-read the schema. |
 | `execute` traps with a parse error | The JSON was malformed (trailing comma, single quotes), or not escaped as a Candid text literal — wrap as `("...")` with every inner `"` escaped as `\"`. Validate the JSON with `python3 -m json.tool` first. |
-| No rows returned for a filter you expect to match | (1) `value` literal type doesn't match the field's `typeName` (`"5"` for a `Nat`); (2) typo in `field` — unknown fields are silently `null_`, so most predicates fail; (3) the field is genuinely `null_` in storage. |
-| `gt` / `lt` returns weird results across types | Mixed-type comparisons aren't defined. Make sure both operands are the same `typeName`. |
+| `execute` traps `OQL: unknown field '...' on '...' — fields: ...` | Typo in `field` — the trap lists the entity's real fields. Pick one of them. |
+| `execute` traps `OQL: invalid query — where: field "..." is Int but value is Text` | The `value` literal's JSON type can never match the field's `typeName` (`"5"` or `"now-7d"` against a numeric field, a number against `Text`/`Bool`; `in` elements are checked one by one). Send a literal of the field's type — numeric fields take any of `Nat`/`Int`/`Float`, and `null` is always the is-null test. |
+| No rows returned for a filter you expect to match | The field is genuinely `null_` in storage, or the literal is the right type but the wrong value (case, units — timestamps are epoch nanoseconds). |
 | `contains` misses rows you can see | `contains` / `startsWith` / `endsWith` are case-sensitive. Use `icontains` for user-typed search terms. |
 | Dotted path traps `'x' is not an edge of 'y'` | The head segment isn't a declared edge — traversal is schema-driven even when values look like FKs. Use the two-query `in` pattern instead. |
 | Cross-entity average looks wrong | Aggregates run over the **start** entity's rows. Start from the entity whose rows you want averaged, or group by the dotted path and aggregate start-entity fields. |
