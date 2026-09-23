@@ -4,6 +4,8 @@
 
 import {test} "mo:test";
 import Json   "../src/Json";
+import Nat    "mo:core/Nat";
+import Text   "mo:core/Text";
 
 func okQuery(text : Text) : Json.ParseResult = Json.parseQuery(text);
 
@@ -284,5 +286,71 @@ test("negative floats survive the parser (not mistaken for integers)", func () {
         case _ { assert false };
       };
     };
+  };
+});
+
+// ── Behavior pinned at the wrapper boundary ────────────────────────────
+// The underlying JSON parser reports malformed input without a diagnostic,
+// so the wrapper prefixes a fixed message. These tests pin what callers can
+// observe: the prefix, and which inputs count as malformed.
+
+test("malformed JSON error text starts with the module prefix", func () {
+  switch (okQuery("{\"start\":")) {
+    case (#err e) { assert e.startsWith(#text "OQL.Json: ") };
+    case (#ok _)  { assert false };
+  };
+});
+
+test("trailing content after a valid object is malformed", func () {
+  switch (okQuery("{\"start\":\"x\"} x")) {
+    case (#err _) { assert true };
+    case (#ok _)  { assert false };
+  };
+});
+
+test("a float limit is rejected — limit must be an integer lexeme", func () {
+  switch (okQuery("{\"start\":\"x\",\"limit\":1.0}")) {
+    case (#err _) { assert true };
+    case (#ok _)  { assert false };
+  };
+});
+
+test("an exponent lexeme is a float, so it is rejected as a limit", func () {
+  // JSON does not distinguish integers from floats; the parser classifies
+  // any lexeme carrying a fraction or an exponent as a float, so `1e3`
+  // is `#float(1000.0)` rather than the integer 1000 and cannot be a limit.
+  switch (okQuery("{\"start\":\"x\",\"limit\":1e3}")) {
+    case (#err _) { assert true };
+    case (#ok _)  { assert false };
+  };
+  // The same lexeme is accepted as a comparison value, as a float.
+  switch (okQuery("{\"start\":\"x\",\"where\":{\"gt\":{\"field\":\"n\",\"value\":1e3}}}")) {
+    case (#err _) { assert false };
+    case (#ok q)  {
+      switch (q.where_) {
+        case (?#gt(_, #float v)) { assert v == 1000.0 };
+        case _ { assert false };
+      };
+    };
+  };
+});
+
+test("deeply nested where returns an err rather than trapping", func () {
+  // The parser refuses nesting beyond 512 container levels instead of
+  // exhausting the stack. The query wrapper itself uses three of them (the
+  // top-level object, the `eq` object and its `field` object), so around 509
+  // nested predicates is the effective bound; 600 nested `not` operators
+  // exceed it.
+  var open = "";
+  var close = "";
+  for (_ in Nat.range(0, 600)) {
+    open  #= "{\"not\":";
+    close #= "}";
+  };
+  let json = "{\"start\":\"x\",\"where\":" # open
+    # "{\"eq\":{\"field\":\"a\",\"value\":1}}" # close # "}";
+  switch (okQuery(json)) {
+    case (#err _) { assert true };
+    case (#ok _)  { assert false };
   };
 });

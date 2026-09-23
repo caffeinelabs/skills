@@ -3,22 +3,19 @@
 /// storage instead of through the entity's `toPredRow` (the columnar `Table`'s
 /// lazy row does exactly that, reading only the columns a query touches).
 ///
-/// Each case runs the identical query against a heap `IndexedMap` and a columnar
-/// `Table` over the same logical rows, with the same column hidden, and asserts
-/// they agree AND that the hidden value never surfaces. The heap path is the
-/// reference: a hidden column reads as absent, so a projection of it yields
-/// `#null_` and a predicate on it matches nothing.
-///
-/// Attack vectors covered, all reachable with `#unrestricted` access:
-///   - explicit `select` of a hidden column (an explicit select is honoured
-///     verbatim, so protection has to come from the row itself)
-///   - a `where` predicate on a hidden column — the row SET would otherwise
-///     disclose which rows hold a probed value, even unprojected
-///   - an aggregate over a hidden column (served from the index or, for a
-///     Table, the segment footers)
-/// Runs under PocketIC (the Table uses a Region).
+/// Under strict field validation a hidden column is INDISTINGUISHABLE from a
+/// nonexistent one — any query referencing it
+/// (select, where point/range probe, aggregate) rejects up front as an unknown
+/// field, before either backend's row source runs, and the error names only
+/// the VISIBLE fields. That closes every disclosure vector this file used to
+/// probe row-by-row: the row set, the projection, and index/footer-served
+/// aggregates can no longer leak what the validator refuses to reference.
+/// Both backends must agree on the reject, and visible columns must keep
+/// serving normally. Runs under PocketIC (the Table uses a Region).
 import { test } "mo:test/async";
+import Error     "mo:core/Error";
 import Nat       "mo:core/Nat";
+import Text      "mo:core/Text";
 import OQL       "../src";
 import Entity    "../src/Entity";
 import Executor  "../src/Executor";
@@ -34,6 +31,8 @@ actor {
     for (c in row.values()) { if (c.name == name) return ?c.value };
     null;
   };
+  func contains(haystack : Text, needle : Text) : Bool =
+    Text.contains(haystack, #text(needle));
   func unrestricted(_ : OQL.Decl) : OQL.Access = #unrestricted;
 
   type Rec = { id : Nat; grp : Nat; secret : Nat };
@@ -43,7 +42,8 @@ actor {
   func recCols(r : Rec) : [(Text, OQL.Value)] = [("grp", #nat(r.grp)), ("secret", #nat(r.secret))];
 
   // Both backends index `grp` AND `secret` — indexing the hidden column is what
-  // lets the planner try to serve a probe of it, and lets stats answer over it.
+  // would let the planner try to serve a probe of it, and lets stats answer
+  // over it, if validation ever let such a query through.
   func heapReg() : Registry.Registry {
     let m = IndexedMap.new<Nat, Rec>([("grp", #hash), ("secret", #ordered)]);
     for (r in recs().values()) { m.put(r.id, r, Nat.compare, recRow) };
@@ -62,68 +62,48 @@ actor {
   func run(r : Registry.Registry, qq : Query.Query) : [[Executor.Cell]] =
     Executor.runWith(r, qq, unrestricted).rows;
 
+  // Every disclosure vector, as one probe surface. Called via self-await so
+  // the validator's trap arrives as a catchable reject.
+  public func probeHidden(backend : Text, vector : Text) : async Nat {
+    let reg = if (backend == "heap") heapReg() else tableReg();
+    let qq = switch vector {
+      // explicit select of the hidden column
+      case "select" q(?(#eq(["grp"], #nat(7))), [], ?[["id"], ["secret"]]);
+      // point probe — the row COUNT would reveal which row holds 111
+      case "where"  q(?(#and_([#eq(["grp"], #nat(7)), #eq(["secret"], #nat(111))])), [], ?[["id"]]);
+      // range probe through the #ordered index
+      case "range"  q(?(#ge(["secret"], #nat(200))), [], ?[["id"]]);
+      // aggregates the Table could serve from footers / the heap from the index
+      case "sum"    q(null, [{ fn = #sum; field = ?["secret"]; as_ = null }], null);
+      case "min"    q(null, [{ fn = #min; field = ?["secret"]; as_ = null }], null);
+      case _        q(null, [{ fn = #max; field = ?["secret"]; as_ = null }], null);
+    };
+    run(reg, qq).size();
+  };
+
   public func runTests() : async () {
-    await test("hidden column is not readable via an explicit select", func() : async () {
-      // #eq on the indexed visible column routes to a served point probe, whose
-      // rows the Table builds lazily from the Region.
-      let qq = q(?(#eq(["grp"], #nat(7))), [], ?[["id"], ["secret"]]);
-      let h = run(heapReg(), qq);
-      let c = run(tableReg(), qq);
-      assert h.size() == 2 and c.size() == 2;
-      assert cell(h[0], "secret") == ?#null_;   // heap reference: absent → #null_
-      assert cell(c[0], "secret") == ?#null_;   // Table must not disclose 111
-      assert cell(c[0], "secret") != ?#nat(111);
-    });
-
-    await test("hidden column is not readable via the pruned/unfiltered scan", func() : async () {
-      // No predicate → the Table takes its zone-map `prune` scan fall-back.
-      let qq = q(null, [], ?[["id"], ["secret"]]);
-      let h = run(heapReg(), qq);
-      let c = run(tableReg(), qq);
-      assert h.size() == 2 and c.size() == 2;
-      assert cell(c[0], "secret") == ?#null_;
-      assert cell(c[1], "secret") == ?#null_;
-    });
-
-    await test("hidden column is not probeable via a where predicate", func() : async () {
-      // The oracle: even unprojected, a differing row COUNT would reveal which
-      // row holds 111. On the heap the hidden cell reads null, so #eq matches
-      // nothing; the Table must agree.
-      let qq = q(?(#and_([#eq(["grp"], #nat(7)), #eq(["secret"], #nat(111))])), [], ?[["id"]]);
-      let h = run(heapReg(), qq);
-      let c = run(tableReg(), qq);
-      assert h.size() == 0;        // reference: unprobeable
-      assert c.size() == h.size(); // a match here would be a disclosure
-    });
-
-    await test("hidden column is not probeable via a range predicate", func() : async () {
-      // Same oracle through the #ordered index (a range plan rather than a point).
-      let qq = q(?(#ge(["secret"], #nat(200))), [], ?[["id"]]);
-      let h = run(heapReg(), qq);
-      let c = run(tableReg(), qq);
-      assert h.size() == 0;
-      assert c.size() == h.size();
-    });
-
-    await test("aggregates over a hidden column do not disclose it", func() : async () {
-      // sum/min/max over `secret`: the Table could serve sum from its segment
-      // footers and min/max from the index, the heap min/max from the index.
-      // All must fall back to the scan, which sees the masked (absent) cell.
-      for (a in ([{ fn = #sum; field = ?["secret"]; as_ = null },
-                  { fn = #min; field = ?["secret"]; as_ = null },
-                  { fn = #max; field = ?["secret"]; as_ = null }] : [Query.Agg]).values()) {
-        let qq = q(null, [a], null);
-        let h = run(heapReg(), qq);
-        let c = run(tableReg(), qq);
-        assert h.size() == 1 and c.size() == 1;
-        // Whatever the scan yields for an all-absent column, both agree — and
-        // neither reports a real secret (111, 222, or their sum 333).
-        assert cell(c[0], "sum_secret") != ?#nat(333);
-        assert cell(c[0], "min_secret") != ?#nat(111);
-        assert cell(c[0], "max_secret") != ?#nat(222);
-        assert cell(h[0], "sum_secret") == cell(c[0], "sum_secret");
-        assert cell(h[0], "min_secret") == cell(c[0], "min_secret");
-        assert cell(h[0], "max_secret") == cell(c[0], "max_secret");
+    await test("every reference to a hidden column rejects as unknown, on both backends", func() : async () {
+      for (backend in (["heap", "table"] : [Text]).values()) {
+        for (vector in (["select", "where", "range", "sum", "min", "max"] : [Text]).values()) {
+          var rejected = false;
+          try {
+            ignore await probeHidden(backend, vector);
+          } catch (e) {
+            rejected := true;
+            let msg = Error.message(e);
+            // Rejects exactly like a nonexistent field...
+            assert contains(msg, "unknown field 'secret'");
+            // ...and the visible-field list does NOT disclose the hidden
+            // column: with the quoted probe name removed, no bare `secret`
+            // remains anywhere in the message.
+            assert contains(msg, "fields:");
+            assert not contains(Text.replace(msg, #text("'secret'"), ""), "secret");
+            // Never a value leak.
+            assert not contains(msg, "111");
+            assert not contains(msg, "222");
+          };
+          assert rejected;
+        };
       };
     });
 

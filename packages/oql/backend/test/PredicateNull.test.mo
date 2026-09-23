@@ -108,10 +108,17 @@ actor {
       // `ne` — which is true for ANY operand — so is-null does not see it and
       // is-not-null does. The README's null-semantics section states this
       // asymmetry; this pins it.
+      //
+      // The registry is built BEFORE the rows land, so the entity has no
+      // derived schema — strict field validation documents that a
+      // schema-less entity has "nothing to reject against" and lets the query
+      // through, which is exactly what keeps row-level absence testable here
+      // (a schema-KNOWN `v` absent on some rows is the sparse case the
+      // per-row path serves in production).
       let m = IndexedMap.new<Nat, [(Text, Types.Value)]>([]);
+      let reg = Registry.build([IndexedMap.entity(m, "e", "E", "id", Nat.compare, asRow).build()]);
       var i = 0;
       while (i < 3) { IndexedMap.put(m, i, [("id", #nat i)], Nat.compare, asRow); i += 1 };
-      let reg = Registry.build([IndexedMap.entity(m, "e", "E", "id", Nat.compare, asRow).build()]);
       let cases : [(Predicate.Predicate, Nat)] = [
         (#lt(["v"], #int 0), 0),
         (#ge(["v"], #int 0), 0),

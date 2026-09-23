@@ -1,0 +1,19 @@
+{
+	"about": "an image with no rows: header, directory and trailer only",
+	"columns": ["#nat","#int","#float","#bool","#text"],
+	"directory": [
+		{"kind":0,"offsetWidth":0,"stride":0,"blockOff":352,"blockLen":0},
+		{"kind":0,"offsetWidth":0,"stride":0,"blockOff":352,"blockLen":0},
+		{"kind":0,"offsetWidth":0,"stride":0,"blockOff":352,"blockLen":0},
+		{"kind":0,"offsetWidth":0,"stride":0,"blockOff":352,"blockLen":0},
+		{"kind":1,"offsetWidth":8,"stride":0,"blockOff":352,"blockLen":8}
+	],
+	"rows": [],
+	"footers": [
+		{"live":0,"nulls":0,"min":null,"max":null,"sum":"0"},
+		{"live":0,"nulls":0,"min":null,"max":null,"sum":"0"},
+		{"live":0,"nulls":0,"min":null,"max":null,"sum":0},
+		{"live":0,"nulls":0,"min":null,"max":null,"sum":"0"},
+		{"live":0,"nulls":0,"min":null,"max":null,"sum":"0"}
+	]
+}

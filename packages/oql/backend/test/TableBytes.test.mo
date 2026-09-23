@@ -4,15 +4,18 @@
 ///     from stored segments and the write buffer alike
 ///   - null cells and tombstoned rows are skipped by `live`/null
 ///   - a segment image carrying a #bytes column loads and reads back identically
-///   - OQL invisibility: the column is absent from `schema()`, projections and
-///     `select`; a predicate naming it matches nothing (no trap)
+///   - OQL invisibility: the column is absent from `schema()` and the default
+///     projection; a select, predicate or aggregate naming it rejects as an
+///     unknown field, exactly like a `.hidden` column (never a silent null)
 /// Runs under PocketIC (the Table uses a Region).
 import { test } "mo:test/async";
 import Array     "mo:core/Array";
 import Blob      "mo:core/Blob";
+import Error     "mo:core/Error";
 import Nat64 "mo:core/Nat64";
 import Nat8      "mo:core/Nat8";
 import Region    "mo:core/Region";
+import Text      "mo:core/Text";
 import OQL       "../src";
 import Entity    "../src/Entity";
 import Executor  "../src/Executor";
@@ -74,6 +77,30 @@ actor {
   func unrestricted(_ : OQL.Decl) : OQL.Access = #unrestricted;
   func q(where_ : ?OQL.Predicate, select : ?[[Text]]) : Query.Query = {
     start = "r"; where_; groupBy = []; aggregate = []; orderBy = []; offset = null; limit = null; select;
+  };
+  func contains(haystack : Text, needle : Text) : Bool =
+    Text.contains(haystack, #text(needle));
+
+  // Every query-layer surface that could name the bytes column, as one probe.
+  // Called via self-await so the validator's trap arrives as a catchable reject.
+  public func probeBytes(vector : Text) : async Nat {
+    let t = mkTable();
+    fill(t, 4);
+    Table.flush(t);
+    let reg = Registry.build([Entity.build(Table.entityWith(t, "r", "R", "id"))]);
+    func aggQ(fn : Query.AggFn) : Query.Query = {
+      start = "r"; where_ = null; groupBy = []; aggregate = [{ fn; field = ?["vec"]; as_ = ?"a" }];
+      orderBy = []; offset = null; limit = null; select = null;
+    };
+    let qq = switch vector {
+      case "select" q(null, ?[["vec"], ["amount"]]);
+      case "where"  q(?(#eq(["vec"], #text("x"))), null);
+      case "sum"    aggQ(#sum);
+      case "min"    aggQ(#min);
+      case "max"    aggQ(#max);
+      case _        aggQ(#avg);
+    };
+    Executor.runWith(reg, qq, unrestricted).rows.size();
   };
 
   public func runTests() : async () {
@@ -143,7 +170,7 @@ actor {
       assert Columnar.getCell(t.store, 3, 1) == null;   // the null vector stayed null
     });
 
-    await test("a #bytes column is invisible to schema, projection and predicates", func() : async () {
+    await test("a #bytes column is invisible to schema and projection, and unknown to select, predicates and aggregates", func() : async () {
       let t = mkTable();
       fill(t, 4);
       Table.flush(t);
@@ -155,32 +182,33 @@ actor {
         for (f in e.fields.values()) { assert f.name != "vec" };
       };
 
-      // Default projection and explicit select never surface it.
+      // The default projection never surfaces it.
       let rows = Executor.runWith(reg, q(null, null), unrestricted).rows;
       assert rows.size() == 4;
       for (r in rows.values()) { assert cell(r, "vec") == null; assert cell(r, "amount") != null };
-      // An explicit select renders it as a null cell (as `.hidden` does), never bytes.
-      let sel = Executor.runWith(reg, q(null, ?[["vec"], ["amount"]]), unrestricted).rows;
-      assert cell(sel[0], "vec") == ?#null_ and cell(sel[0], "amount") == ?#nat(0);
-
-      // A predicate naming it matches nothing — and does not trap.
-      assert Executor.runWith(reg, q(?(#eq(["vec"], #text("x"))), null), unrestricted).rows.size() == 0;
 
       // The rest of the query surface still works over the same table.
       let agg : Query.Query = { start = "r"; where_ = null; groupBy = []; aggregate = [{ fn = #count; field = null; as_ = null }]; orderBy = []; offset = null; limit = null; select = null };
       assert cell(Executor.runWith(reg, agg, unrestricted).rows[0], "count") == ?#nat(4);
 
-      // Aggregates NAMING the bytes column answer exactly as over an all-null
-      // column — never served from the footer (whose zero seeds are not answers),
-      // never a trap: sum folds to its #nat(0) seed, min/max/avg to #null_.
-      func aggQ(fn : Query.AggFn) : Query.Query = {
-        start = "r"; where_ = null; groupBy = []; aggregate = [{ fn; field = ?["vec"]; as_ = ?"a" }];
-        orderBy = []; offset = null; limit = null; select = null;
+      // Naming the column anywhere — an explicit select, a predicate, an
+      // aggregate — rejects up front as an unknown field, exactly as a
+      // `.hidden` column does: never a silent null cell, never a zero-row
+      // match, never a footer-served answer. The advertised field list is
+      // the visible schema only, so the reject does not disclose the column.
+      for (vector in (["select", "where", "sum", "min", "max", "avg"] : [Text]).values()) {
+        var rejected = false;
+        try {
+          ignore await probeBytes(vector);
+        } catch (e) {
+          rejected := true;
+          let msg = Error.message(e);
+          assert contains(msg, "unknown field 'vec'");
+          assert contains(msg, "fields:");
+          assert not contains(Text.replace(msg, #text("'vec'"), ""), "vec");
+        };
+        assert rejected;
       };
-      assert cell(Executor.runWith(reg, aggQ(#sum), unrestricted).rows[0], "a") == ?#nat(0);
-      assert cell(Executor.runWith(reg, aggQ(#min), unrestricted).rows[0], "a") == ?#null_;
-      assert cell(Executor.runWith(reg, aggQ(#max), unrestricted).rows[0], "a") == ?#null_;
-      assert cell(Executor.runWith(reg, aggQ(#avg), unrestricted).rows[0], "a") == ?#null_;
     });
   };
 };

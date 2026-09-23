@@ -1,0 +1,27 @@
+{
+	"about": "records 0..4 of a literal CSV, decoded by csv.mjs and lib.mjs and batched by ingestCsv at 360 bytes (a full batch)",
+	"source": {
+		"csv": "c0,c1,c2\r\n1,alpha,true\r\n2,\"\",false\r\n3,,true\r\n,\"say \"\"hi\"\"\",1\r\n5,\"a, b\",0\r\n6, spaced ,TRUE\r\n7,last,false\r\n",
+		"batchBytes": 360,
+		"batch": 0,
+		"of": 2,
+		"firstRecord": 0
+	},
+	"columns": ["#nat","#text","#bool"],
+	"directory": [
+		{"kind":0,"offsetWidth":0,"stride":0,"blockOff":224,"blockLen":40},
+		{"kind":1,"offsetWidth":8,"stride":0,"blockOff":264,"blockLen":64},
+		{"kind":0,"offsetWidth":0,"stride":0,"blockOff":328,"blockLen":40}
+	],
+	"rows": [
+		["1","alpha",true],
+		["2","",false],
+		["3",null,true],
+		[null,"say \"hi\"",true]
+	],
+	"footers": [
+		{"live":3,"nulls":1,"min":"1","max":"3","sum":"6"},
+		{"live":3,"nulls":1,"min":null,"max":null,"sum":"0"},
+		{"live":4,"nulls":0,"min":false,"max":true,"sum":"3"}
+	]
+}

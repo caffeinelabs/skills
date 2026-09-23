@@ -29,7 +29,7 @@
 /// Field paths may be dotted (`"department.name"`): each dot before the
 /// final segment crosses a declared edge to the target entity.
 
-import Json      "mo:json";
+import Json      "mo:jayson/Json";
 import Iter      "mo:core/Iter";
 import List      "mo:core/List";
 import Nat       "mo:core/Nat";
@@ -50,8 +50,8 @@ module {
 
   public func parseQuery(text : Text) : ParseResult {
     switch (Json.parse(text)) {
-      case (#err e) { #err("OQL.Json: " # Json.errToText(e)) };
-      case (#ok j)  { fromJson(j) };
+      case null { #err("OQL.Json: malformed JSON") };
+      case (?j) { fromJson(j) };
     };
   };
 
@@ -59,12 +59,12 @@ module {
 
   func fromJson(j : Json.Json) : ParseResult {
     let entries = switch j {
-      case (#object_ es) { es };
+      case (#Object es) { es };
       case _ { return #err("query must be a JSON object") };
     };
 
     let start = switch (field(entries, "start")) {
-      case (?#string s) { s };
+      case (?#String s) { s };
       case _ { return #err("query.start: missing or not a string") };
     };
 
@@ -80,7 +80,7 @@ module {
 
     let orderBy : [Query.OrderBy] = switch (field(entries, "orderBy")) {
       case null         { [] };
-      case (?#array xs) {
+      case (?#Array xs) {
         switch (mapOk<Json.Json, Query.OrderBy>(xs, parseOrderBy)) {
           case (#err e) { return #err("query.orderBy: " # e) };
           case (#ok o)  { o };
@@ -100,7 +100,7 @@ module {
 
     let select : ?[Path] = switch (field(entries, "select")) {
       case null         { null };
-      case (?#array xs) {
+      case (?#Array xs) {
         switch (mapOk<Json.Json, Path>(xs, parsePathItem)) {
           case (#err e) { return #err("query.select: " # e) };
           case (#ok ps) { ?ps };
@@ -111,7 +111,7 @@ module {
 
     let groupBy : [Path] = switch (field(entries, "groupBy")) {
       case null         { [] };
-      case (?#array xs) {
+      case (?#Array xs) {
         switch (mapOk<Json.Json, Path>(xs, parsePathItem)) {
           case (#err e) { return #err("query.groupBy: " # e) };
           case (#ok ps) { ps };
@@ -122,7 +122,7 @@ module {
 
     let aggregate : [Query.Agg] = switch (field(entries, "aggregate")) {
       case null         { [] };
-      case (?#array xs) {
+      case (?#Array xs) {
         switch (mapOk<Json.Json, Query.Agg>(xs, parseAgg)) {
           case (#err e) { return #err("query.aggregate: " # e) };
           case (#ok a)  { a };
@@ -138,28 +138,28 @@ module {
   /// `field` is required for every fn except `count`.
   func parseAgg(j : Json.Json) : Outcome<Query.Agg> {
     let entries = switch j {
-      case (#object_ es) { es };
+      case (#Object es) { es };
       case _ { return #err("aggregate entry must be a JSON object") };
     };
     let fn : Query.AggFn = switch (field(entries, "fn")) {
-      case (?#string "count") { #count };
-      case (?#string "sum")   { #sum };
-      case (?#string "avg")   { #avg };
-      case (?#string "min")   { #min };
-      case (?#string "max")   { #max };
-      case (?#string other)   { return #err("unknown aggregate fn '" # other # "'") };
+      case (?#String "count") { #count };
+      case (?#String "sum")   { #sum };
+      case (?#String "avg")   { #avg };
+      case (?#String "min")   { #min };
+      case (?#String "max")   { #max };
+      case (?#String other)   { return #err("unknown aggregate fn '" # other # "'") };
       case _ { return #err("aggregate.fn: missing or not a string") };
     };
     let aggField : ?Path = switch (field(entries, "field")) {
       case null             { null };
-      case (?#string s)     {
+      case (?#String s)     {
         switch (parsePath(s)) { case (#ok p) { ?p }; case (#err e) { return #err(e) } }
       };
       case _ { return #err("aggregate.field: must be a string") };
     };
     let as_ : ?Text = switch (field(entries, "as")) {
       case null             { null };
-      case (?#string s)     {
+      case (?#String s)     {
         // A dot in an output column name would make it unreachable: any
         // later reference parses as a path and trips edge validation.
         if (s.contains(#char '.')) return #err("aggregate.as: must not contain '.'");
@@ -179,7 +179,7 @@ module {
 
   func parsePredicate(j : Json.Json) : Outcome<Pred> {
     let entries = switch j {
-      case (#object_ es) { es };
+      case (#Object es) { es };
       case _ { return #err("predicate must be a JSON object") };
     };
     if (entries.size() != 1) {
@@ -212,7 +212,7 @@ module {
 
   func parseCmp(j : Json.Json, build : (Path, Value) -> Pred) : Outcome<Pred> {
     let entries = switch j {
-      case (#object_ es) { es };
+      case (#Object es) { es };
       case _ { return #err("comparison must be { \"field\": ..., \"value\": ... }") };
     };
     let path = switch (pathField(entries, "missing 'field'")) {
@@ -231,14 +231,14 @@ module {
   /// surfacing at parse time rather than silently matching nothing.
   func parseTextCmp(j : Json.Json, build : (Path, Value) -> Pred) : Outcome<Pred> {
     let entries = switch j {
-      case (#object_ es) { es };
+      case (#Object es) { es };
       case _ { return #err("comparison must be { \"field\": ..., \"value\": ... }") };
     };
     let path = switch (pathField(entries, "missing 'field'")) {
       case (#ok p) { p }; case (#err e) { return #err(e) };
     };
     switch (field(entries, "value")) {
-      case (?#string s) { #ok(build(path, #text(s))) };
+      case (?#String s) { #ok(build(path, #text(s))) };
       case _ { #err("'value' must be a string for text-search operators") };
     };
   };
@@ -248,14 +248,14 @@ module {
   /// (`#null_` / `#bool` / `#nat` / `#int` / `#float` / `#text`).
   func parseIn(j : Json.Json) : Outcome<Pred> {
     let entries = switch j {
-      case (#object_ es) { es };
+      case (#Object es) { es };
       case _ { return #err("in: must be { \"field\": ..., \"value\": [...] }") };
     };
     let path = switch (pathField(entries, "in: missing 'field'")) {
       case (#ok p) { p }; case (#err e) { return #err(e) };
     };
     let items = switch (field(entries, "value")) {
-      case (?#array xs) { xs };
+      case (?#Array xs) { xs };
       case _ { return #err("in: 'value' must be an array of scalars") };
     };
     switch (mapOk<Json.Json, Value>(items, parseValue)) {
@@ -266,7 +266,7 @@ module {
 
   func parseLogicArray(j : Json.Json, build : [Pred] -> Pred) : Outcome<Pred> {
     let xs = switch j {
-      case (#array a) { a };
+      case (#Array a) { a };
       case _ { return #err("must be an array of predicates") };
     };
     switch (mapOk<Json.Json, Pred>(xs, parsePredicate)) {
@@ -279,18 +279,18 @@ module {
 
   func parseValue(j : Json.Json) : Outcome<Value> =
     switch j {
-      case (#null_)              { #ok(#null_) };
-      case (#bool b)             { #ok(#bool(b)) };
-      case (#string s)           { #ok(#text(s)) };
-      case (#number(#int n))     { #ok(if (n >= 0) #nat(Nat.fromInt(n)) else #int(n)) };
-      case (#number(#float f))   { #ok(#float(f)) };
-      case (#object_ _)          { #err("nested objects are not allowed as scalar values") };
-      case (#array _)            { #err("arrays are not allowed as scalar values") };
+      case (#Null)               { #ok(#null_) };
+      case (#Bool b)             { #ok(#bool(b)) };
+      case (#String s)           { #ok(#text(s)) };
+      case (#Number(#Int n))     { #ok(if (n >= 0) #nat(Nat.fromInt(n)) else #int(n)) };
+      case (#Number(#Float f))   { #ok(#float(f)) };
+      case (#Object _)           { #err("nested objects are not allowed as scalar values") };
+      case (#Array _)            { #err("arrays are not allowed as scalar values") };
     };
 
   func parseOrderBy(j : Json.Json) : Outcome<Query.OrderBy> {
     let entries = switch j {
-      case (#object_ es) { es };
+      case (#Object es) { es };
       case _ { return #err("orderBy entry must be a JSON object") };
     };
     let f = switch (pathField(entries, "orderBy.field: missing or not a string")) {
@@ -298,8 +298,8 @@ module {
     };
     let dir : Query.Dir = switch (field(entries, "dir")) {
       case null              { #asc };
-      case (?#string "asc")  { #asc };
-      case (?#string "desc") { #desc };
+      case (?#String "asc")  { #asc };
+      case (?#String "desc") { #desc };
       case _ { return #err("orderBy.dir: must be \"asc\" or \"desc\"") };
     };
     #ok({ field = f; dir });
@@ -308,7 +308,7 @@ module {
   /// The `"field"` entry of a comparison-shaped object, parsed as a path.
   func pathField(entries : [(Text, Json.Json)], missing : Text) : Outcome<Path> =
     switch (field(entries, "field")) {
-      case (?#string s) { parsePath(s) };
+      case (?#String s) { parsePath(s) };
       case _ { #err(missing) };
     };
 
@@ -324,16 +324,16 @@ module {
 
   func parsePathItem(j : Json.Json) : Outcome<Path> =
     switch j {
-      case (#string s) { parsePath(s) };
+      case (#String s) { parsePath(s) };
       case _           { #err("path entry must be a string") };
     };
 
   /// Optional non-negative integer: missing → `#ok null`, otherwise must be
-  /// `#number(#int n)` with `n >= 0`.
+  /// `#Number(#Int n)` with `n >= 0`.
   func parseNat(node : ?Json.Json) : Outcome<?Nat> =
     switch node {
       case null               { #ok null };
-      case (?#number(#int n)) {
+      case (?#Number(#Int n)) {
         if (n < 0) #err("must be a non-negative integer") else #ok(?Nat.fromInt(n))
       };
       case _ { #err("must be a non-negative integer") };

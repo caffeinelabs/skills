@@ -19,6 +19,7 @@
 import { test } "mo:test/async";
 import Array    "mo:core/Array";
 import Blob     "mo:core/Blob";
+import Error    "mo:core/Error";
 import Nat      "mo:core/Nat";
 import Nat64    "mo:core/Nat64";
 import Region   "mo:core/Region";
@@ -254,6 +255,18 @@ actor {
   };
 
   func countOf(q : Query.Query) : Query.Query = { q with aggregate = [{ fn = #count; field = null; as_ = null }] };
+
+  // The alien-kind probes of the #bool column, one per call via self-await so
+  // the validator's trap arrives as a catchable reject.
+  public func probeBool(twin : Text, vector : Text) : async Nat {
+    let r = regReg(if (twin == "region") boolRegionTable() else boolHeapTable());
+    let qq = switch vector {
+      case "in" base(?#in_(["flag"], [#bool true, #nat 1]));
+      case "eq" base(?#eq(["flag"], #nat 1));
+      case _    base(?#eq(["flag"], #text "true"));
+    };
+    Executor.runWith(r, qq, unrestricted).rows.size();
+  };
 
   func heapTable() : Table.Table = heapRows(N);
 
@@ -626,19 +639,31 @@ actor {
 
     await test("a base is probed only with values its own column can hold", func() : async () {
       // The base is keyed by RAW CELL BITS, and #bool true and #nat 1 reduce to
-      // the same key. Probing a #bool base with the #nat re-fetches every `true`
-      // row a second time, and the executor's residual cannot drop the copies —
-      // those rows do satisfy the IN — so `count(*)` doubles.
+      // the same key. Probing a #bool base with the #nat would re-fetch every
+      // `true` row a second time, and the executor's residual could not drop
+      // the copies — those rows do satisfy the IN — so `count(*)` would double.
+      // The query layer refuses such a probe before any base is consulted: an
+      // operand whose kind can never match the column's declared type is an
+      // invalid query on BOTH twins, so an alien-kind key never reaches a base.
+      for (twin in (["region", "heap"] : [Text]).values()) {
+        for (vector in (["in", "eq", "text"] : [Text]).values()) {
+          var rejected = false;
+          try { ignore await probeBool(twin, vector) }
+          catch (e) {
+            rejected := true;
+            assert Text.contains(Error.message(e), #text("field \"flag\" is Bool but value is"));
+          };
+          assert rejected;
+        };
+      };
+      // Same-kind probes still agree, point and IN alike, served or scanned.
       let ra = regReg(boolRegionTable());
       let rb = regReg(boolHeapTable());
-      let both : OQL.Predicate.Predicate = #in_(["flag"], [#bool true, #nat 1]);
+      assert agree(ra, rb, base(?#eq(["flag"], #bool true)));
+      assert agree(ra, rb, countOf(base(?#eq(["flag"], #bool true))));
+      let both : OQL.Predicate.Predicate = #in_(["flag"], [#bool true, #bool false]);
       assert agree(ra, rb, base(?both));
       assert agree(ra, rb, countOf(base(?both)));
-      // The other direction of the same aliasing: a #nat probe on a #bool column
-      // matches nothing in the heap twin, so the base must contribute nothing.
-      assert agree(ra, rb, base(?#eq(["flag"], #nat 1)));
-      assert agree(ra, rb, countOf(base(?#eq(["flag"], #nat 1))));
-      assert agree(ra, rb, base(?#eq(["flag"], #text "true")));
     });
 
     await test("a base serves every value its column can hold, whatever kind the probe arrived as", func() : async () {

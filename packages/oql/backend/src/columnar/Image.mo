@@ -62,12 +62,11 @@
 /// the structure is verified. A producer that computes footers correctly is therefore
 /// part of the trusted base, which is why the load endpoints are controller-only.
 /// Verifying conservatism would mean scanning, which is the work this format exists to
-/// avoid. The check that does exist is end to end rather than byte level: the scale
-/// verifiers load through the shipping producer and compare its ANSWERS against a JS
-/// oracle over the same rows — `bench/scale/verify-import.mjs` (sum, zone-map-pruned
-/// counts), `verify-join.mjs` (footer min/max), `verify-csv.mjs` (the text, float, bool
-/// and signed-int columns). Nothing diffs the producer's BYTES against this module; see
-/// `build`.
+/// avoid. What stands in for it is `test/SegmentImageGolden.test.mo`: golden images
+/// from the shipping producer (`tools/oql-ingest/encode.mjs`), diffed byte for byte
+/// against `build` and checked, once loaded, for rows, footers and zone-map bounds
+/// against independently computed expectations. A producer change that alters a
+/// footer value fails there, naming the column and the statistic.
 
 import Array   "mo:core/Array";
 import Blob    "mo:core/Blob";
@@ -139,13 +138,11 @@ module {
   /// buffer and its contents are overwritten; pass the same region across calls
   /// rather than creating one per image, since a Region is never reclaimed.
   ///
-  /// This is the reference encoder and the only definition of the format. There is no
-  /// byte-diff test behind that: nothing compares `tools/oql-ingest/encode.mjs` against
-  /// what this writes. The hash-segment producer HAS such a test —
-  /// `test/HashSegment.test.mo` against the JS-built `test/fixtures/HashSegmentFixture.mo`
-  /// — and the image producer is the gap. Divergence surfaces only as a wrong query
-  /// answer in a scale verifier, so bytes no query reads (reserved fields, block
-  /// padding) are pinned by nothing.
+  /// This is the reference encoder and the definition of the format. The off-chain
+  /// producer, `tools/oql-ingest/encode.mjs`, must agree with it byte for byte,
+  /// reserved fields and block padding included: `test/SegmentImageGolden.test.mo`
+  /// pins that against the JS-built fixtures in `test/fixtures/SegmentImageFixture.mo`,
+  /// the same way `test/HashSegment.test.mo` pins the hash-segment producer.
   public func build(
     scratch : Region.Region,
     cols : [Cell.ColType],

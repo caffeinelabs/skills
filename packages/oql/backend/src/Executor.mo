@@ -69,6 +69,13 @@ module {
       case (a) { subjectOf(a) };
     };
 
+    // Unknown fields in where/orderBy/select — and where operands whose type
+    // can never match the field — ERROR instead of silently matching nothing.
+    // Validated up front on the CALLER's query (`qArg`): before the `.ownedBy`
+    // rewrite below injects its own owner predicate, and before any fast path
+    // (index-served aggregates included) can answer.
+    validateFieldRefs(r, entity, qArg);
+
     // A scoped read of an `.ownedBy` entity is the same query an unrestricted
     // caller would run with `owner == me` added: `ownerIsCaller` tests exactly
     // that equality, so the rewrite is semantically identical. Running it
@@ -850,23 +857,67 @@ module {
     };
   };
 
+  /// Walk every field path a predicate references.
+  func forEachPredPath(p : Predicate.Predicate, f : Path -> ()) {
+    switch p {
+      case (#eq(path, _) or #ne(path, _) or #lt(path, _) or #le(path, _)
+         or #gt(path, _) or #ge(path, _) or #contains(path, _)
+         or #icontains(path, _) or #startsWith(path, _) or #endsWith(path, _)) {
+        f(path)
+      };
+      case (#in_(path, _)) { f(path) };
+      case (#and_ ps) { for (x in ps.values()) forEachPredPath(x, f) };
+      case (#or_  ps) { for (x in ps.values()) forEachPredPath(x, f) };
+      case (#not_ x)  { forEachPredPath(x, f) };
+    };
+  };
+
+  /// Walk every (field path, operand) pair a predicate compares — one call
+  /// per `in` element.
+  func forEachPredOperand(p : Predicate.Predicate, f : (Path, Value) -> ()) {
+    switch p {
+      case (#eq(path, v) or #ne(path, v) or #lt(path, v) or #le(path, v)
+         or #gt(path, v) or #ge(path, v) or #contains(path, v)
+         or #icontains(path, v) or #startsWith(path, v) or #endsWith(path, v)) {
+        f(path, v)
+      };
+      case (#in_(path, vs)) { for (v in vs.values()) f(path, v) };
+      case (#and_ ps) { for (x in ps.values()) forEachPredOperand(x, f) };
+      case (#or_  ps) { for (x in ps.values()) forEachPredOperand(x, f) };
+      case (#not_ x)  { forEachPredOperand(x, f) };
+    };
+  };
+
+  /// The schema `typeName` an operand would derive to (mirrors
+  /// `Entity.typeOfValue`).
+  func valueTypeName(v : Value) : Text = switch v {
+    case (#null_)   "Null";
+    case (#bool  _) "Bool";
+    case (#nat   _) "Nat";
+    case (#int   _) "Int";
+    case (#float _) "Float";
+    case (#text  _) "Text";
+  };
+
+  func isNumericType(t : Text) : Bool = t == "Nat" or t == "Int" or t == "Float";
+
+  /// Can `v` ever match a cell of a field declared `fieldType`? A `null`
+  /// operand always (is-null test / bounds nothing); numeric kinds pair
+  /// freely (`compare`'s bridge); an unrecognised or `"Null"` field type
+  /// (seed row was null — type unknown) admits everything. Everything else
+  /// must agree on kind.
+  func operandFits(fieldType : Text, v : Value) : Bool {
+    switch v { case (#null_) { return true }; case _ {} };
+    let known = fieldType == "Text" or fieldType == "Bool" or isNumericType(fieldType);
+    if (not known) return true;
+    let vt = valueTypeName(v);
+    vt == fieldType or (isNumericType(fieldType) and isNumericType(vt))
+  };
+
   /// Every field path referenced anywhere in the query.
   func queryPaths(q : Query.Query) : [Path] {
     let acc = List.empty<Path>();
-    func fromPred(p : Predicate.Predicate) {
-      switch p {
-        case (#eq(path, _) or #ne(path, _) or #lt(path, _) or #le(path, _)
-           or #gt(path, _) or #ge(path, _) or #contains(path, _)
-           or #icontains(path, _) or #startsWith(path, _) or #endsWith(path, _)) {
-          acc.add(path)
-        };
-        case (#in_(path, _)) { acc.add(path) };
-        case (#and_ ps) { for (x in ps.values()) fromPred(x) };
-        case (#or_  ps) { for (x in ps.values()) fromPred(x) };
-        case (#not_ x)  { fromPred(x) };
-      };
-    };
-    switch (q.where_) { case (?p) { fromPred(p) }; case null {} };
+    switch (q.where_) { case (?p) { forEachPredPath(p, func path = acc.add(path)) }; case null {} };
     for (ob in q.orderBy.values()) acc.add(ob.field);
     for (g in q.groupBy.values()) acc.add(g);
     for (a in q.aggregate.values()) {
@@ -877,6 +928,112 @@ module {
       case null {};
     };
     acc.toArray()
+  };
+
+  /// Every field reference must resolve against the schema. Before this
+  /// check, a `where`/`orderBy`/`select` naming a field the entity does not
+  /// declare simply matched or projected nothing — a schema mismatch was
+  /// indistinguishable from "no data", which defeats humans and agent loops
+  /// alike (loud errors are what let a retrying agent converge; the silent
+  /// empty sent one re-reading the schema six times). Hop segments were
+  /// already validated (`validateHop`, via `collectHops`); this validates
+  /// the TERMINAL segment of each path against the entity it lands on.
+  ///
+  /// Two deliberate carve-outs:
+  ///   • An entity with `fields == []` has no derived schema YET (schemas
+  ///     derive from seed rows at init/upgrade) — its field set is unknown,
+  ///     not empty, so nothing can be rejected against it.
+  ///   • Hidden fields (builder `.hidden` drops them from the decl; role
+  ///     `#hidden` is row-absent) count as unknown and are absent from the
+  ///     error's field list — same answer as a field that never existed, so
+  ///     the error is not an existence oracle.
+  /// In aggregated queries, `orderBy`/`select` reference the synthetic
+  /// OUTPUT columns (group keys + aggregate names) instead of entity
+  /// fields; a multi-segment path whose head is a single-segment group key
+  /// still traverses its edge, so its terminal validates on the target.
+  ///
+  /// `where` OPERANDS are typed against the field too. A `Text` literal
+  /// against an `Int` field (`ge updatedAtNs
+  /// "now-7d"`) used to fall through `compare`'s cross-kind rank order and
+  /// match nothing — the one malformed shape that still failed silently
+  /// after the unknown-field check, and an agent read the empty count as
+  /// fact. Now it traps in the parse-error family (`OQL: invalid query —
+  /// where: field "updatedAtNs" is Int but value is Text`), each `in`
+  /// element included. Admissible by design: a `null` operand on any field
+  /// (is-null / bounds nothing — the null statement of record), every
+  /// numeric pairing (`Nat`/`Int`/`Float` bridge, so `gt price 10` still
+  /// matches a Float column and a negative literal still probes a Nat),
+  /// and any field whose derived `typeName` is not one of the six scalar
+  /// kinds (`"Null"` = the seed row was null, type unknown — defer).
+  func validateFieldRefs(r : Registry.Registry, start : Entity.Decl, q : Query.Query) {
+    let aggregated = q.aggregate.size() > 0 or q.groupBy.size() > 0;
+    let groupTexts = q.groupBy.map(Types.pathToText);
+    let columns    = if (not aggregated) { [] : [Text] }
+                     else { groupTexts.concat(q.aggregate.map(aggName)) };
+
+    func terminalOf(path : Path) : Entity.Decl {
+      var entity = start;
+      var i = 0;
+      while (i + 1 < path.size()) { entity := validateHop(r, entity, path[i]); i += 1 };
+      entity
+    };
+    func visibleFields(e : Entity.Decl) : Text =
+      e.fields.filter(func f = switch (f.role) { case (#hidden) false; case _ true })
+              .map(func (f : Schema.FieldDecl) : Text = f.name)
+              .values().join(", ");
+    /// The terminal field's declaration, or `null` when the entity has no
+    /// derived schema yet (nothing to reject against). Traps on an unknown
+    /// or hidden terminal.
+    func fieldOf(path : Path) : ?Schema.FieldDecl {
+      if (path.size() == 0) return null;
+      let entity = terminalOf(path);
+      if (entity.fields.size() == 0) return null;  // no derived schema yet — nothing to reject against
+      let leaf = path[path.size() - 1];
+      let known = switch (entity.fields.find(func f = f.name == leaf)) {
+        case (?f) { switch (f.role) { case (#hidden) null; case _ ?f } };
+        case null { null };
+      };
+      switch known {
+        case (?f) { ?f };
+        case null {
+          Runtime.trap("OQL: unknown field '" # leaf # "' on '" # entity.name
+            # "' — fields: " # visibleFields(entity));
+        };
+      };
+    };
+    func checkEntityField(path : Path) = ignore fieldOf(path);
+    func checkOperand(path : Path, v : Value) {
+      switch (fieldOf(path)) {
+        case (?f) {
+          if (not operandFits(f.typeName, v)) {
+            Runtime.trap("OQL: invalid query — where: field \"" # Types.pathToText(path)
+              # "\" is " # f.typeName # " but value is " # valueTypeName(v));
+          };
+        };
+        case null {};
+      };
+    };
+    func checkOutputRef(path : Path) {
+      if (not aggregated) return checkEntityField(path);
+      let txt = Types.pathToText(path);
+      if (columns.find(func c = c == txt) != null) return;
+      if (path.size() >= 2 and groupTexts.find(func g = g == path[0]) != null) {
+        return checkEntityField(path);
+      };
+      Runtime.trap("OQL: unknown column '" # txt # "' in aggregated result — columns: "
+        # columns.values().join(", "));
+    };
+
+    switch (q.where_) { case (?p) { forEachPredOperand(p, checkOperand) }; case null {} };
+    for (g in q.groupBy.values()) checkEntityField(g);
+    for (a in q.aggregate.values()) {
+      switch (a.field) { case (?p) { checkEntityField(p) }; case null {} };
+    };
+    for (ob in q.orderBy.values()) checkOutputRef(ob.field);
+    switch (q.select) {
+      case (?ps) { for (p in ps.values()) checkOutputRef(p) };
+      case null {};
+    };
   };
 
   /// One hop: `edge` on `entity` must be a declared `#edge` whose target is

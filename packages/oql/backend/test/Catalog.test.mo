@@ -11,11 +11,13 @@
 ///   • explicit `select` projection
 ///   • edge fields surface as scalar foreign keys
 ///   • dotted paths traverse edges (filter / project / group)
-///   • hidden fields never appear in schema, default projection, or
-///     even an explicit select
+///   • hidden fields never appear in schema or default projection, and
+///     referencing one rejects exactly like a nonexistent field
+///   • unknown fields/columns reject loudly (never a silent zero-row match)
 ///   • schema() returns every declared entity / field
 
 import {test}  "mo:test/async";
+import Error   "mo:core/Error";
 import Text    "mo:core/Text";
 import Catalog "./fixtures/Catalog";
 
@@ -294,29 +296,136 @@ actor {
       assert total == 12;   // every order lands in exactly one group
     });
 
-    await test("hidden fields stay invisible even when explicitly selected", func () : async () {
+    await test("hidden fields are unknown: selecting one rejects like any nonexistent field", func () : async () {
+      // The pre-validation contract projected a silent #null_ column here.
+      // Now a hidden field answers EXACTLY like a field that never existed
+      // (reject naming it, absent from the advertised list) — still no
+      // existence oracle, and no more silent-null columns.
       let q = "{\"start\":\"customer\",\"where\":{\"eq\":{\"field\":\"id\",\"value\":1}},\"select\":[\"name\",\"passwordHash\"]}";
-      let r = await catalog.execute(q);
-      assert r.rows.size() == 1;
-      let row = r.rows[0];
-      // Selected name comes through; selected hidden field projects #null_.
-      assert row.size() == 2;
-      assert textOf(switch (cell(row, "name")) { case (?c) c; case _ { return } }) == "alice";
-      switch (cell(row, "passwordHash")) {
-        case (?c) { switch (c.value) { case (#null_) { assert true }; case _ { assert false } } };
-        case null { assert false };
+      try {
+        ignore await catalog.execute(q);
+        assert false;
+      } catch (e) {
+        let msg = Error.message(e);
+        assert contains(msg, "unknown field 'passwordHash'");
+        // The advertised field list stays the visible schema only.
+        assert contains(msg, "fields:");
+        assert contains(msg, "name");
       };
     });
 
     // ── Error path over the wire ──────────────────────────────────────
+    // `execute` traps on a bad query; PocketIC surfaces the trap as a
+    // catchable canister reject, so the loud-error contract is testable
+    // here (the err-vs-trap boundary itself lives in test/Json.test.mo).
 
-    // `execute` traps on a malformed query. PocketIC surfaces that as a
-    // canister reject which would crash this whole `runTests`, so we
-    // can't catch it inline. The unit tests in test/Json.test.mo cover
-    // the err-vs-trap boundary; here we just confirm a *valid* but empty
-    // query against an unknown entity is the way to misuse the API.
-    //
-    // (Skipped intentionally — kept as documentation.)
+    await test("where on an unknown field rejects naming it and the real fields", func () : async () {
+      // The motivating trap: a typo'd/guessed field silently matched zero
+      // rows, indistinguishable from "no data" — agents retried blind.
+      let q = "{\"start\":\"customer\",\"where\":{\"contains\":{\"field\":\"nmae\",\"value\":\"ali\"}}}";
+      try {
+        ignore await catalog.execute(q);
+        assert false;
+      } catch (e) {
+        let msg = Error.message(e);
+        assert contains(msg, "unknown field 'nmae'");
+        assert contains(msg, "'customer'");
+        assert contains(msg, "name");   // the correction is in the advertised list
+      };
+    });
+
+    await test("orderBy on an unknown aggregated column rejects naming the real columns", func () : async () {
+      let q = "{\"start\":\"order\",\"groupBy\":[\"customerId.country\"],"
+        # "\"aggregate\":[{\"fn\":\"count\"}],"
+        # "\"orderBy\":[{\"field\":\"cuont\",\"dir\":\"desc\"}]}";
+      try {
+        ignore await catalog.execute(q);
+        assert false;
+      } catch (e) {
+        let msg = Error.message(e);
+        assert contains(msg, "unknown column 'cuont'");
+        assert contains(msg, "count");
+      };
+    });
+
+    await test("dotted path with an unknown terminal rejects on the target entity", func () : async () {
+      let q = "{\"start\":\"order\",\"where\":{\"gt\":{\"field\":\"productId.prise\",\"value\":1}}}";
+      try {
+        ignore await catalog.execute(q);
+        assert false;
+      } catch (e) {
+        let msg = Error.message(e);
+        assert contains(msg, "unknown field 'prise'");
+        assert contains(msg, "'product'");
+        assert contains(msg, "price");
+      };
+    });
+
+    // ── Operand type mismatch ─────────────────────────────────────────
+    // A predicate value whose kind can never match the field's declared
+    // type used to fall through compare's cross-kind rank order and match
+    // NOTHING - the one malformed shape that still failed silently after
+    // the unknown-field check (an agent read `{"n":0}` for a Text literal
+    // against an Int timestamp as "nothing was updated this week").
+
+    await test("a Text literal against a Nat field rejects naming both types", func () : async () {
+      let q = "{\"start\":\"product\",\"where\":{\"ge\":{\"field\":\"price\",\"value\":\"now-7d\"}},\"aggregate\":[{\"fn\":\"count\",\"as\":\"n\"}]}";
+      try {
+        ignore await catalog.execute(q);
+        assert false;
+      } catch (e) {
+        let msg = Error.message(e);
+        assert contains(msg, "OQL: invalid query");
+        assert contains(msg, "where: field \"price\" is Nat but value is Text");
+      };
+    });
+
+    await test("a number against a Text field rejects, and so does a Text against a Bool", func () : async () {
+      let q1 = "{\"start\":\"customer\",\"where\":{\"eq\":{\"field\":\"country\",\"value\":3}}}";
+      try { ignore await catalog.execute(q1); assert false }
+      catch (e) { assert contains(Error.message(e), "field \"country\" is Text but value is Nat") };
+      let q2 = "{\"start\":\"customer\",\"where\":{\"eq\":{\"field\":\"vip\",\"value\":\"true\"}}}";
+      try { ignore await catalog.execute(q2); assert false }
+      catch (e) { assert contains(Error.message(e), "field \"vip\" is Bool but value is Text") };
+    });
+
+    await test("an in list is checked element by element", func () : async () {
+      let q = "{\"start\":\"customer\",\"where\":{\"in\":{\"field\":\"country\",\"value\":[\"DE\",3,\"FR\"]}}}";
+      try {
+        ignore await catalog.execute(q);
+        assert false;
+      } catch (e) {
+        assert contains(Error.message(e), "field \"country\" is Text but value is Nat");
+      };
+    });
+
+    await test("a mismatched operand behind a dotted path names the full path", func () : async () {
+      let q = "{\"start\":\"order\",\"where\":{\"eq\":{\"field\":\"productId.price\",\"value\":\"cheap\"}}}";
+      try {
+        ignore await catalog.execute(q);
+        assert false;
+      } catch (e) {
+        assert contains(Error.message(e), "field \"productId.price\" is Nat but value is Text");
+      };
+    });
+
+    await test("numeric bridge and null operands stay legal: Float and negative Int probe a Nat, null is the is-null test", func () : async () {
+      // gt price 1000.5 on a Nat column: Float operand accepted, every product clears it
+      let r1 = await catalog.execute("{\"start\":\"product\",\"where\":{\"gt\":{\"field\":\"price\",\"value\":1000.5}}}");
+      assert r1.rows.size() == 4;   // 1200, 5900, 19900, 49900 are all > 1000.5
+      // eq price 1200.0 (Float literal) hits the integral Nat cell exactly
+      let r2 = await catalog.execute("{\"start\":\"product\",\"where\":{\"eq\":{\"field\":\"price\",\"value\":1200.0}}}");
+      assert r2.rows.size() == 1;
+      // a negative Int literal against a Nat field is a legal (empty) range probe
+      let r3 = await catalog.execute("{\"start\":\"product\",\"where\":{\"lt\":{\"field\":\"price\",\"value\":-1}}}");
+      assert r3.rows.size() == 0;
+      // eq name null is the explicit is-null test - no rows here, no error
+      let r4 = await catalog.execute("{\"start\":\"customer\",\"where\":{\"eq\":{\"field\":\"name\",\"value\":null}}}");
+      assert r4.rows.size() == 0;
+      // ne name null is is-not-null: every customer
+      let r5 = await catalog.execute("{\"start\":\"customer\",\"where\":{\"ne\":{\"field\":\"name\",\"value\":null}}}");
+      assert r5.rows.size() == 6;
+    });
   };
 
 };

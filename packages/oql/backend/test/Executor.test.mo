@@ -308,6 +308,52 @@ test("count over an empty filter result is zero, not an empty result", func () {
   assert cell(r.rows[0], "count") == ?(#nat(0));
 });
 
+test("entity with no derived schema yet skips field validation (no seed, fields == [])", func () {
+  // Schemas derive from seed rows at init/upgrade: an empty entity's field
+  // set is unknown, not empty, so a `where` on ANY name must stay a plain
+  // zero-row result — rejecting it would break every pre-seed deployment.
+  // (Unknown fields on a schema-carrying entity trap loudly instead —
+  // covered over the wire in Catalog.test.mo, where rejects are catchable.)
+  let r = Registry.build([
+    OQL.Entity.new<Customer>("ghost", func () = ([] : [Customer]).values(), "Customer", "id").build(),
+  ]);
+  let res = run(r, {
+    emptyQuery("ghost") with
+    where_ = ?(#eq(["anything"], #text("x")));
+  });
+  assert res.rows.size() == 0;
+  assert not res.hasMore;
+});
+
+test("operand typing keeps the numeric bridge and null operands legal", func () {
+  // A mismatched operand kind (Text against a Nat field) now TRAPS - covered
+  // over the wire in Catalog.test.mo, where rejects are catchable. The
+  // positive controls live here: every numeric pairing and every null
+  // operand must still run, or a Nat column stops accepting integer JSON.
+  let r = registry();
+  // negative Int literal against the Nat primary key: a legal range probe
+  let all = run(r, { emptyQuery("customer") with where_ = ?(#ge(["id"], #int(-1))) });
+  assert all.rows.size() == 4;
+  // Float literal against the Nat key: exact bridge, one row
+  let one = run(r, { emptyQuery("customer") with where_ = ?(#eq(["id"], #float(2.0))) });
+  assert one.rows.size() == 1;
+  assert cell(one.rows[0], "name") == ?(#text("bob"));
+  // null operands: is-null on a Text column (none), is-not-null (all)
+  let none = run(r, { emptyQuery("customer") with where_ = ?(#eq(["name"], #null_)) });
+  assert none.rows.size() == 0;
+  let some = run(r, { emptyQuery("customer") with where_ = ?(#ne(["name"], #null_)) });
+  assert some.rows.size() == 4;
+  // an in list mixing legal numeric kinds
+  let two = run(r, { emptyQuery("customer") with where_ = ?(#in_(["id"], [#nat 1, #int 3, #float 9.5])) });
+  assert two.rows.size() == 2;
+  // the no-schema ghost entity skips operand typing too
+  let ghost = Registry.build([
+    OQL.Entity.new<Customer>("ghost", func () = ([] : [Customer]).values(), "Customer", "id").build(),
+  ]);
+  let g = run(ghost, { emptyQuery("ghost") with where_ = ?(#eq(["id"], #text("x"))) });
+  assert g.rows.size() == 0;
+});
+
 test("groupBy with count + ordering finds who has the most", func () {
   // group customers by country, count each, most-populous first.
   let q : Query.Query = {
