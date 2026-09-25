@@ -1,7 +1,7 @@
 ---
 name: extension-user-approval
 description: Approval-based user management.
-version: 1.0.1
+version: 1.0.2
 compatibility:
   mops:
     caffeineai-user-approval: "~1.0.0"
