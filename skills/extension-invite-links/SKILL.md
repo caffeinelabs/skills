@@ -1,7 +1,7 @@
 ---
 name: extension-invite-links
 description: Requests invite-link / RSVP based access where guests can submit responses without login while admin can view responses with login.
-version: 1.0.1
+version: 1.0.2
 compatibility:
   mops:
     caffeineai-invite-links: "~1.0.0"
