@@ -4,7 +4,7 @@ description: >-
   Design review for Motoko backends — invariants encoded in types, enhanced
   migration state discipline, and multi-file structure. Load when reviewing,
   auditing, or refactoring existing .mo files rather than writing new ones.
-version: 0.1.0
+version: 0.1.1
 compatibility:
   toolchain:
     moc: ">=1.11.2"
@@ -145,7 +145,7 @@ Every bare `let`/`var` at the top of a `mixin` is implicitly stable and traps at
 ### S5. Migration hygiene — **Blocker**
 
 - A migration file importing anything other than `mo:core/...` — the chain replays forever, so a project import makes it wrong the moment that type changes. (`caffeineai-lints` catches this.)
-- More than one pending migration in a build, or an edit to a migration that predates this build.
+- More than one pending migration in a build, or an edit to a migration that was already applied.
 - A stable field in `main.mo` that no migration in the chain supplies (M0254 / M0267).
 
 An identity migration body is a **Warning** — the change was stable-compatible, so delete the file. [Full table](references/state-and-persistence.md#migration-hygiene).
