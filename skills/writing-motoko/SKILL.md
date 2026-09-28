@@ -3,7 +3,7 @@ name: writing-motoko
 description: >-
   Motoko language reference, architecture patterns, and dependency tooling
   (mops). Load when writing or modifying backend .mo files.
-version: 0.2.6
+version: 0.2.7
 compatibility:
   toolchain:
     moc: ">=1.11.2"
@@ -296,7 +296,7 @@ backend/
 ├── mixins/          # Service layer (stateless, state injected via parameters)
 ├── types/           # Type definitions for mixins and lib modules
 ├── migrations/      # Mops-managed migration chain. See migrating-motoko-actors.
-│                    #   Each file is YYYYMMDD_HHMMSS.mo (a UTC timestamp, not a feature name); files predating this build are FROZEN.
+│                    #   Each file is YYYYMMDD_HHMMSS.mo (a UTC timestamp, not a feature name); applied files are FROZEN.
 └── main.mo          # Composition root (state owner, NO public methods)
 ```
 
