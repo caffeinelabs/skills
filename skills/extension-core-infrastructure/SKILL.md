@@ -1,7 +1,7 @@
 ---
 name: extension-core-infrastructure
 description: Core infrastructure providing backend connection configuration, storage client, and React app entry point.
-version: 1.4.0
+version: 1.4.1
 compatibility:
   npm:
     "@caffeineai/core-infrastructure": "^1.4.0"
@@ -177,7 +177,7 @@ Creates and manages a typed backend actor instance. Automatically re-creates the
 
 ```typescript
 import { useActor } from "@caffeineai/core-infrastructure";
-import { createActor } from "declarations/backend";
+import { createActor } from "@/backend";
 
 function MyComponent() {
   const { actor, isFetching } = useActor(createActor);
@@ -205,7 +205,7 @@ When the identity changes (login, logout, or session restore), the actor is auto
 
 ```typescript
 import { useActor } from "@caffeineai/core-infrastructure";
-import { createActor } from "declarations/backend";
+import { createActor } from "@/backend";
 
 const mockModules = import.meta.glob("../mocks/backend.{ts,tsx,js,jsx}");
 
