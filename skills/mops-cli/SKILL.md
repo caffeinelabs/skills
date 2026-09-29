@@ -6,7 +6,7 @@ description: >-
   mops.toml, mops.lock, running mops commands, adding/removing packages,
   pinning moc or lintoko versions, checking or building canisters,
   configuring moc flags, or setting up a new Motoko project.
-version: 0.1.6
+version: 0.1.7
 compatibility:
   toolchain:
     mops: "3.x"
@@ -210,6 +210,7 @@ mops toolchain use moc latest        # pin latest version (non-interactive)
 mops toolchain use lintoko 0.11.0    # pin specific version
 mops toolchain use pocket-ic 15.0.0  # pin for replica tests / benchmarks / --check-deploy
 mops toolchain use wasm-opt 131      # Binaryen for [optimize] (or `latest`)
+mops toolchain use mo-fmt 0.2.0      # standalone formatter used by `mops format`
 mops toolchain update moc            # update to latest (requires existing [toolchain] entry)
 mops toolchain update                # update all tools to latest
 mops toolchain info <tool>           # show release info (latest, pinned, history)
@@ -353,7 +354,11 @@ When `[canisters.<name>.migrations].check-limit` is set, `mops lint` skips the t
 ```bash
 mops format               # format all .mo files
 mops format --check       # check formatting without modifying
+mops format --verify      # format, run `mops check`, revert the formatting if it fails
+mops format -- --syntax moc2   # flags after -- go to mo-fmt (needs mo-fmt pinned)
 ```
+
+With `mo-fmt` pinned in `[toolchain]`, `mops format` runs it instead of the bundled Prettier plugin — no fallback, `.prettierrc` ignored. Configure it with `mo-fmt.toml` in the project root (`syntax = "preserve" | "moc2"`, `indent-width`). Exit is non-zero on unformatted files under `--check`, and whenever a file fails to format (syntax error; left untouched).
 
 ### `mops watch`
 
