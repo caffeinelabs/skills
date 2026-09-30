@@ -3,7 +3,7 @@ name: writing-motoko
 description: >-
   Motoko language reference, architecture patterns, and dependency tooling
   (mops). Load when writing or modifying backend .mo files.
-version: 0.2.7
+version: 0.2.8
 compatibility:
   toolchain:
     moc: ">=1.11.2"
@@ -47,7 +47,7 @@ Motoko is an under-represented language for the Internet Computer Protocol, so y
 
 **When encountering compilation errors:** Re-check [api-reference.md](api-reference.md) for exact method signatures.
 
-**Before changing actor state shape, introducing new stable fields, or upgrading canisters:** load `migrating-motoko-actors`. This guidance assumes the **mops-managed migration chain** — when a change requires a migration, it goes in a NEW file in `src/backend/migrations/`. Introducing stable state for the first time always needs one (no inline initializers); trivial stable-compatible upgrades do not. See the skill. If a migration or compatibility diagnostic still does not match what the source says, or a migration file cannot be written, load `troubleshooting-motoko-migrations`.
+**Before changing actor state shape, introducing new stable fields, or upgrading canisters:** load `migrating-motoko-actors`. This guidance assumes the **mops-managed migration chain** — when a change requires a migration, it goes in the pending migration file, or a new one in `src/backend/migrations/` if none is pending. Introducing stable state for the first time always needs one (no inline initializers); trivial stable-compatible upgrades do not. See the skill. If a migration or compatibility diagnostic still does not match what the source says, or a migration file cannot be written, load `troubleshooting-motoko-migrations`.
 
 ## Toolchain (mops)
 
