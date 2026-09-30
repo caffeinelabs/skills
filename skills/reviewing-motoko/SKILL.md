@@ -4,7 +4,7 @@ description: >-
   Design review for Motoko backends — invariants encoded in types, enhanced
   migration state discipline, and multi-file structure. Load when reviewing,
   auditing, or refactoring existing .mo files rather than writing new ones.
-version: 0.1.1
+version: 0.1.2
 compatibility:
   toolchain:
     moc: ">=1.11.2"
@@ -154,13 +154,13 @@ An identity migration body is a **Warning** — the change was stable-compatible
 
 Layers, with dependencies pointing one way only: `main.mo` → `mixins/` → `lib/` → `types.mo`.
 
-| File            | Holds                                                 | Must not hold                          |
-| --------------- | ----------------------------------------------------- | -------------------------------------- |
-| `types.mo`      | Type declarations; small pure helpers on those types  | State, endpoints, business rules       |
-| `lib/*.mo`      | Domain logic as stateless modules, state as parameters | Public endpoints, actor fields         |
-| `mixins/*.mo`   | Public endpoints: authorize, delegate, map to a view  | Domain logic, stable state             |
-| `main.mo`       | State declarations and `include`s                     | **Any public method**, any logic       |
-| `migrations/`   | The frozen chain, one module per file                 | Project imports                        |
+| File          | Holds                                                                         | Must not hold                    |
+| ------------- | ----------------------------------------------------------------------------- | -------------------------------- |
+| `types.mo`    | Type declarations; small pure helpers on those types                          | State, endpoints, business rules |
+| `lib/*.mo`    | Domain logic as stateless modules, state as parameters                        | Public endpoints, actor fields   |
+| `mixins/*.mo` | Public endpoints: authorize, delegate, map to a view                          | Domain logic, stable state       |
+| `main.mo`     | State declarations and `include`s                                             | **Any public method**, any logic |
+| `migrations/` | Applied (frozen) history plus at most one pending module, one module per file | Project imports                  |
 
 - **A1 — Blocker/Warning:** a public method in `main.mo`. Move it to a mixin.
 - **A2 — Warning:** a monolithic file. One `.mo` holding types, state, logic, and endpoints together.
