@@ -3,7 +3,7 @@ name: writing-motoko
 description: >-
   Motoko language reference, architecture patterns, and dependency tooling
   (mops). Load when writing or modifying backend .mo files.
-version: 0.2.8
+version: 0.2.9
 compatibility:
   toolchain:
     moc: ">=1.11.2"
@@ -223,8 +223,8 @@ let user = users.find(func u = u.id == caller)
 // Nested options — chain instead of nested switches
 let start = event.start.dateTime ?? event.start.date ?? "";
 
-// RHS is lazy; may be a block. Bare record literals need extra braces/parens:
-let n = opt ?? { let x = 1; x };
+// RHS is lazy. A block needs `do`; a record literal needs parens:
+let n = opt ?? do { let x = 1; x };
 let rec = opt ?? ({ x = 0 });
 ```
 
