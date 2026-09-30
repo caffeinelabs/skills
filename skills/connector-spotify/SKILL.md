@@ -14,7 +14,7 @@ description: >-
   (play / pause / skip / shuffle / repeat), a saved library, podcasts (shows or
   episodes), chapters or audiobooks — and BEFORE writing any code that touches a
   Spotify endpoint.
-version: 0.3.0
+version: 0.3.1
 caffeineai-subscription: [none]
 compatibility:
   mops:
@@ -40,7 +40,7 @@ import { getTrack } "mo:spotify-client/Apis/TracksApi";
 import { getInformationAboutTheUsersCurrentPlayback; skipUsersPlaybackToNextTrack } "mo:spotify-client/Apis/PlayerApi";
 import { type Config; defaultConfig } "mo:spotify-client/Config";
 
-persistent actor {
+actor {
   func config(accessToken : Text) : Config = { defaultConfig with auth = ?#bearer accessToken };
 
   // Catalog read — a client-credentials token suffices. `market = ""` omits the
