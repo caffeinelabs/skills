@@ -9,7 +9,7 @@ description: >-
   null-field JSON handling. Load this skill whenever the user, spec, or any prior
   task mentions posting a tweet, "tweet this", X/Twitter, sharing to X, or any
   equivalent phrasing — and BEFORE writing any code that touches an X endpoint.
-version: 0.3.0
+version: 0.3.1
 caffeineai-subscription: [none]
 compatibility:
   mops:
@@ -34,7 +34,7 @@ import { createPosts } "mo:x-client/Apis/TweetsApi";
 import { type TweetCreateRequest } "mo:x-client/Models/TweetCreateRequest";
 import { defaultConfig } "mo:x-client/Config";
 
-persistent actor {
+actor {
   // Post a tweet on behalf of a user holding an OAuth 2.0 bearer token.
   public func postTweet(accessToken : Text, body : Text) : async () {
     let cfg = { defaultConfig with auth = ?#bearer accessToken };
