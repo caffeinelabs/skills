@@ -12,7 +12,7 @@ description: >-
   wind, rain, snow, conditions, sunrise, sunset, moon phase, astronomy,
   timezone, IP geolocation, marine or tide forecasts, or location autocomplete —
   and BEFORE writing any code that touches a weather endpoint.
-version: 0.2.0
+version: 0.2.1
 caffeineai-subscription: [none]
 compatibility:
   mops:
@@ -35,7 +35,7 @@ import { realtimeWeather; forecastWeather } "mo:weatherapi-client/Apis/APIsApi";
 import { type Config; defaultConfig } "mo:weatherapi-client/Config";
 import Array "mo:core/Array"; // in scope so `days.map(…)` dot notation resolves
 
-persistent actor {
+actor {
   // The key is a query-string credential. Hold it in a stable variable set by
   // an admin call; never hard-code it in source.
   func config(apiKey : Text) : Config = { defaultConfig with auth = ?#apiKey apiKey };
