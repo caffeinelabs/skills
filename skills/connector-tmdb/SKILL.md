@@ -13,7 +13,7 @@ description: >-
   top-rated, trending, discover, recommendations, similar titles, posters,
   backdrops, ratings, watchlists, favorites, TMDb or "The Movie Database" — and
   BEFORE writing any code that touches a movie-data endpoint.
-version: 0.1.2
+version: 0.1.3
 caffeineai-subscription: [none]
 compatibility:
   mops:
@@ -102,7 +102,7 @@ import Tmdb "mo:tmdb-client/Apis/DefaultApi";
 import { defaultConfig; type Config } "mo:tmdb-client/Config";
 import Array "mo:core/Array";
 
-persistent actor {
+actor {
 
     /// Narrow, frontend-friendly shape. TMDb marks almost every field
     /// optional, so collapse the optionals here once instead of in the UI.
