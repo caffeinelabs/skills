@@ -1,10 +1,10 @@
 ---
 name: extension-core-infrastructure
 description: Core infrastructure providing backend connection configuration, storage client, and React app entry point.
-version: 1.4.1
+version: 2.0.0
 compatibility:
   npm:
-    "@caffeineai/core-infrastructure": "^1.4.0"
+    "@caffeineai/core-infrastructure": "^2.0.0"
     "@caffeineai/object-storage": "^1.1.0"
 caffeineai-subscription: [none]
 ---
@@ -19,9 +19,9 @@ This component provides the foundational infrastructure for all projects: backen
 ## Requirements
 
 ```
-"@caffeineai/core-infrastructure": "^1.4.0"
+"@caffeineai/core-infrastructure": "^2.0.0"
 "@caffeineai/object-storage": "^1.1.0"
-"@icp-sdk/auth": "^7.1.0"
+"@icp-sdk/auth": "^9.0.0"
 "@icp-sdk/core": "^5.3.0"
 ```
 
@@ -72,6 +72,7 @@ Provides identity state, login, and logout for Internet Identity.
 | `isLoggingIn` | `boolean` | `true` while the II popup is open |
 | `isLoginSuccess` | `boolean` | `true` only after interactive login (NOT after page reload restore) |
 | `isLoginError` | `boolean` | `true` if login or initialization failed |
+| `isSessionExpired` | `boolean` | `true` when the session ended (idle / TTL / provider revoke), not a deliberate logout |
 | `loginError` | `Error \| undefined` | The error object when `isLoginError` is `true` |
 
 ### Auth State Lifecycle
@@ -84,8 +85,12 @@ Provides identity state, login, and logout for Internet Identity.
 | Interactive login in progress | `"logging-in"` | `false` |
 | Interactive login just completed | `"success"` | `true` |
 | Login popup failed / cancelled | `"loginError"` | `false` |
+| Session expired (idle / TTL / revoke) | `"expired"` | `false` |
+| Sign-out in another tab | `"idle"` | `false` |
 
 **IMPORTANT:** `isLoginSuccess` is only `true` after an interactive login via the popup — NOT when a stored identity is restored on page reload. Always use `isAuthenticated` for conditional rendering.
+
+Auth state is stored, not held on the client instance: sign in or out in one tab and the others follow. A session that expires (`isSessionExpired`) is not a deliberate logout — show a session-ended screen rather than the signed-out landing page.
 
 ### Usage
 
