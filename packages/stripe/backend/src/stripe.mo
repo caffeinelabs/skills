@@ -12,6 +12,14 @@ module {
     allowedCountries : [Text];
   };
 
+  public type StripeState = {
+    var configuration : ?StripeConfiguration;
+  };
+
+  public func initState() : StripeState {
+    { var configuration = null };
+  };
+
   public type ShoppingItem = {
     currency : Text;
     productName : Text;

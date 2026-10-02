@@ -1,0 +1,18 @@
+name = "no-redeclare-create-checkout-session"
+description = "Do NOT redeclare createCheckoutSession — it is provided by MixinStripe"
+query = """
+(source_file
+  (obj_dec "actor"
+    (obj_body
+      (dec_field
+        (func_dec
+          (_) @error
+          (#eq? @error "createCheckoutSession"))))))
+(source_file
+  (class_dec "actor"
+    (obj_body
+      (dec_field
+        (func_dec
+          (_) @error
+          (#eq? @error "createCheckoutSession"))))))
+"""

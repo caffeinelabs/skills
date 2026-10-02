@@ -2,6 +2,10 @@
 
 ### Features
 
+- **stripe**: add MixinStripe and mixin-aware lint rules (#155)
+
+### Features
+
 - **motoko**: prefer null coalesce ?? over nullable switch (#188)
 
 ### Refactor

@@ -1,0 +1,16 @@
+name = "include-stripe"
+description = "Include the Stripe mixin with `include MixinStripe(accessControlState, stripeState);`"
+query = """
+(source_file (obj_dec "actor" (obj_body))) @error
+(source_file (class_dec "actor" (obj_body))) @error
+(source_file
+  (obj_dec "actor"
+   (obj_body
+    (dec_field (include_dec (identifier) @mixin))))
+   (#eq? @mixin "MixinStripe")) @filter
+(source_file
+  (class_dec "actor"
+   (obj_body
+    (dec_field (include_dec (identifier) @mixin))))
+   (#eq? @mixin "MixinStripe")) @filter
+"""

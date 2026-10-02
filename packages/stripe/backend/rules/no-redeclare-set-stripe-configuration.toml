@@ -1,0 +1,18 @@
+name = "no-redeclare-set-stripe-configuration"
+description = "Do NOT redeclare setStripeConfiguration — it is provided by MixinStripe"
+query = """
+(source_file
+  (obj_dec "actor"
+    (obj_body
+      (dec_field
+        (func_dec
+          (_) @error
+          (#eq? @error "setStripeConfiguration"))))))
+(source_file
+  (class_dec "actor"
+    (obj_body
+      (dec_field
+        (func_dec
+          (_) @error
+          (#eq? @error "setStripeConfiguration"))))))
+"""

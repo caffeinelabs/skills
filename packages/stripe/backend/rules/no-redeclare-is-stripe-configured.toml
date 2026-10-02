@@ -1,0 +1,18 @@
+name = "no-redeclare-is-stripe-configured"
+description = "Do NOT redeclare isStripeConfigured — it is provided by MixinStripe"
+query = """
+(source_file
+  (obj_dec "actor"
+    (obj_body
+      (dec_field
+        (func_dec
+          (_) @error
+          (#eq? @error "isStripeConfigured"))))))
+(source_file
+  (class_dec "actor"
+    (obj_body
+      (dec_field
+        (func_dec
+          (_) @error
+          (#eq? @error "isStripeConfigured"))))))
+"""
