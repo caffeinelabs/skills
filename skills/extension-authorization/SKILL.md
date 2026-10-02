@@ -1,12 +1,12 @@
 ---
 name: extension-authorization
 description: Authorization system with role-based access control. Must-have for all apps that manage personal or access-restricted data.
-version: 1.3.1
+version: 1.3.2
 compatibility:
   mops:
     caffeineai-authorization: "~1.0.0"
   npm:
-    "@caffeineai/core-infrastructure": "^1.3.0"
+    "@caffeineai/core-infrastructure": "^2.0.0"
 caffeineai-subscription: [none]
 ---
 
@@ -309,8 +309,10 @@ The `useInternetIdentity` hook exposes two kinds of state — use the right one:
 | Interactive login in progress (popup open) | `"logging-in"` | `false` |
 | Interactive login just completed | `"success"` | `true` |
 | Login popup failed / cancelled | `"loginError"` | `false` |
+| Session expired (idle / TTL / revoke) | `"expired"` | `false` |
+| Sign-out in another tab | `"idle"` | `false` |
 
-**IMPORTANT:** `isLoginSuccess` (`loginStatus === "success"`) is only `true` after an interactive login via the popup. It is **NOT** `true` when a stored identity is restored on page reload. Never use `isLoginSuccess` to gate authenticated vs. unauthenticated UI — always use `isAuthenticated`.
+**IMPORTANT:** `isLoginSuccess` (`loginStatus === "success"`) is only `true` after an interactive login via the popup. It is **NOT** `true` when a stored identity is restored on page reload. Never use `isLoginSuccess` to gate authenticated vs. unauthenticated UI — always use `isAuthenticated`. A session that expired (`loginStatus === "expired"`) is not a deliberate logout.
 
 Key states for the login button:
 - `isInitializing` — `AuthClient` is loading from IndexedDB; disable the button to prevent clicks before the client is ready.
