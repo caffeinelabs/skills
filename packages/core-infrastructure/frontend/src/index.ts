@@ -6,6 +6,7 @@ export {
 export { useActor } from "./hooks/useActor.js";
 export {
 	type InternetIdentityContext,
+	type InternetIdentityCreateOptions,
 	InternetIdentityProvider,
 	type LoginOptions,
 	type Status,

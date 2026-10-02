@@ -1,5 +1,9 @@
 
 
+### Features
+
+- **core-infrastructure**: lift AuthClient to @icp-sdk/auth v9 (#289)
+
 ### Bug Fixes
 
 - make frontend packages Node ESM-safe and expose ICP SDK (#281)

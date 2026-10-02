@@ -1,9 +1,10 @@
-import { AuthClient, scopedKeys, } from "@icp-sdk/auth/client";
+import { AuthClient, } from "@icp-sdk/auth/client";
 import { Actor, HttpAgent } from "@icp-sdk/core/agent";
 import { AttributesIdentity } from "@icp-sdk/core/identity";
 import { Principal } from "@icp-sdk/core/principal";
 import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useRef, useState, } from "react";
 import { getCachedConfig, loadConfig } from "../config.js";
+import { II_MAINNET_CANISTER_ID, nextLoginStatus, resolveAttributeKeys, resolveIdentityProvider, } from "./internetIdentityAuth.js";
 // Inline Candid IDL for the two methods injected by the IdentityAttributes mixin.
 // Defined once at module level so it is not recreated on every render.
 const iiAttributesIDL = ({ IDL: I }) => I.Service({
@@ -11,19 +12,15 @@ const iiAttributesIDL = ({ IDL: I }) => I.Service({
     _internet_identity_sign_in_finish: I.Func([], [I.Variant({ ok: I.Null, err: I.Record({}) })], []),
     _initialize_access_control: I.Func([], [], []),
 });
-const II_MAINNET_CANISTER_ID = "rdmx6-jaaaa-aaaaa-aaadq-cai";
 const II_SIGNER_CANISTER_ID = process.env.II_CANISTER_ID ?? II_MAINNET_CANISTER_ID;
-const ONE_HOUR_IN_NANOSECONDS = BigInt(3_600_000_000_000);
-const DEFAULT_IDENTITY_PROVIDER = process.env.II_URL;
-const DEFAULT_ATTRIBUTE_KEYS = ["verified_email"];
 const InternetIdentityReactContext = createContext(undefined);
 /**
  * Single constructor for every `AuthClient` — the shared client built at
  * provider initialization and the per-login clients for the one-click and
- * SSO variants (`identityProvider` and `openIdProvider` are constructor-only
+ * SSO variants (`openIdProvider` and `ssoDomain` are constructor-only
  * options on `@icp-sdk/auth`, so variants need their own client).
- * Delegation storage is shared across all clients, so a variant sign-in is
- * still restored by the shared client on reload and cleared by `clear()`.
+ * Sign-in state lives in storage, so a variant sign-in is still restored by
+ * the shared client on reload and cleared by `clear()`.
  *
  * Deliberately synchronous: the signer window must be opened inside the
  * click's user-activation frame, so no awaits are allowed between the click
@@ -32,57 +29,29 @@ const InternetIdentityReactContext = createContext(undefined);
  * reads the cache, which is populated by then.
  */
 function buildAuthClient(config, loginOptions, createOptions) {
-    // Every flow goes through II's authorize endpoint. The pathname is forced
-    // to /authorize so origin-only II_URL overrides (e.g.
-    // http://localhost:5173) open the authorize flow instead of landing on
-    // II's home page.
-    const identityProviderUrl = new URL((createOptions?.identityProvider ??
-        DEFAULT_IDENTITY_PROVIDER ??
-        "https://id.ai").toString());
-    identityProviderUrl.pathname = "/authorize";
-    const ssoDomain = loginOptions?.ssoDomain?.trim();
-    if (ssoDomain) {
-        // Direct SSO passes the workspace domain as the `sso` query param,
-        // e.g. https://id.ai/authorize?sso=acme.com. II discovers the
-        // workspace's OIDC provider from the domain's
-        // /.well-known/ii-openid-configuration.
-        identityProviderUrl.searchParams.set("sso", ssoDomain);
-    }
-    return new AuthClient({
-        idleOptions: {
-            disableDefaultIdleCallback: true,
-            disableIdle: true,
-            ...createOptions?.idleOptions,
-        },
+    const { identityProvider: _callerIdentityProvider, openIdProvider: _openIdProvider, ssoDomain: _ssoDomain, ...rest } = {
         derivationOrigin: config?.ii_derivation_origin,
         ...createOptions,
-        // After the spread so a caller-supplied identityProvider still gets
-        // the /authorize normalization applied above.
-        identityProvider: identityProviderUrl,
-        // SSO is driven by the query param; openIdProvider only applies to
-        // the one-click variants (the SDK ignores undefined).
-        openIdProvider: ssoDomain ? undefined : loginOptions?.provider,
+    };
+    const identityProvider = resolveIdentityProvider({
+        envUrl: process.env.II_URL,
+        envCanisterId: process.env.II_CANISTER_ID,
     });
-}
-/**
- * Pick the attribute keys to request from II for a sign-in variant. Explicit
- * keys from `withAttributes` always win; otherwise the keys are scoped to the
- * sign-in variant so the user grants access in a single step.
- */
-function resolveAttributeKeys(attrs, loginOptions) {
-    if (attrs.keys) {
-        return attrs.keys;
-    }
+    const managed = {
+        ...rest,
+        ...(identityProvider ? { identityProvider } : {}),
+    };
     const ssoDomain = loginOptions?.ssoDomain?.trim();
     if (ssoDomain) {
-        return [`sso:${ssoDomain}:name`, `sso:${ssoDomain}:email`];
+        return new AuthClient({ ...managed, ssoDomain });
     }
     if (loginOptions?.provider) {
-        // name, email, verified_email scoped to the provider, e.g.
-        // `openid:https://accounts.google.com:verified_email`.
-        return scopedKeys({ openIdProvider: loginOptions.provider });
+        return new AuthClient({
+            ...managed,
+            openIdProvider: loginOptions.provider,
+        });
     }
-    return DEFAULT_ATTRIBUTE_KEYS;
+    return new AuthClient(managed);
 }
 /**
  * Create an inline actor for the two IdentityAttributes mixin methods.
@@ -104,9 +73,6 @@ async function createIIAttributesActor(identity) {
         canisterId: config.backend_canister_id,
     });
 }
-/**
- * Helper function to set loginError state.
- */
 function assertProviderPresent(context) {
     if (!context) {
         throw new Error("InternetIdentityProvider is not present. Wrap your component tree with it.");
@@ -165,6 +131,7 @@ export function InternetIdentityProvider({ children, createOptions, withAttribut
         }
         setIdentity(latestIdentity);
         setStatus("success");
+        setError(undefined);
     }, [setErrorMessage]);
     const handleLoginError = useCallback((maybeError) => {
         setErrorMessage(maybeError ?? "Login failed");
@@ -185,21 +152,23 @@ export function InternetIdentityProvider({ children, createOptions, withAttribut
             setErrorMessage('ssoDomain must be a non-empty domain such as "acme.com"');
             return;
         }
-        const options = {
-            maxTimeToLive: ONE_HOUR_IN_NANOSECONDS * BigInt(24 * 30), // 30 days
-        };
         setStatus("logging-in");
         const attrs = withAttributesRef.current;
+        let variantClient;
+        const disposeVariant = () => {
+            variantClient?.dispose();
+            variantClient = undefined;
+        };
         const startSignIn = (client) => {
             if (attrs !== false) {
                 // Fire nonce fetch, signIn popup, and requestAttributes all in parallel.
-                // client.requestAttributes accepts Promise<Uint8Array> for nonce,
-                // so the II window opens immediately while the canister round-trip completes.
-                const noncePromise = createIIAttributesActor().then((actor) => actor._internet_identity_sign_in_start());
-                const signInPromise = client.signIn(options);
+                // nonce is a callback so the II window opens immediately while the
+                // canister round-trip completes (and so a redirect replay reuses the
+                // same bytes).
+                const signInPromise = client.signIn();
                 const attributesPromise = client.requestAttributes({
                     keys: resolveAttributeKeys(attrs, loginOptions),
-                    nonce: noncePromise,
+                    nonce: () => createIIAttributesActor().then((actor) => actor._internet_identity_sign_in_start()),
                 });
                 void Promise.all([signInPromise, attributesPromise])
                     .then(async ([plainIdentity, { data, signature }]) => {
@@ -228,21 +197,23 @@ export function InternetIdentityProvider({ children, createOptions, withAttribut
                     handleLoginError(unknownError instanceof Error
                         ? unknownError.message
                         : undefined);
-                });
+                })
+                    .finally(disposeVariant);
             }
             else {
                 void client
-                    .signIn(options)
+                    .signIn()
                     .then(async (plainIdentity) => {
                     const actor = await createIIAttributesActor(plainIdentity);
                     await actor._initialize_access_control();
-                    handleLoginSuccess(client);
+                    await handleLoginSuccess(client);
                 })
                     .catch((unknownError) => {
                     handleLoginError(unknownError instanceof Error
                         ? unknownError.message
                         : undefined);
-                });
+                })
+                    .finally(disposeVariant);
             }
         };
         const needsVariantClient = Boolean(loginOptions?.ssoDomain?.trim() || loginOptions?.provider);
@@ -251,9 +222,11 @@ export function InternetIdentityProvider({ children, createOptions, withAttribut
             // inside the click's user-activation frame — the signer rejects
             // windows opened outside a click handler.
             try {
-                startSignIn(buildAuthClient(getCachedConfig(), loginOptions ?? {}, createOptionsRef.current));
+                variantClient = buildAuthClient(getCachedConfig(), loginOptions ?? {}, createOptionsRef.current);
+                startSignIn(variantClient);
             }
             catch (unknownError) {
+                disposeVariant();
                 handleLoginError(unknownError instanceof Error ? unknownError.message : undefined);
             }
         }
@@ -270,7 +243,6 @@ export function InternetIdentityProvider({ children, createOptions, withAttribut
             .signOut()
             .then(() => {
             setIdentity(undefined);
-            setAuthClient(undefined);
             setStatus("idle");
             setError(undefined);
         })
@@ -283,30 +255,47 @@ export function InternetIdentityProvider({ children, createOptions, withAttribut
     }, [authClient, setErrorMessage]);
     useEffect(() => {
         let cancelled = false;
+        let client;
+        let unsubscribe;
         void (async () => {
             try {
                 setStatus("initializing");
-                let existingClient = authClient;
-                if (!existingClient) {
-                    const config = await loadConfig();
-                    if (cancelled)
-                        return;
-                    existingClient = buildAuthClient(config, undefined, createOptions);
-                    setAuthClient(existingClient);
-                }
+                const config = await loadConfig();
                 if (cancelled)
                     return;
-                if (existingClient.isAuthenticated()) {
-                    const loadedIdentity = await existingClient.getIdentity();
-                    if (cancelled)
+                client = buildAuthClient(config, undefined, createOptions);
+                setAuthClient(client);
+                const applyStatus = async () => {
+                    if (!client || cancelled)
                         return;
-                    setIdentity(loadedIdentity);
-                    setStatus("success");
-                }
-                else {
+                    const session = client.getStatus();
+                    if (session.state === "signed-in") {
+                        try {
+                            const loadedIdentity = await client.getIdentity();
+                            if (cancelled)
+                                return;
+                            setIdentity(loadedIdentity);
+                            setStatus((previous) => nextLoginStatus(session.state, previous));
+                            setError(undefined);
+                        }
+                        catch (unknownError) {
+                            if (cancelled)
+                                return;
+                            setIdentity(undefined);
+                            setStatus("loginError");
+                            setError(unknownError instanceof Error
+                                ? unknownError
+                                : new Error("Failed to load identity"));
+                        }
+                        return;
+                    }
                     setIdentity(undefined);
-                    setStatus("idle");
-                }
+                    setStatus((previous) => nextLoginStatus(session.state, previous));
+                };
+                unsubscribe = client.subscribe(() => {
+                    void applyStatus();
+                });
+                await applyStatus();
             }
             catch (unknownError) {
                 if (cancelled)
@@ -320,8 +309,11 @@ export function InternetIdentityProvider({ children, createOptions, withAttribut
         })();
         return () => {
             cancelled = true;
+            unsubscribe?.();
+            client?.dispose();
+            setAuthClient(undefined);
         };
-    }, [createOptions, authClient]);
+    }, [createOptions]);
     const value = useMemo(() => ({
         identity,
         login,
@@ -332,6 +324,7 @@ export function InternetIdentityProvider({ children, createOptions, withAttribut
         isLoggingIn: loginStatus === "logging-in",
         isLoginSuccess: loginStatus === "success",
         isLoginError: loginStatus === "loginError",
+        isSessionExpired: loginStatus === "expired",
         isAuthenticated: !!identity && !identity.getPrincipal().isAnonymous(),
         loginError,
     }), [identity, login, clear, loginStatus, loginError]);
