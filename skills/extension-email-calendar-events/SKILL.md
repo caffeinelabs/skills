@@ -1,11 +1,11 @@
 ---
 name: extension-email-calendar-events
 description: Support for organising events/meetings and sending invitations by email.
-version: 0.2.0
+version: 0.3.0
 compatibility:
   mops:
-    caffeineai-email-calendar-events: "~0.2.0"
-    caffeineai-email: "~0.3.0"
+    caffeineai-email-calendar-events: "~0.3.0"
+    caffeineai-email: "~0.3.1"
     caffeineai-authorization: "~1.0.1"
 caffeineai-subscription: [plus, pro]
 ---
@@ -39,7 +39,7 @@ module {
     location : Text;
     startTime : Nat64;
     endTime : Nat64;
-    organizer : Mailbox;
+    organizer : Organizer;
     attendees : [Attendee];
   };
 
@@ -47,6 +47,13 @@ module {
     #request;
     #publish;
     #cancel;
+  };
+
+  // The organizer is the sender: the invitation comes from
+  // `<fromUsername>@<app domain>` and that mailbox, under this display name,
+  // is the ICS ORGANIZER and the first guest. Only attendees carry addresses.
+  public type Organizer = {
+    name : ?Text;
   };
 
   public type Mailbox = {
@@ -79,7 +86,7 @@ module {
     location : Text,
     startTime : Nat64,
     endTime : Nat64,
-    organizer : Mailbox,
+    organizer : Organizer,
     attendees : [Attendee]
   ) : ?CalendarEvent;
 
@@ -95,7 +102,7 @@ module {
     location : ?Text,
     startTime : ?Nat64,
     endTime : ?Nat64,
-    organizer : ?Mailbox,
+    organizer : ?Organizer,
     attendees : ?[Attendee]
   ) : ?CalendarEvent;
 
@@ -123,7 +130,8 @@ module {
   // Iterate over all calendar events newer to older
   public func reverse(self : State) : Iter.Iter<CalendarEvent>;
 
-  // One invitation copy per attendee, through the mail gateway or the transport canister.
+  // One invitation copy per attendee from `<fromUsername>@<app domain>`, the
+  // organizer's mailbox, through the mail gateway or the transport canister.
   public func sendCalendarEvent(fromUsername : Text, event : CalendarEvent) : async { #ok; #err : Text };
 }
 ```
@@ -131,6 +139,8 @@ module {
 ### For sending calendar event invitations to attendees by email
 
 - Use the `sendCalendarEvent` function of the same module. It sends one copy per attendee through the mail gateway when the canister has the gateway key (`INTEGRATIONS_GATEWAY_URL` / `INTEGRATIONS_GATEWAY_API_KEY`, injected by the platform where the gateway is enabled) and through the transport canister otherwise; the app code is the same either way. `caffeineai-email` is a dependency of this package, and the app does not call it for calendar mail.
+- `fromUsername` is the local part of the sender only, such as `events` or `no-reply`. The invitation comes from `<fromUsername>@<app domain>`, and the app domain is the project's own, resolved by the mail gateway. Never pass a full address and never read or guess the domain in the app.
+- The organizer is that same mailbox. `CalendarEvent.organizer` carries only a display name, `{ name = ?"Community Team" }`, shown as the ICS `ORGANIZER` and the first guest, so calendars see the invitation arrive from its organizer. Attendees are the only mailboxes with addresses; the organizer receives a copy only when also listed as an attendee. Do not model the organizer as a user with an email address.
 - It returns `#ok` once the invitation was accepted for every attendee, otherwise `#err(error)` with the error text.
 
 ### Example usage for an app which can add/update/cancel/delete/get/list calendar events and send invitations to them by email
@@ -209,10 +219,7 @@ actor {
         location,
         startTimeMs,
         endTimeMs,
-        {
-          name = ?organiser.name;
-          email = organiser.email;
-        },
+        { name = ?organiser.name },
         userProfiles.values().map(
           func({ name; email }) {
             {
@@ -278,7 +285,7 @@ actor {
     let cancelled = calendarEvents.cancel(uid)
       ?? Runtime.trap("Failed to cancel calendar event");
 
-    switch (await CalendarEvents.sendCalendarEvent("no-reply", cancelled)) {
+    switch (await CalendarEvents.sendCalendarEvent("events", cancelled)) {
       case (#ok) {};
       case (#err(error)) {
         Runtime.trap("Failed to send the cancellation: " # error);
@@ -311,7 +318,7 @@ actor {
       ?? Runtime.trap("Calendar event not found");
 
     ignore await CalendarEvents.sendCalendarEvent(
-      "no-reply",
+      "events",
       event
     );
   };
@@ -351,5 +358,7 @@ module {
 ```
 
 ## Upgrading from the previous version
+
+An app built with `caffeineai-email-calendar-events` 0.2.x re-pins with `mops add caffeineai-email-calendar-events@0.3.0` and `mops add caffeineai-email@0.3.1`. `CalendarEvent.organizer` is now an `Organizer` (`{ name : ?Text }`) instead of a `Mailbox`: the organizer address is the sender's, `<fromUsername>@<app domain>`, built by the mail gateway, so the app no longer supplies one. `add` and `update` take the new type, and an app that stored events adds a migration step that maps each stored `organizer` to `{ name = old.organizer.name }`.
 
 An app built with `caffeineai-email-calendar-events` 0.1.x re-pins with `mops add caffeineai-email-calendar-events@0.2.0` and `mops add caffeineai-email@0.3.0`. `sendCalendarEvent` keeps its signature but moves from `EmailClient` to this module (`CalendarEvents.sendCalendarEvent`), and the event types (`CalendarEvent`, `Attendee`, `Mailbox`, `CalendarEventMethod`, `CalendarEventRole`) are this module's; an app that imported them from `EmailClient` switches the import and drops `EmailClient` when nothing else uses it. Invitations are now composed and sent by the mail gateway. `update`, `addAttendees`, `removeAttendees` and `cancel` now return the stored record (with the bumped sequence) instead of the previous one, so an app that sends the returned record after a change sends the right sequence.
