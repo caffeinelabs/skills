@@ -1,10 +1,11 @@
 ---
 name: extension-email-calendar-events
 description: Support for organising events/meetings and sending invitations by email.
-version: 0.1.7
+version: 0.2.0
 compatibility:
   mops:
-    caffeineai-email-calendar-events: "~0.1.1"
+    caffeineai-email-calendar-events: "~0.2.0"
+    caffeineai-email: "~0.3.0"
     caffeineai-authorization: "~1.0.1"
 caffeineai-subscription: [plus, pro]
 ---
@@ -28,68 +29,6 @@ This skill adds support for organising events/meetings and sending iCalendar inv
 - Use the prefabricated module `mo:caffeineai-email-calendar-events/calendarEvents.mo` which cannot be modified.
 
 ```mo:caffeineai-email-calendar-events/calendarEvents.mo
-module {
-  public type State = {
-    var events : List.List<CalendarEvent>;
-    var uidMap : Map.Map<Text, Nat>;
-  };
-
-  public func add(
-    self : State,
-    uid : Text,
-    summary : Text,
-    description : Text,
-    location : Text,
-    startTime : Nat64,
-    endTime : Nat64,
-    organizer : Mailbox,
-    attendees : [Attendee]
-  ) : ?CalendarEvent;
-
-  public func update(
-    self : State,
-    uid : Text,
-    summary : ?Text,
-    description : ?Text,
-    location : ?Text,
-    startTime : ?Nat64,
-    endTime : ?Nat64,
-    organizer : ?Mailbox,
-    attendees : ?[Attendee]
-  ) : ?CalendarEvent;
-
-  public func addAttendees(
-    self : State,
-    uid : Text,
-    attendees : [Attendee]
-  ) : ?CalendarEvent;
-
-  public func removeAttendees(
-    self : State,
-    uid : Text,
-    attendees : [Text]
-  ) : ?CalendarEvent;
-
-  public func cancel(self : State, uid : Text) : ?CalendarEvent;
-
-  public func delete(self : State, uid : Text);
-
-  public func get(self : State, uid : Text) : ?CalendarEvent;
-
-  // Iterate over all calendar events older to newer
-  public func iter(self : State) : Iter.Iter<CalendarEvent>;
-
-  // Iterate over all calendar events newer to older
-  public func reverse(self : State) : Iter.Iter<CalendarEvent>;
-}
-```
-
-### For sending calendar event invittions to attendees by email
-
-- This component depends on [extension-email](../extension-email/SKILL.md) for sending calendar event emails.
-- Use the sendCalendarEvent function. 
-
-```mo:caffeineai-email/emailClient.mo
 module {
   public type CalendarEvent = {
     uid : Text;
@@ -126,15 +65,73 @@ module {
     #optional;
     #notParticipating;
   };
-  
-  public type SendResult = {
-    #ok;
-    #err : Text;
+
+  public type State = {
+    var events : List.List<CalendarEvent>;
+    var uidMap : Map.Map<Text, Nat>;
   };
 
-  public func sendCalendarEvent(fromUsername : Text, event : CalendarEvent) : async SendResult;
-};
+  public func add(
+    self : State,
+    uid : Text,
+    summary : Text,
+    description : Text,
+    location : Text,
+    startTime : Nat64,
+    endTime : Nat64,
+    organizer : Mailbox,
+    attendees : [Attendee]
+  ) : ?CalendarEvent;
+
+  // update, addAttendees, removeAttendees and cancel store the change with
+  // the next sequence number and return the stored record. Send that record:
+  // calendars apply an update or a cancellation only when its sequence is
+  // higher than the one they hold.
+  public func update(
+    self : State,
+    uid : Text,
+    summary : ?Text,
+    description : ?Text,
+    location : ?Text,
+    startTime : ?Nat64,
+    endTime : ?Nat64,
+    organizer : ?Mailbox,
+    attendees : ?[Attendee]
+  ) : ?CalendarEvent;
+
+  public func addAttendees(
+    self : State,
+    uid : Text,
+    attendees : [Attendee]
+  ) : ?CalendarEvent;
+
+  public func removeAttendees(
+    self : State,
+    uid : Text,
+    attendees : [Text]
+  ) : ?CalendarEvent;
+
+  public func cancel(self : State, uid : Text) : ?CalendarEvent;
+
+  public func delete(self : State, uid : Text);
+
+  public func get(self : State, uid : Text) : ?CalendarEvent;
+
+  // Iterate over all calendar events older to newer
+  public func iter(self : State) : Iter.Iter<CalendarEvent>;
+
+  // Iterate over all calendar events newer to older
+  public func reverse(self : State) : Iter.Iter<CalendarEvent>;
+
+  // One invitation copy per attendee, through the mail gateway or the transport canister.
+  public func sendCalendarEvent(fromUsername : Text, event : CalendarEvent) : async { #ok; #err : Text };
+}
 ```
+
+### For sending calendar event invitations to attendees by email
+
+- Use the `sendCalendarEvent` function of the same module. It sends one copy per attendee through the mail gateway when the canister has the gateway key (`INTEGRATIONS_GATEWAY_URL` / `INTEGRATIONS_GATEWAY_API_KEY`, injected by the platform where the gateway is enabled) and through the transport canister otherwise; the app code is the same either way. `caffeineai-email` is a dependency of this package, and the app does not call it for calendar mail.
+- It returns `#ok` once the invitation was accepted for every attendee, otherwise `#err(error)` with the error text.
 
 ### Example usage for an app which can add/update/cancel/delete/get/list calendar events and send invitations to them by email
 
@@ -149,7 +146,6 @@ import Option "mo:core/Option";
 import Text "mo:core/Text";
 import AccessControl "mo:caffeineai-authorization/access-control";
 import MixinAuthorization "mo:caffeineai-authorization/MixinAuthorization";
-import EmailClient "mo:caffeineai-email/emailClient";
 import CalendarEvents "mo:caffeineai-email-calendar-events/calendarEvents";
 import Uuid "mo:caffeineai-email-calendar-events/uuid";
 
@@ -252,7 +248,7 @@ actor {
     };
   };
 
-  public shared ({ caller }) func addEventAttendees(uid : Text, attendees : [EmailClient.Attendee]) : async () {
+  public shared ({ caller }) func addEventAttendees(uid : Text, attendees : [CalendarEvents.Attendee]) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
       Runtime.trap("Unauthorized: Only admins can add calendar event attendees");
     };
@@ -277,8 +273,16 @@ actor {
       Runtime.trap("Unauthorized: Only admins can cancel calendar events");
     };
 
-    if (calendarEvents.cancel(uid).isNull()) {
-      Runtime.trap("Failed to cancel calendar event");
+    // The returned record carries method #cancel and the bumped sequence,
+    // which is what tells the attendees' calendars to drop the event.
+    let cancelled = calendarEvents.cancel(uid)
+      ?? Runtime.trap("Failed to cancel calendar event");
+
+    switch (await CalendarEvents.sendCalendarEvent("no-reply", cancelled)) {
+      case (#ok) {};
+      case (#err(error)) {
+        Runtime.trap("Failed to send the cancellation: " # error);
+      };
     };
   };
 
@@ -306,7 +310,7 @@ actor {
     let event = calendarEvents.get(uid)
       ?? Runtime.trap("Calendar event not found");
 
-    ignore await EmailClient.sendCalendarEvent(
+    ignore await CalendarEvents.sendCalendarEvent(
       "no-reply",
       event
     );
@@ -345,3 +349,7 @@ module {
   };
 };
 ```
+
+## Upgrading from the previous version
+
+An app built with `caffeineai-email-calendar-events` 0.1.x re-pins with `mops add caffeineai-email-calendar-events@0.2.0` and `mops add caffeineai-email@0.3.0`. `sendCalendarEvent` keeps its signature but moves from `EmailClient` to this module (`CalendarEvents.sendCalendarEvent`), and the event types (`CalendarEvent`, `Attendee`, `Mailbox`, `CalendarEventMethod`, `CalendarEventRole`) are this module's; an app that imported them from `EmailClient` switches the import and drops `EmailClient` when nothing else uses it. Invitations are now composed and sent by the mail gateway. `update`, `addAttendees`, `removeAttendees` and `cancel` now return the stored record (with the bumped sequence) instead of the previous one, so an app that sends the returned record after a change sends the right sequence.
