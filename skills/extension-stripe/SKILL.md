@@ -1,10 +1,10 @@
 ---
 name: extension-stripe
 description: Payment support based on Stripe, supporting credit cards and debit cards
-version: 0.1.8
+version: 1.0.0
 compatibility:
   mops:
-    caffeineai-stripe: "~0.1.3"
+    caffeineai-stripe: "~1.0.0"
     caffeineai-http-outcalls: "~0.1.3"
     caffeineai-authorization: "~1.0.1"
 caffeineai-subscription: [none]
@@ -15,15 +15,15 @@ Stripe payment extension for [Caffeine AI](https://caffeine.ai?utm_source=caffei
 
 ## Overview
 
-This skill adds Stripe payment support using HTTP outcalls. The backend manages Stripe configuration, creates checkout sessions, and checks payment status. The frontend handles checkout flow and payment result pages.
-
-# Backend
-
-For Stripe payment integration:
+This skill adds Stripe payment support using HTTP outcalls. The `MixinStripe` mixin provides configuration, checkout session creation, payment status checks, and the HTTP outcall `transform` callback. The frontend handles checkout flow and payment result pages.
 
 Prerequisite: You must follow [extension-authorization](../extension-authorization/SKILL.md) first, as this integration depends on it.
 
-There is the prefabricated module `mo:caffeineai-stripe/stripe.mo` that that cannot be modified. It provides fundamental functionality for making HTTP GET or PUT requests in the backend.
+# Backend
+
+## Module API
+
+The prefabricated module `mo:caffeineai-stripe/stripe.mo` provides low-level Stripe HTTP helpers. Do not modify it.
 
 ```mo:caffeineai-stripe/stripe.mo
 import OutCall "mo:caffeineai-http-outcalls/outcall";
@@ -34,6 +34,12 @@ module {
     allowedCountries : [Text];
   };
 
+  public type StripeState = {
+    var configuration : ?StripeConfiguration;
+  };
+
+  public func initState() : StripeState;
+
   public type ShoppingItem = {
     currency : Text;
     productName : Text;
@@ -42,27 +48,34 @@ module {
     quantity : Nat;
   };
 
-  /// Initiate payment session for shopping items.
-  /// Returns Stripe JSON reply message.
   public func createCheckoutSession(configuration : StripeConfiguration, caller : Principal, items : [ShoppingItem], successUrl : Text, cancelUrl : Text, transform : OutCall.Transform) : async Text;
-  
+
   public type StripeSessionStatus = {
     #failed : { error : Text };
     #completed : { response : Text; userPrincipal : ?Text };
   };
 
-  /// Check payment status.
   public func getSessionStatus(configuration : StripeConfiguration, sessionId : Text, transform : OutCall.Transform) : async StripeSessionStatus;
 };
 ```
 
-Usage:
+## Setup in main.mo
+
+`include MixinStripe(accessControlState, stripeState)` MUST be placed in `main.mo`, not in a custom mixin file. The mixin provides these public endpoints automatically:
+
+- `isStripeConfigured()`
+- `setStripeConfiguration(config)`
+- `createCheckoutSession(items, successUrl, cancelUrl)`
+- `getStripeSessionStatus(sessionId)`
+- `transform(input)` — required for HTTP outcall response transformation
+
+Do NOT redeclare any of these functions. They are provided exclusively by `MixinStripe`.
 
 ```motoko filepath=src/backend/main.mo
 import Stripe "mo:caffeineai-stripe/stripe";
 import AccessControl "mo:caffeineai-authorization/access-control";
 import MixinAuthorization "mo:caffeineai-authorization/MixinAuthorization";
-import OutCall "mo:caffeineai-http-outcalls/outcall";
+import MixinStripe "mo:caffeineai-stripe/MixinStripe";
 import Map "mo:core/Map";
 import Iter "mo:core/Iter";
 import Text "mo:core/Text";
@@ -72,8 +85,9 @@ actor {
     // Include authorization
     let accessControlState : AccessControl.AccessControlState;
     include MixinAuthorization(accessControlState, null);
+    let stripeState : Stripe.StripeState;
+    include MixinStripe(accessControlState, stripeState);
 
-    // Shopping data
     public type Product = {
         id : Text;
         // add custom fields
@@ -106,36 +120,6 @@ actor {
         products.remove(productId);
     };
 
-    // Stripe integration
-    var configuration : ?Stripe.StripeConfiguration;
-
-    public query func isStripeConfigured() : async Bool {
-        configuration != null;
-    };
-
-    public shared ({ caller }) func setStripeConfiguration(config : Stripe.StripeConfiguration) : async () {
-        if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-            Runtime.trap("Unauthorized: Only admins can perform this action");
-        };
-        configuration := ?config;
-    };
-
-    func getStripeConfiguration() : Stripe.StripeConfiguration {
-        configuration ?? Runtime.trap("Stripe needs to be first configured");
-    };
-
-    public func getStripeSessionStatus(sessionId : Text) : async Stripe.StripeSessionStatus {
-        await Stripe.getSessionStatus(getStripeConfiguration(), sessionId, transform);
-    };
-
-    public shared ({ caller }) func createCheckoutSession(items : [Stripe.ShoppingItem], successUrl : Text, cancelUrl : Text) : async Text {
-        await Stripe.createCheckoutSession(getStripeConfiguration(), caller, items, successUrl, cancelUrl, transform);
-    };
-
-    public query func transform(input : OutCall.TransformationInput) : async OutCall.TransformationOutput {
-        OutCall.transform(input);
-    };
-
     // Add more data and functions as needed
 };
 ```
@@ -156,17 +140,21 @@ module {
         allowedCountries : [Text];
     };
 
+    type StripeState = {
+        var configuration : ?StripeConfiguration;
+    };
+
     type NewActor = {
         accessControlState : AccessControl.AccessControlState;
         products : Map.Map<Text, Product>;
-        configuration : ?StripeConfiguration;
+        stripeState : StripeState;
     };
 
     public func migration(_old : {}) : NewActor {
         {
             accessControlState = AccessControl.initState();
             products = Map.empty<Text, Product>();
-            configuration = null;
+            stripeState = { var configuration = null };
         };
     };
 };
