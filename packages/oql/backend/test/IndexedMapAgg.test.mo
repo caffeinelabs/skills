@@ -143,3 +143,67 @@ test("fall-back shapes still agree with scan", func () {
   ignore check(idx, scan, q(?(#and_([#eq(["status"], #text("a")), #ge(["amount"], #nat(200))])), [], [agg(#count, null)], [])); // multi-predicate
   ignore check(idx, scan, q(null, [], [agg(#min, ?["id"])], []));                                       // min on a #hash-only column? id not indexed → scan
 });
+
+// ── Output paths that traverse an edge from a group key ─────────────────────
+// Still served off the histogram: the group key is the FK, so the wrapped rows traverse as the scan's do.
+type Dept = { id : Nat; name : Text };
+type Emp  = { id : Nat; dept : Nat };
+
+// Counts emp rows built, so a test can tell a served answer (none) from a scan.
+var empRowsBuilt = 0;
+func dRow(d : Dept) : OQL.Entity.Row = [("id", #nat(d.id)), ("name", #text(d.name))];
+func empRow(e : Emp) : OQL.Entity.Row { empRowsBuilt += 1; [("id", #nat(e.id)), ("dept", #nat(e.dept))] };
+
+// Name order (Eng, Ops, Sales) differs from id order (1, 2, 3).
+let depts : [Dept] = [{ id = 1; name = "Sales" }, { id = 2; name = "Eng" }, { id = 3; name = "Ops" }];
+let deptE = Entity.new<Dept>("dept", func () = depts.values(), "Dept", "id", dRow).build();
+let (empIdx, empScan) = do {
+  let emps  = Array.tabulate<Emp>(7, func k = { id = k; dept = k % 3 + 1 });   // dept 1:3, 2:2, 3:2
+  let plain = Map.empty<Nat, Emp>();
+  let em    = IndexedMap.new<Nat, Emp>([ ("dept", #hash) ]);
+  for (e in emps.values()) { plain.add(Nat.compare, e.id, e); em.put(e.id, e, Nat.compare, empRow) };
+  ( Registry.build([ deptE, em.entity("emp", "Emp", "id", Nat.compare, empRow).edge("dept", "dept").build() ]),
+    Registry.build([ deptE, Entity.new<Emp>("emp", func () = plain.values(), "Emp", "id", empRow).edge("dept", "dept").build() ]) );
+};
+
+func deptQ(orderBy : [Query.OrderBy], select : ?[[Text]]) : Query.Query = {
+  start = "emp"; where_ = null; groupBy = [["dept"]]; aggregate = [agg(#count, null)];
+  orderBy; offset = null; limit = null; select;
+};
+
+// The served answer, asserting no emp row was scanned to produce it.
+func served(qq : Query.Query) : [[Executor.Cell]] {
+  empRowsBuilt := 0;
+  let rows = Executor.runWith(empIdx, qq, unrestricted).rows;
+  assert empRowsBuilt == 0;
+  rows
+};
+
+test("groupBy FK + count, select traverses the edge → scan's dept.name, still served", func () {
+  let qq = deptQ([], ?[["dept"], ["dept", "name"], ["count"]]);
+  let r = served(qq);
+  assert sameRows(r, Executor.runWith(empScan, qq, unrestricted).rows);
+  assert r.size() == 3;
+  for (row in r.values()) {
+    let expected = switch (cell(row, "dept")) {
+      case (?#nat 1) { "Sales" }; case (?#nat 2) { "Eng" }; case (?#nat 3) { "Ops" }; case _ { "" };
+    };
+    assert cell(row, "dept.name") == ?(#text(expected));
+  };
+});
+
+test("groupBy FK + count, orderBy traverses the edge → scan's order, still served", func () {
+  let qq = deptQ([{ field = ["dept", "name"]; dir = #asc }], ?[["dept"], ["count"]]);
+  let i = served(qq);
+  let s = Executor.runWith(empScan, qq, unrestricted).rows;
+  assert Array.map<[Executor.Cell], Text>(i, rowKey) == Array.map<[Executor.Cell], Text>(s, rowKey);
+  assert Array.map<[Executor.Cell], ?OQL.Value>(i, func row = cell(row, "dept")) == [?#nat 2, ?#nat 3, ?#nat 1];
+});
+
+test("a denied edge target reads null on the served path, as on the scan", func () {
+  let denyDept : Executor.Access = func (d : OQL.Decl) : OQL.Access = if (d.name == "dept") #deny else #unrestricted;
+  let qq = deptQ([], ?[["dept"], ["dept", "name"], ["count"]]);
+  let i = Executor.runWith(empIdx, qq, denyDept).rows;
+  assert sameRows(i, Executor.runWith(empScan, qq, denyDept).rows);
+  for (row in i.values()) { assert cell(row, "dept.name") == ?(#null_) };
+});

@@ -112,7 +112,14 @@ module {
     switch (startSubject, entity.served) {
       case (null, ?s) {
         switch (aggPlan(s, q)) {
-          case (?(rows, cols)) { return finishRows(rows, ?cols, false, q, entity.fields) };
+          case (?(rows, cols)) {
+            // Wrapped like the scan's grouped rows so an FK group key traverses; hops only when an output path needs them.
+            let out = if (not outputTraverses(q)) { rows } else {
+              let hops = collectHops(r, entity, q, access);
+              rows.map(func (row : Row) : Row = wrapRow(row, entity.name, hops))
+            };
+            return finishRows(out, ?cols, false, q, entity.fields)
+          };
           case null {};
         };
       };
@@ -276,6 +283,13 @@ module {
       };
 
     finishRows(workRows, defaultCols, planOrdered, q, entity.fields)
+  };
+
+  /// Whether `finishRows` reads a path through an edge, so its rows must be wrapped.
+  func outputTraverses(q : Query.Query) : Bool {
+    for (p in (q.select ?? []).values()) { if (p.size() > 1) return true };
+    for (ob in q.orderBy.values()) { if (ob.field.size() > 1) return true };
+    false
   };
 
   /// The tail shared by the scan pipeline and the index-served aggregate path:
@@ -1398,20 +1412,25 @@ module {
   };
 
   /// Type-tagged serialisation of the group-key tuple, so distinct values
-  /// (and distinct types) never collide into the same bucket.
+  /// (and distinct types) never collide into the same bucket. Text is the
+  /// only payload that can contain the `\u{1f}` separator, so it is
+  /// length-prefixed except in the last position, which ends at the final
+  /// separator. A Float keys on 17 significant digits, which tell every
+  /// finite value apart, with `-0.0` folded into `0.0` as `Predicate.compare`
+  /// does.
   func groupKey(vals : [Value]) : Text {
     var s = "";
-    for (v in vals.values()) s := s # valueKey(v) # "\u{1f}";
+    for (i in vals.keys()) s := s # valueKey(vals[i], i + 1 < vals.size()) # "\u{1f}";
     s
   };
 
-  func valueKey(v : Value) : Text = switch v {
+  func valueKey(v : Value, delimit : Bool) : Text = switch v {
     case (#null_)   { "0:" };
     case (#bool b)  { "1:" # b.toText() };
     case (#nat n)   { "2:" # n.toText() };
     case (#int i)   { "3:" # i.toText() };
-    case (#float f) { "4:" # f.toText() };
-    case (#text t)  { "5:" # t };
+    case (#float f) { "4:" # (if (f == 0.0) 0.0 else f).format(#exp 16) };
+    case (#text t)  { if (delimit) "5:" # t.size().toText() # ":" # t else "5:" # t };
   };
 
 };

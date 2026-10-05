@@ -43,15 +43,19 @@ actor class IndexedStore() = self {
   public query func size() : async Nat { users.size() };
 
   // age >= t, two ways
-  public query func ageAtLeastIndex(t : Nat) : async [Nat] =
-    async idsSorted(users.candidatesRange("age", ?#nat(t), null, #asc), func u = u.age >= t);
-  public query func ageAtLeastScan(t : Nat) : async [Nat] =
-    async idsSorted(users.entries(), func u = u.age >= t);
+  public query func ageAtLeastIndex(t : Nat) : async [Nat] {
+    idsSorted(users.candidatesRange("age", ?#nat(t), null, #asc), func u = u.age >= t)
+  };
+  public query func ageAtLeastScan(t : Nat) : async [Nat] {
+    idsSorted(users.entries(), func u = u.age >= t)
+  };
 
   // email == e, two ways
-  public query func byEmailIndex(e : Text) : async [Nat] =
-    async idsSorted(users.candidatesEq("email", #text(e)), func u = u.email == e);
-  public query func byEmailScan(e : Text) : async [Nat] =
-    async idsSorted(users.entries(), func u = u.email == e);
+  public query func byEmailIndex(e : Text) : async [Nat] {
+    idsSorted(users.candidatesEq("email", #text(e)), func u = u.email == e)
+  };
+  public query func byEmailScan(e : Text) : async [Nat] {
+    idsSorted(users.entries(), func u = u.email == e)
+  };
 
 };

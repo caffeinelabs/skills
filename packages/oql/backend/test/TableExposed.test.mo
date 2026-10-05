@@ -1,5 +1,5 @@
 /// Replica test for columnar `Table`s served through the `Expose` mixin. Runs
-/// under PocketIC via `mops test --mode replica --replica pocket-ic`.
+/// under PocketIC via `mops test --mode replica`.
 ///
 /// The fixture's tables are empty while the mixin builds its registry, which is
 /// how a canister starts life. Deriving an entity's schema from a stored row

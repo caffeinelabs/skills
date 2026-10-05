@@ -1,5 +1,5 @@
 /// Replica test for the `Expose` mixin and per-table authorization. Runs
-/// under PocketIC via `mops test --mode replica --replica pocket-ic`.
+/// under PocketIC via `mops test --mode replica`.
 ///
 /// The test actor IS each fixture's controller (PocketIC installs it that
 /// way), so direct calls exercise the controller branch. The `Levels`

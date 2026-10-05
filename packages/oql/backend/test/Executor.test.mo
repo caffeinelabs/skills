@@ -389,6 +389,35 @@ test("groupBy with min/max over the grouped id values", func () {
   assert cell(r.rows[0], "hi")      == ?(#nat(3));   // custom `as` name
 });
 
+// Text values containing the group-key separator U+001F. Without a length
+// prefix, ids 1 and 2 both serialise to `5:x␟5:y␟5:z␟` and share a group.
+type Pair = { id : Nat; a : Text; b : Text };
+
+let pairs : [Pair] = [
+  { id = 1; a = "x\u{1f}5:y"; b = "z" },
+  { id = 2; a = "x";          b = "y\u{1f}5:z" },
+  { id = 3; a = "x\u{1f}5:y"; b = "z" },
+];
+
+test("groupBy keeps tuples apart when a Text value contains U+001F", func () {
+  let reg = Registry.build([
+    OQL.Entity.new<Pair>("pair", func () = pairs.values(), "Pair", "id").build(),
+  ]);
+  let r = run(reg, {
+    emptyQuery("pair") with
+    groupBy   = [["a"], ["b"]];
+    aggregate = [{ fn = #sum; field = ?["id"]; as_ = null }];
+  });
+  assert r.rows.size() == 2;
+  // First-seen order: ids 1 + 3, then id 2 alone.
+  assert cell(r.rows[0], "a")      == ?(#text("x\u{1f}5:y"));
+  assert cell(r.rows[0], "b")      == ?(#text("z"));
+  assert cell(r.rows[0], "sum_id") == ?(#nat(4));
+  assert cell(r.rows[1], "a")      == ?(#text("x"));
+  assert cell(r.rows[1], "b")      == ?(#text("y\u{1f}5:z"));
+  assert cell(r.rows[1], "sum_id") == ?(#nat(2));
+});
+
 // ── Edge traversal (dotted paths) ─────────────────────────────────────────
 //
 // dept : Text FK -> dept.name (Text PK).  "ghost" is dangling.
