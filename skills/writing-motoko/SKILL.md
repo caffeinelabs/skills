@@ -3,7 +3,7 @@ name: writing-motoko
 description: >-
   Motoko language reference, architecture patterns, and dependency tooling
   (mops). Load when writing or modifying backend .mo files.
-version: 0.2.9
+version: 0.2.10
 compatibility:
   toolchain:
     moc: ">=1.11.2"
@@ -113,12 +113,12 @@ import Nat "mo:core/Nat";
 import Text "mo:core/Text";
 
 func conversions(caller : Principal, myNat : Nat) {
-  ignore caller.toText();            // CORRECT
-  ignore myNat.toText();             // CORRECT
-  ignore "42".toNat();               // CORRECT (defined by Nat, imported above)
-  ignore "hello".concat(" world");   // CORRECT
-  ignore Principal.toText(caller);   // WRONG (M0236)
-  ignore Nat.toText(myNat);          // WRONG (M0236)
+  ignore caller.toText(); // CORRECT
+  ignore myNat.toText(); // CORRECT
+  ignore "42".toNat(); // CORRECT (defined by Nat, imported above)
+  ignore "hello".concat(" world"); // CORRECT
+  ignore Principal.toText(caller); // WRONG (M0236)
+  ignore Nat.toText(myNat); // WRONG (M0236)
 };
 ```
 
