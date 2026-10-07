@@ -1,0 +1,17 @@
+[package]
+name = "caffeineai-http-endpoints"
+version = "0.1.0"
+description = "Inbound HTTP Gateway endpoints for Motoko canisters (http_request / http_request_update)."
+license = "Apache-2.0"
+repository = "https://github.com/caffeinelabs/skills"
+keywords = ["motoko", "icp", "http", "webhook"]
+
+[dependencies]
+core = "2.5.0"
+
+[dev-dependencies]
+test = "2.1.2"
+
+[toolchain]
+moc = "1.7.0"
+mo-fmt = "0.4.0"
