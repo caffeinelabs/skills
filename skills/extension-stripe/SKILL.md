@@ -1,7 +1,7 @@
 ---
 name: extension-stripe
 description: Payment support based on Stripe, supporting credit cards and debit cards
-version: 1.0.0
+version: 1.0.1
 compatibility:
   mops:
     caffeineai-stripe: "~1.0.0"
@@ -82,45 +82,45 @@ import Text "mo:core/Text";
 import Runtime "mo:core/Runtime";
 
 actor {
-    // Include authorization
-    let accessControlState : AccessControl.AccessControlState;
-    include MixinAuthorization(accessControlState, null);
-    let stripeState : Stripe.StripeState;
-    include MixinStripe(accessControlState, stripeState);
+  // Include authorization
+  let accessControlState : AccessControl.AccessControlState;
+  include MixinAuthorization(accessControlState, null);
+  let stripeState : Stripe.StripeState;
+  include MixinStripe(accessControlState, stripeState);
 
-    public type Product = {
-        id : Text;
-        // add custom fields
+  public type Product = {
+    id : Text;
+    // add custom fields
+  };
+
+  let products : Map.Map<Text, Product>;
+
+  public query func getProducts() : async [Product] {
+    products.values().toArray();
+  };
+
+  public shared ({ caller }) func addProduct(product : Product) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can add products");
     };
+    products.add(product.id, product);
+  };
 
-    let products : Map.Map<Text, Product>;
-
-    public query func getProducts() : async [Product] {
-        products.values().toArray();
+  public shared ({ caller }) func updateProduct(product : Product) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can update products");
     };
+    products.add(product.id, product);
+  };
 
-    public shared ({ caller }) func addProduct(product : Product) : async () {
-        if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-            Runtime.trap("Unauthorized: Only admins can add products");
-        };
-        products.add(product.id, product);
+  public shared ({ caller }) func deleteProduct(productId : Text) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can delete products");
     };
+    products.remove(productId);
+  };
 
-    public shared ({ caller }) func updateProduct(product : Product) : async () {
-        if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-            Runtime.trap("Unauthorized: Only admins can update products");
-        };
-        products.add(product.id, product);
-    };
-
-    public shared ({ caller }) func deleteProduct(productId : Text) : async () {
-        if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-            Runtime.trap("Unauthorized: Only admins can delete products");
-        };
-        products.remove(productId);
-    };
-
-    // Add more data and functions as needed
+  // Add more data and functions as needed
 };
 ```
 
@@ -131,32 +131,32 @@ import Map "mo:core/Map";
 import AccessControl "mo:caffeineai-authorization/access-control";
 
 module {
-    type Product = {
-        id : Text;
-    };
+  type Product = {
+    id : Text;
+  };
 
-    type StripeConfiguration = {
-        secretKey : Text;
-        allowedCountries : [Text];
-    };
+  type StripeConfiguration = {
+    secretKey : Text;
+    allowedCountries : [Text];
+  };
 
-    type StripeState = {
-        var configuration : ?StripeConfiguration;
-    };
+  type StripeState = {
+    var configuration : ?StripeConfiguration;
+  };
 
-    type NewActor = {
-        accessControlState : AccessControl.AccessControlState;
-        products : Map.Map<Text, Product>;
-        stripeState : StripeState;
-    };
+  type NewActor = {
+    accessControlState : AccessControl.AccessControlState;
+    products : Map.Map<Text, Product>;
+    stripeState : StripeState;
+  };
 
-    public func migration(_old : {}) : NewActor {
-        {
-            accessControlState = AccessControl.initState();
-            products = Map.empty<Text, Product>();
-            stripeState = { var configuration = null };
-        };
+  public func migration(_old : {}) : NewActor {
+    {
+      accessControlState = AccessControl.initState();
+      products = Map.empty<Text, Product>();
+      stripeState = { var configuration = null };
     };
+  };
 };
 ```
 
