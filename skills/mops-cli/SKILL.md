@@ -6,7 +6,7 @@ description: >-
   mops.toml, mops.lock, running mops commands, adding/removing packages,
   pinning moc or lintoko versions, checking or building canisters,
   configuring moc flags, or setting up a new Motoko project.
-version: 0.1.7
+version: 0.1.8
 compatibility:
   toolchain:
     mops: "3.x"
@@ -44,7 +44,8 @@ pocket-ic = "15.0.0"  # required for replica tests / benchmarks / --check-deploy
 core = "2.6.1"
 
 [moc]
-args = ["--default-persistent-actors", "-W=M0223,M0236,M0237"]
+args = ["--default-persistent-actors", "-W=M0223,M0236,M0237"]  # moc 1.x
+# args = ["-W=M0223,M0237"]                                      # moc 2.x
 
 [canisters.backend]
 main = "src/backend/main.mo"
@@ -75,9 +76,13 @@ Bootstrap that `.most`: new project → `mops deployed init` (empty-actor baseli
 
 Optional canister fields: `candid` (path to .did for compatibility checking), `initArg` (Candid-encoded init args).
 
+### Persistent Actors
+
+`--default-persistent-actors` is for moc 1.x only: without it, a plain `actor` fails with M0219/M0220 unless declared `persistent actor`. moc 2 makes actors persistent by default and rejects the flag (`unknown option '--default-persistent-actors'`) — drop it when moving to moc 2.
+
 ### Warning Flags
 
-`-W=M0223,M0236,M0237` — redundant type instantiation (M0223), suggest contextual dot notation (M0236), suggest redundant explicit arguments (M0237). These are allowed (disabled) by default; `-W=` enables them as warnings.
+`-W=M0223,M0236,M0237` — redundant type instantiation (M0223), suggest contextual dot notation (M0236), suggest redundant explicit arguments (M0237). moc 1.x allows (disables) all three by default; `-W=` enables them as warnings. moc 2 enables M0236 by default, so `-W=M0223,M0237` is enough there.
 
 ### Moc Args Layering
 
@@ -359,6 +364,8 @@ mops format -- --syntax moc2   # flags after -- go to mo-fmt (needs mo-fmt pinne
 ```
 
 With `mo-fmt` pinned in `[toolchain]`, `mops format` runs it instead of the bundled Prettier plugin — no fallback, `.prettierrc` ignored. Configure it with `mo-fmt.toml` in the project root (`syntax = "preserve" | "moc2"`, `indent-width`). Exit is non-zero on unformatted files under `--check`, and whenever a file fails to format (syntax error; left untouched).
+
+`mops format` and `mops lint` skip files the project's `.gitignore` excludes (generated sources); `mops test`, `mops sync` and `mops check <files>` do not.
 
 ### `mops watch`
 
