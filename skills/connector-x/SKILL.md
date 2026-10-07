@@ -9,7 +9,7 @@ description: >-
   null-field JSON handling. Load this skill whenever the user, spec, or any prior
   task mentions posting a tweet, "tweet this", X/Twitter, sharing to X, or any
   equivalent phrasing — and BEFORE writing any code that touches an X endpoint.
-version: 0.3.1
+version: 0.3.2
 caffeineai-subscription: [none]
 compatibility:
   mops:
@@ -40,11 +40,21 @@ actor {
     let cfg = { defaultConfig with auth = ?#bearer accessToken };
     let req : TweetCreateRequest = {
       text_ = ?body;
-      for_super_followers_only = null; poll = null; reply = null;
-      reply_settings = null; media = null; geo = null; quote_tweet_id = null;
-      nullcast = null; direct_message_deep_link = null; community_id = null;
-      card_uri = null; edit_options = null; made_with_ai = null;
-      paid_partnership = null; share_with_followers = null;
+      for_super_followers_only = null;
+      poll = null;
+      reply = null;
+      reply_settings = null;
+      media = null;
+      geo = null;
+      quote_tweet_id = null;
+      nullcast = null;
+      direct_message_deep_link = null;
+      community_id = null;
+      card_uri = null;
+      edit_options = null;
+      made_with_ai = null;
+      paid_partnership = null;
+      share_with_followers = null;
     };
     ignore await* createPosts(cfg, req);
   };
