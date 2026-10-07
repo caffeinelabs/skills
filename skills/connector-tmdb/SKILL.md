@@ -13,7 +13,7 @@ description: >-
   top-rated, trending, discover, recommendations, similar titles, posters,
   backdrops, ratings, watchlists, favorites, TMDb or "The Movie Database" — and
   BEFORE writing any code that touches a movie-data endpoint.
-version: 0.1.3
+version: 0.1.4
 caffeineai-subscription: [none]
 compatibility:
   mops:
@@ -104,94 +104,101 @@ import Array "mo:core/Array";
 
 actor {
 
-    /// Narrow, frontend-friendly shape. TMDb marks almost every field
-    /// optional, so collapse the optionals here once instead of in the UI.
-    public type Movie = {
-        id : Int;
-        title : Text;
-        overview : Text;
-        releaseDate : Text;
-        posterUrl : Text;
-        voteAverage : Float;
-    };
+  /// Narrow, frontend-friendly shape. TMDb marks almost every field
+  /// optional, so collapse the optionals here once instead of in the UI.
+  public type Movie = {
+    id : Int;
+    title : Text;
+    overview : Text;
+    releaseDate : Text;
+    posterUrl : Text;
+    voteAverage : Float;
+  };
 
-    /// The v4 read-access token is passed in rather than stored here — see
-    /// "Where the credential lives" below for the admin-set variant.
-    func config(token : Text) : Config = {
-        defaultConfig with
-        auth = ?#bearer token;
-        // search and discover payloads run large; the default cap is too
-        // small for a 20-result page with overviews.
-        max_response_bytes = ?300_000;
-    };
+  /// The v4 read-access token is passed in rather than stored here — see
+  /// "Where the credential lives" below for the admin-set variant.
+  func config(token : Text) : Config = {
+    defaultConfig with
+    auth = ?#bearer token;
+    // search and discover payloads run large; the default cap is too
+    // small for a 20-result page with overviews.
+    max_response_bytes = ?300_000;
+  };
 
-    /// Poster paths come back relative (`/abc.jpg`); prepend an image base.
-    /// w500 is the usual card size. An empty path yields an empty string so
-    /// the frontend can fall back to a placeholder.
-    func posterUrl(path : ?Text) : Text {
-        switch (path) {
-            case (?p) "https://image.tmdb.org/t/p/w500" # p;
-            case null "";
-        };
+  /// Poster paths come back relative (`/abc.jpg`); prepend an image base.
+  /// w500 is the usual card size. An empty path yields an empty string so
+  /// the frontend can fall back to a placeholder.
+  func posterUrl(path : ?Text) : Text {
+    switch (path) {
+      case (?p) "https://image.tmdb.org/t/p/w500" # p;
+      case null "";
     };
+  };
 
-    /// One mapper for every list endpoint. The parameter type is written
-    /// STRUCTURALLY rather than naming a generated model, because each
-    /// endpoint has its own `…ResultsInner` type with the same fields —
-    /// `SearchMovie200ResponseResultsInner`,
-    /// `MovieNowPlayingList200ResponseResultsInner`, and so on. One structural
-    /// signature accepts all of them.
-    func toMovie(
-        m : {
-            id : ?Int;
-            title : ?Text;
-            overview : ?Text;
-            release_date : ?Text;
-            poster_path : ?Text;
-            vote_average : ?Float;
-        }
-    ) : Movie = {
-        id = m.id ?? 0;
-        title = m.title ?? "";
-        overview = m.overview ?? "";
-        releaseDate = m.release_date ?? "";
-        posterUrl = posterUrl(m.poster_path);
-        voteAverage = m.vote_average ?? 0.0;
-    };
+  /// One mapper for every list endpoint. The parameter type is written
+  /// STRUCTURALLY rather than naming a generated model, because each
+  /// endpoint has its own `…ResultsInner` type with the same fields —
+  /// `SearchMovie200ResponseResultsInner`,
+  /// `MovieNowPlayingList200ResponseResultsInner`, and so on. One structural
+  /// signature accepts all of them.
+  func toMovie(
+    m : {
+      id : ?Int;
+      title : ?Text;
+      overview : ?Text;
+      release_date : ?Text;
+      poster_path : ?Text;
+      vote_average : ?Float;
+    }
+  ) : Movie = {
+    id = m.id ?? 0;
+    title = m.title ?? "";
+    overview = m.overview ?? "";
+    releaseDate = m.release_date ?? "";
+    posterUrl = posterUrl(m.poster_path);
+    voteAverage = m.vote_average ?? 0.0;
+  };
 
-    // `query` is a reserved word in Motoko — hence `term` here, and `query_`
-    // in the generated signature.
-    public func searchMovies(token : Text, term : Text, page : Int) : async [Movie] {
-        // searchMovie(config, query_, includeAdult, language,
-        //             primaryReleaseYear, page, region_, year)
-        // Text and Bool parameters are positional and NOT optional: pass ""
-        // and false to omit them. Only `page` is 1-indexed.
-        let response = await* Tmdb.searchMovie(
-            config(token), term, false, "en-US", "", page, "", "",
-        );
-        let results = switch (response.results) {
-            case (?r) r;
-            case null [];
-        };
-        Array.map(results, toMovie);
+  // `query` is a reserved word in Motoko — hence `term` here, and `query_`
+  // in the generated signature.
+  public func searchMovies(token : Text, term : Text, page : Int) : async [Movie] {
+    // searchMovie(config, query_, includeAdult, language,
+    //             primaryReleaseYear, page, region_, year)
+    // Text and Bool parameters are positional and NOT optional: pass ""
+    // and false to omit them. Only `page` is 1-indexed.
+    let response = await* Tmdb.searchMovie(
+      config(token),
+      term,
+      false,
+      "en-US",
+      "",
+      page,
+      "",
+      "",
+    );
+    let results = switch (response.results) {
+      case (?r) r;
+      case null [];
     };
+    Array.map(results, toMovie);
+  };
 
-    /// Full detail for one title. `appendToResponse` embeds sub-resources in
-    /// the SAME outcall — "credits,images,videos" costs one call, not four.
-    public func movieOverview(token : Text, movieId : Int) : async Text {
-        let movie = await* Tmdb.movieDetails(config(token), movieId, "", "en-US");
-        movie.overview ?? "";
-    };
+  /// Full detail for one title. `appendToResponse` embeds sub-resources in
+  /// the SAME outcall — "credits,images,videos" costs one call, not four.
+  public func movieOverview(token : Text, movieId : Int) : async Text {
+    let movie = await* Tmdb.movieDetails(config(token), movieId, "", "en-US");
+    movie.overview ?? "";
+  };
 
-    /// "In cinemas now" feed, for a landing page.
-    public func nowPlaying(token : Text) : async [Movie] {
-        let response = await* Tmdb.movieNowPlayingList(config(token), "en-US", 1, "US");
-        let results = switch (response.results) {
-            case (?r) r;
-            case null [];
-        };
-        Array.map(results, toMovie);
+  /// "In cinemas now" feed, for a landing page.
+  public func nowPlaying(token : Text) : async [Movie] {
+    let response = await* Tmdb.movieNowPlayingList(config(token), "en-US", 1, "US");
+    let results = switch (response.results) {
+      case (?r) r;
+      case null [];
     };
+    Array.map(results, toMovie);
+  };
 }
 ```
 
