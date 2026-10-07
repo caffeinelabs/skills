@@ -12,7 +12,7 @@ description: >-
   or any prior task mentions scheduling, calendar events, appointments,
   meetings, "add to calendar", or any equivalent phrasing — and BEFORE
   writing any code that touches a Google endpoint.
-version: 0.3.0
+version: 0.3.1
 caffeineai-subscription: [none]
 compatibility:
   mops:
@@ -295,7 +295,10 @@ mixin (
       Runtime.trap("Calendar is not configured (admin must set credentials)");
     };
     await* LibCalendar.startAuthorize(
-      calendarConfig.clientId, redirectUri, caller, pendingCalendarFlows,
+      calendarConfig.clientId,
+      redirectUri,
+      caller,
+      pendingCalendarFlows,
     );
   };
 
@@ -314,14 +317,19 @@ mixin (
     };
     Map.remove(pendingCalendarFlows, Principal.compare, caller);
     let connection = await* LibCalendar.exchangeCode(
-      calendarConfig.clientId, calendarConfig.clientSecret, code,
-      pending.redirectUri, pending.codeVerifier,
+      calendarConfig.clientId,
+      calendarConfig.clientSecret,
+      code,
+      pending.redirectUri,
+      pending.codeVerifier,
     );
     Map.add(calendarConnections, Principal.compare, caller, connection);
   };
 
   public shared ({ caller }) func listUpcomingEvents(
-    timeMin : Text, timeMax : Text, maxResults : Nat,
+    timeMin : Text,
+    timeMax : Text,
+    maxResults : Nat,
   ) : async LibCalendar.EventSummaryList {
     if (caller.isAnonymous()) {
       Runtime.trap("Sign in to list events");
@@ -330,13 +338,21 @@ mixin (
       Runtime.trap("Connect your Google Calendar first");
     };
     await* LibCalendar.listUpcomingEvents(
-      calendarConfig.clientId, calendarConfig.clientSecret, connection, caller,
-      calendarConnections, timeMin, timeMax, maxResults,
+      calendarConfig.clientId,
+      calendarConfig.clientSecret,
+      connection,
+      caller,
+      calendarConnections,
+      timeMin,
+      timeMax,
+      maxResults,
     );
   };
 
   public shared ({ caller }) func createEvent(
-    summary : Text, startDateTime : Text, endDateTime : Text,
+    summary : Text,
+    startDateTime : Text,
+    endDateTime : Text,
   ) : async Text {
     if (caller.isAnonymous()) {
       Runtime.trap("Sign in to create events");
@@ -345,8 +361,14 @@ mixin (
       Runtime.trap("Connect your Google Calendar first");
     };
     await* LibCalendar.createEvent(
-      calendarConfig.clientId, calendarConfig.clientSecret, connection, caller,
-      calendarConnections, summary, startDateTime, endDateTime,
+      calendarConfig.clientId,
+      calendarConfig.clientSecret,
+      connection,
+      caller,
+      calendarConnections,
+      summary,
+      startDateTime,
+      endDateTime,
     );
   };
 
@@ -421,8 +443,11 @@ module {
   };
 
   func refreshIfNeeded(
-    clientId : Text, clientSecret : Text, connection : CalendarConnection,
-    caller : Principal, calendarConnections : Map.Map<Principal, CalendarConnection>,
+    clientId : Text,
+    clientSecret : Text,
+    connection : CalendarConnection,
+    caller : Principal,
+    calendarConnections : Map.Map<Principal, CalendarConnection>,
     errorMsg : Text,
   ) : async* ?Text {
     if (not (errorMsg.contains(#text("401")) or errorMsg.contains(#text("Unauthorized")))) {
@@ -437,7 +462,9 @@ module {
   };
 
   public func startAuthorize(
-    clientId : Text, redirectUri : Text, caller : Principal,
+    clientId : Text,
+    redirectUri : Text,
+    caller : Principal,
     pendingFlows : Map.Map<Principal, PendingOAuth>,
   ) : async* Text {
     let codeVerifier = await OAuth.generateCodeVerifier();
@@ -451,8 +478,11 @@ module {
   };
 
   public func exchangeCode(
-    clientId : Text, clientSecret : Text, code : Text,
-    redirectUri : Text, codeVerifier : Text,
+    clientId : Text,
+    clientSecret : Text,
+    code : Text,
+    redirectUri : Text,
+    codeVerifier : Text,
   ) : async* CalendarConnection {
     let tokens = await OAuth.exchangeAuthorizationCode(clientId, clientSecret, code, redirectUri, codeVerifier);
     let accessToken = accessTokenOf(tokens, "Token exchange");
@@ -480,31 +510,85 @@ module {
   // timeMin = start-of-tomorrow, timeMax = start-of-day-after) so the count is
   // exact. Both are RFC 3339 strings; include an offset ("…Z" or "…+02:00").
   public func listUpcomingEvents(
-    clientId : Text, clientSecret : Text, connection : CalendarConnection,
-    caller : Principal, calendarConnections : Map.Map<Principal, CalendarConnection>,
-    timeMin : Text, timeMax : Text, maxResults : Nat,
+    clientId : Text,
+    clientSecret : Text,
+    connection : CalendarConnection,
+    caller : Principal,
+    calendarConnections : Map.Map<Principal, CalendarConnection>,
+    timeMin : Text,
+    timeMax : Text,
+    maxResults : Nat,
   ) : async* EventSummaryList {
     if (timeMin.size() == 0) {
       Runtime.trap("timeMin must be an RFC 3339 timestamp");
     };
     let events : Events = try {
       await* calendar_events_list(
-        configForToken(connection.accessToken), "primary", ?#json,
-        "", "", "", false, "", "",
-        false, [], "", 10, maxResults, ?#starttime,
-        "", [], "", [], false, false, true, "",
-        timeMax, timeMin, "", "",
+        configForToken(connection.accessToken),
+        "primary",
+        ?#json,
+        "",
+        "",
+        "",
+        false,
+        "",
+        "",
+        false,
+        [],
+        "",
+        10,
+        maxResults,
+        ?#starttime,
+        "",
+        [],
+        "",
+        [],
+        false,
+        false,
+        true,
+        "",
+        timeMax,
+        timeMin,
+        "",
+        "",
       );
     } catch e {
       let ?newToken = await* refreshIfNeeded(
-        clientId, clientSecret, connection, caller, calendarConnections, e.message(),
+        clientId,
+        clientSecret,
+        connection,
+        caller,
+        calendarConnections,
+        e.message(),
       ) else Runtime.trap("Calendar API failed");
       await* calendar_events_list(
-        configForToken(newToken), "primary", ?#json,
-        "", "", "", false, "", "",
-        false, [], "", 10, maxResults, ?#starttime,
-        "", [], "", [], false, false, true, "",
-        timeMax, timeMin, "", "",
+        configForToken(newToken),
+        "primary",
+        ?#json,
+        "",
+        "",
+        "",
+        false,
+        "",
+        "",
+        false,
+        [],
+        "",
+        10,
+        maxResults,
+        ?#starttime,
+        "",
+        [],
+        "",
+        [],
+        false,
+        false,
+        true,
+        "",
+        timeMax,
+        timeMin,
+        "",
+        "",
       );
     };
     eventSummariesOf(events);
@@ -517,9 +601,13 @@ module {
   // as raw RFC 3339 (start, end) pairs; timeMin/timeMax are UTC "…Z" strings.
   // Single-refresh-on-401 retry.
   public func busyTimes(
-    clientId : Text, clientSecret : Text, connection : CalendarConnection,
-    caller : Principal, calendarConnections : Map.Map<Principal, CalendarConnection>,
-    timeMin : Text, timeMax : Text,
+    clientId : Text,
+    clientSecret : Text,
+    connection : CalendarConnection,
+    caller : Principal,
+    calendarConnections : Map.Map<Principal, CalendarConnection>,
+    timeMin : Text,
+    timeMax : Text,
   ) : async* [(Text, Text)] {
     let request : FreeBusyRequest = {
       FreeBusyRequest.init {} with
@@ -529,14 +617,35 @@ module {
     };
     let response : FreeBusyResponse = try {
       await* calendar_freebusy_query(
-        configForToken(connection.accessToken), ?#json, "", "", "", false, "", "", request,
+        configForToken(connection.accessToken),
+        ?#json,
+        "",
+        "",
+        "",
+        false,
+        "",
+        "",
+        request,
       );
     } catch e {
       let ?newToken = await* refreshIfNeeded(
-        clientId, clientSecret, connection, caller, calendarConnections, e.message(),
+        clientId,
+        clientSecret,
+        connection,
+        caller,
+        calendarConnections,
+        e.message(),
       ) else Runtime.trap("Calendar API failed");
       await* calendar_freebusy_query(
-        configForToken(newToken), ?#json, "", "", "", false, "", "", request,
+        configForToken(newToken),
+        ?#json,
+        "",
+        "",
+        "",
+        false,
+        "",
+        "",
+        request,
       );
     };
     // The response map is keyed by the RESOLVED calendar id (the user's email),
@@ -578,31 +687,66 @@ module {
     DateTime.isSlotFree(slotStart, slotEnd, busy);
 
   public func createEvent(
-    clientId : Text, clientSecret : Text, connection : CalendarConnection,
-    caller : Principal, calendarConnections : Map.Map<Principal, CalendarConnection>,
-    summary : Text, startDateTime : Text, endDateTime : Text,
+    clientId : Text,
+    clientSecret : Text,
+    connection : CalendarConnection,
+    caller : Principal,
+    calendarConnections : Map.Map<Principal, CalendarConnection>,
+    summary : Text,
+    startDateTime : Text,
+    endDateTime : Text,
   ) : async* Text {
     let start : EventDateTime = { EventDateTime.init {} with dateTime = ?startDateTime };
     let end : EventDateTime = { EventDateTime.init {} with dateTime = ?endDateTime };
-    let event : Event = { Event.init {} with
+    let event : Event = {
+      Event.init {} with
       summary = ?summary;
       start = ?start;
       end = ?end;
     };
     let created : Event = try {
       await* calendar_events_insert(
-        configForToken(connection.accessToken), "primary", ?#json,
-        "", "", "", false, "", "",
-        0, 10, true, ?#all, false, event,
+        configForToken(connection.accessToken),
+        "primary",
+        ?#json,
+        "",
+        "",
+        "",
+        false,
+        "",
+        "",
+        0,
+        10,
+        true,
+        ?#all,
+        false,
+        event,
       );
     } catch e {
       let ?newToken = await* refreshIfNeeded(
-        clientId, clientSecret, connection, caller, calendarConnections, e.message(),
+        clientId,
+        clientSecret,
+        connection,
+        caller,
+        calendarConnections,
+        e.message(),
       ) else Runtime.trap("Calendar API failed");
       await* calendar_events_insert(
-        configForToken(newToken), "primary", ?#json,
-        "", "", "", false, "", "",
-        0, 10, true, ?#all, false, event,
+        configForToken(newToken),
+        "primary",
+        ?#json,
+        "",
+        "",
+        "",
+        false,
+        "",
+        "",
+        0,
+        10,
+        true,
+        ?#all,
+        false,
+        event,
       );
     };
     created.id ?? "";
