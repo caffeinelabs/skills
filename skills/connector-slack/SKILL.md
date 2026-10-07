@@ -11,7 +11,7 @@ description: >-
   a fully supported platform feature yet. Hand-rolling `ic.http_request` calls to `slack.com/api` is still the wrong
   move — prefer the generated client so bearer auth, percent-encoding, and JSON
   parsing come for free.
-version: 0.1.1
+version: 0.1.2
 caffeineai-subscription: [none]
 compatibility:
   mops:
@@ -271,7 +271,11 @@ mixin (slackConfig : { var token : Text }) {
     let res = await* chatPostMessage(
       slackClientConfig(slackConfig.token), // token rides config.auth — never a URL param
       channel,
-      "", "", "", "", "", // asUser, attachments, blocks, iconEmoji, iconUrl
+      "", // asUser
+      "", // attachments
+      "", // blocks
+      "", // iconEmoji
+      "", // iconUrl
       false, // linkNames
       true, // mrkdwn
       "", // parse
