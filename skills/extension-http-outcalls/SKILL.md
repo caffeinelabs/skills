@@ -1,7 +1,11 @@
 ---
 name: extension-http-outcalls
-description: HTTP outcalls performed by the backend canister (not in the frontend), including mandatory local verification of external REST API requests.
-version: 0.1.10
+description: >-
+  HTTP outcalls performed by the backend canister (not in the frontend),
+  including mandatory local verification of external REST API requests.
+  Canister → internet only. For inbound webhooks / curl endpoints served by
+  the canister, use extension-http-endpoints instead.
+version: 0.1.11
 compatibility:
   mops:
     caffeineai-http-outcalls: "~0.1.4"
@@ -73,6 +77,8 @@ row.
 
 The provider already offered the right bound. `?icao24=<hex>` on the same
 endpoint is the identifier bound: kilobytes, one aircraft, one record to parse.
+
+For the opposite direction — external clients hitting the canister over HTTPS (webhooks, `curl`, bot callbacks) — use [`extension-http-endpoints`](../extension-http-endpoints/SKILL.md).
 
 # Backend
 
