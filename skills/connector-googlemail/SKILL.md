@@ -12,7 +12,7 @@ description: >-
   mentions sending email, Gmail, "notify via email", "forward results by
   email", or any equivalent phrasing — and BEFORE writing any code that
   touches a Google endpoint.
-version: 0.2.8
+version: 0.2.9
 caffeineai-subscription: [none]
 compatibility:
   mops:
@@ -308,7 +308,10 @@ mixin (
       Runtime.trap("Gmail is not configured (admin must set credentials)");
     };
     await* LibGmail.startAuthorize(
-      gmailConfig.clientId, redirectUri, caller, pendingGmailFlows,
+      gmailConfig.clientId,
+      redirectUri,
+      caller,
+      pendingGmailFlows,
     );
   };
 
@@ -327,14 +330,19 @@ mixin (
     };
     Map.remove(pendingGmailFlows, Principal.compare, caller);
     let connection = await* LibGmail.exchangeCode(
-      gmailConfig.clientId, gmailConfig.clientSecret, code,
-      pending.redirectUri, pending.codeVerifier,
+      gmailConfig.clientId,
+      gmailConfig.clientSecret,
+      code,
+      pending.redirectUri,
+      pending.codeVerifier,
     );
     Map.add(gmailConnections, Principal.compare, caller, connection);
   };
 
   public shared ({ caller }) func sendEmail(
-    to : Text, subject : Text, body : Text,
+    to : Text,
+    subject : Text,
+    body : Text,
   ) : async Text {
     if (caller.isAnonymous()) {
       Runtime.trap("Sign in to send email");
@@ -343,8 +351,14 @@ mixin (
       Runtime.trap("Connect your Gmail account first");
     };
     await* LibGmail.sendEmail(
-      gmailConfig.clientId, gmailConfig.clientSecret, connection, caller,
-      gmailConnections, to, subject, body,
+      gmailConfig.clientId,
+      gmailConfig.clientSecret,
+      connection,
+      caller,
+      gmailConnections,
+      to,
+      subject,
+      body,
     );
   };
 
@@ -396,7 +410,9 @@ module {
   };
 
   public func startAuthorize(
-    clientId : Text, redirectUri : Text, caller : Principal,
+    clientId : Text,
+    redirectUri : Text,
+    caller : Principal,
     pendingFlows : Map.Map<Principal, PendingOAuth>,
   ) : async* Text {
     let codeVerifier = await OAuth.generateCodeVerifier();
@@ -410,8 +426,11 @@ module {
   };
 
   public func exchangeCode(
-    clientId : Text, clientSecret : Text, code : Text,
-    redirectUri : Text, codeVerifier : Text,
+    clientId : Text,
+    clientSecret : Text,
+    code : Text,
+    redirectUri : Text,
+    codeVerifier : Text,
   ) : async* GmailConnection {
     let tokens = await OAuth.exchangeAuthorizationCode(clientId, clientSecret, code, redirectUri, codeVerifier);
     let accessToken = accessTokenOf(tokens, "Token exchange");
@@ -428,9 +447,14 @@ module {
   /// Send an email. On HTTP 401, refreshes the access token once and retries.
   /// Persists the refreshed token into `gmailConnections` keyed by `caller`.
   public func sendEmail(
-    clientId : Text, clientSecret : Text, connection : GmailConnection,
-    caller : Principal, gmailConnections : Map.Map<Principal, GmailConnection>,
-    to : Text, subject : Text, body : Text,
+    clientId : Text,
+    clientSecret : Text,
+    connection : GmailConnection,
+    caller : Principal,
+    gmailConnections : Map.Map<Principal, GmailConnection>,
+    to : Text,
+    subject : Text,
+    body : Text,
   ) : async* Text {
     let rawMessage = "To: " # to # "\r\n"
       # "Subject: " # subject # "\r\n"
@@ -438,7 +462,20 @@ module {
     let message : Message = { Message.init {} with raw = ?rawMessage.encodeUtf8() };
     try {
       messageIdOf(await* gmail_users_messages_send(
-        configForToken(connection.accessToken), "me", ?#_1_, "", ?#json, "", "", "", "", true, "", "", "", message,
+        configForToken(connection.accessToken),
+        "me",
+        ?#_1_,
+        "",
+        ?#json,
+        "",
+        "",
+        "",
+        "",
+        true,
+        "",
+        "",
+        "",
+        message,
       ));
     } catch e {
       let msg = e.message();
@@ -451,7 +488,20 @@ module {
         connection with accessToken = newToken;
       });
       messageIdOf(await* gmail_users_messages_send(
-        configForToken(newToken), "me", ?#_1_, "", ?#json, "", "", "", "", true, "", "", "", message,
+        configForToken(newToken),
+        "me",
+        ?#_1_,
+        "",
+        ?#json,
+        "",
+        "",
+        "",
+        "",
+        true,
+        "",
+        "",
+        "",
+        message,
       ));
     };
   };
