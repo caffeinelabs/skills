@@ -1,7 +1,7 @@
 ---
 name: extension-http-outcalls
 description: HTTP outcalls performed by the backend canister (not in the frontend), including mandatory local verification of external REST API requests.
-version: 0.1.9
+version: 0.1.10
 compatibility:
   mops:
     caffeineai-http-outcalls: "~0.1.4"
@@ -139,7 +139,7 @@ import Text "mo:core/Text";
 import OutCall "mo:caffeineai-http-outcalls/outcall";
 
 actor {
-  public query func transform(input: OutCall.TransformationInput) : async OutCall.TransformationOutput {
+  public query func transform(input : OutCall.TransformationInput) : async OutCall.TransformationOutput {
     OutCall.transform(input);
   };
 
@@ -154,7 +154,7 @@ actor {
     });
   };
 
-  func makeGetOutcall(url: Text) : async Text {
+  func makeGetOutcall(url : Text) : async Text {
     await OutCall.httpGetRequest(url, [], transform);
   };
 };
