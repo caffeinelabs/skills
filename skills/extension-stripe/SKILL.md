@@ -1,7 +1,10 @@
 ---
 name: extension-stripe
-description: Payment support based on Stripe, supporting credit cards and debit cards
-version: 1.0.1
+description: >-
+  Payment support based on Stripe, supporting credit cards and debit cards.
+  Checkout and session status use HTTP outcalls. For inbound Stripe webhooks
+  (POST to the canister), also load extension-http-endpoints.
+version: 1.0.2
 compatibility:
   mops:
     caffeineai-stripe: "~1.0.0"
@@ -16,6 +19,8 @@ Stripe payment extension for [Caffeine AI](https://caffeine.ai?utm_source=caffei
 ## Overview
 
 This skill adds Stripe payment support using HTTP outcalls. The `MixinStripe` mixin provides configuration, checkout session creation, payment status checks, and the HTTP outcall `transform` callback. The frontend handles checkout flow and payment result pages.
+
+Inbound Stripe webhooks (an external `POST` to the canister) are not covered here — use [`extension-http-endpoints`](../extension-http-endpoints/SKILL.md) for the `http_request` / `http_request_update` handlers, then verify Stripe signatures in the update path.
 
 Prerequisite: You must follow [extension-authorization](../extension-authorization/SKILL.md) first, as this integration depends on it.
 
