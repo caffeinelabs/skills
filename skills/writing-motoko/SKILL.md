@@ -3,7 +3,7 @@ name: writing-motoko
 description: >-
   Motoko language reference, architecture patterns, and dependency tooling
   (mops). Load when writing or modifying backend .mo files.
-version: 0.2.10
+version: 0.2.11
 compatibility:
   toolchain:
     moc: ">=1.11.2"
@@ -23,7 +23,7 @@ Motoko is an under-represented language for the Internet Computer Protocol, so y
 
 - `stable` keyword -- Not needed in enhanced orthogonal persistence mode
 - `mo:base` library -- Deprecated. Use `mo:core` instead
-- `.vals()` -- The deprecated `mo:base` iterator name. Always `.values()`. On arrays `.vals()` still compiles, so nothing flags it; on core collections it fails with M0072
+- `.vals()` -- The deprecated `mo:base` iterator name. Always `.values()`. On arrays `.vals()` still compiles with deprecation warning M0269 (from moc 1.16); on core collections it fails with M0072
 - `system func preupgrade/postupgrade` -- Not needed with enhanced orthogonal persistence
 - `(with migration = ...)` actor-attached migration syntax -- Use the mops-managed migration chain in `migrations/`
 - Inline initializers on stable actor fields -- Initial values come from the migration chain (see `migrating-motoko-actors`)
@@ -32,14 +32,14 @@ Motoko is an under-represented language for the Internet Computer Protocol, so y
 - Single-file monolithic actors -- Use the multi-file architecture: types.mo, lib/, mixins/, main.mo
 - Stable state in a `mixin` block -- a bare `let`/`var` is silently stable and traps at runtime (`IC0503`). Pass state in as a parameter and keep constants in a module
 - Any Motoko reserved keyword as a declared identifier -- Before writing, check parameter, variable, function, type, field, and label names against the full list in [references/reserved-keywords.md](references/reserved-keywords.md). `query` and `label` are reserved and must never be identifiers. Rename a colliding domain term instead of relying on its position or inferred meaning.
-- Type annotations on an inline `func` passed as a **call argument** -- write `xs.filter(func x = x > 1)`, not `xs.filter(func(x : Nat) : Bool { x > 1 })`. The call supplies the types. If a generic cannot be inferred, instantiate the call (`map<In, Out>`), never the lambda. This applies only in argument position — named declarations still carry full signatures. **One exception:** keep `: async ()` on an async callback (`func() : async () { ... }`) — it is what makes the body async, and removing it fails with M0096
+- Type annotations on an inline `func` passed as a **call argument** -- write `xs.filter(func x = x > 1)`, not `xs.filter(func(x : Nat) : Bool { x > 1 })`. The call supplies the types. If a generic cannot be inferred, instantiate the call (`map<In, Out>`), never the lambda. This applies only in argument position — named declarations still carry full signatures. **One exception:** keep `: async ()` on an async callback (`func() : async () { ... }`) — on moc 1 it is what makes the body async, and removing it fails to compile
 
 **ALWAYS use:**
 
 - `mo:core` library version 2.6.0+ (compiler `moc` 1.11.2+)
 - Contextual dot notation -- `list.add(item)`, `map.get(key)`
 - An import of the key type's module in every file that operates on a `Map`/`Set` -- the implicit `compare` is resolved from the imported module (`import Nat "mo:core/Nat"` for a `Map.Map<Nat, _>`), never from the type alone. A missing key-module import is the usual cause of M0230; a record or variant key needs its own module with a `compare` (see Implicit Parameters)
-- Null coalesce `??` for unwrap-or-default and unwrap-or-trap (`opt ?? default`, `opt ?? Runtime.trap(...)`) -- prefer over a two-arm `switch` on `?T` (requires `moc >= 1.7.0`)
+- Null coalesce `??`, spaced on both sides, for unwrap-or-default and unwrap-or-trap (`opt ?? default`, `opt ?? Runtime.trap(...)`) -- prefer over a two-arm `switch` on `?T` (requires `moc >= 1.7.0`)
 - Plain `break` / `continue` to exit or skip a loop iteration -- they work inside `for`, `while`, and `loop` just like in other languages
 - Enhanced orthogonal persistence (state persists without `stable` keyword)
 - Principled Motoko Architecture -- `types.mo` (types), `lib/` (domain logic), `mixins/` (API endpoints), `main.mo` (composition root, NO public methods)
@@ -71,6 +71,18 @@ All configuration is in `mops.toml`. Only consult https://docs.mops.one/ if you 
 - **`mops build`** (slow — run ONCE at the end) — Produces the compiled `.wasm` and the candid interface file `.did`. Use only as final verification after `mops check --fix` passes; never put `mops build` inside the fix loop. The `.did` file drives generated client bindings — never edit it manually.
 
 If `mops check --fix` fails: read stderr first. Do NOT call `moc` directly. Fix `.mo` source and rerun the check.
+
+### moc 1 and moc 2
+
+`[toolchain] moc` pins either major, and every example in this skill compiles with both. Keep to these forms whichever one the project pins:
+
+- Parenthesized heads: `if (c)`, `while (c)`, `for (x in xs.values())`, `switch (e)`. A bare branch after the condition is separated by a space: `if (c) -1 else 1`.
+- Parenthesized `case` patterns, every case ending in `;`: `case (#tag(p)) { ... };`.
+- A space on both sides of `??`.
+- A block body for an async function, never `= async { ... }`.
+- A bare `actor`, with no `persistent` or `stable` keyword.
+
+moc 2 accepts shorter forms that moc 1 rejects — unparenthesized heads and patterns, cases without `;`, unannotated async callbacks — so do not write them. It also turns moc 1 warnings into errors (M0145, M0215, M0222, M0242, among others): treat every warning as an error.
 
 ## Modern Motoko Features
 
@@ -238,8 +250,8 @@ switch (users.get(caller)) {
 };
 
 switch (result) {
-  case (#ok value) { value };
-  case (#err e) { Runtime.trap(e) };
+  case (#ok(value)) { value };
+  case (#err(e)) { Runtime.trap(e) };
 };
 ```
 
@@ -466,7 +478,7 @@ photos.map<PhotoInternal, Photo>(func p = { ... });       // when M0098 demands 
 
 Add `<In, Out>` only when the compiler actually reports M0098; adding it when inference already succeeded is M0223 (redundant type instantiation).
 
-The one exception is a callback that must return `async`. There `: async ()` is load-bearing — it is what makes the body async, and there is no unannotated form (`func() = async { ... }` does not work either). Without it the lambda infers `() -> ()` and the call fails with M0096:
+The one exception is a callback that must return `async`. There `: async ()` is load-bearing on moc 1 — it is what makes the body async, and there is no unannotated form (`func() = async { ... }` does not work either). Without it moc 1 infers `() -> ()` and the call fails with M0096. moc 2 infers the async callback, but keep the annotation so the code builds on both:
 
 ```motoko
 Timer.recurringTimer<system>(#seconds(3600), func() : async () { cleanup() });
@@ -638,11 +650,11 @@ for (tag in tags.values()) {
 let matches = titleMatches or tagMatches;
 ```
 
-Every `switch` case must be separated with a semicolon before the next `case`, even in compact one-line switches:
+Every `switch` case must be separated with a semicolon before the next `case`, even in compact one-line switches. moc 2 makes the `;` optional, but moc 1 rejects a case without it:
 
 ```motoko
 switch (pricing) { case (#free) { true }; case (#paid(_)) { false }; } // CORRECT
-switch (pricing) { case (#free) { true } case (#paid(_)) { false } } // WRONG
+switch (pricing) { case (#free) { true } case (#paid(_)) { false } } // WRONG: moc 1 syntax error
 ```
 
 ### Declaration Terminators
@@ -760,7 +772,7 @@ module {
 
 ### Record Spread with `with`
 
-**RULE:** Use record spread for immutable records. Never use record spread on a record type that contains `var` fields; Motoko rejects that with `base has non-aliasable var field`.
+**RULE:** Use record spread for immutable records. Never use record spread on a record type that contains `var` fields: moc 1 rejects it with `base has non-aliasable var field` (M0179), and moc 2 copies the `var` fields into new cells, so mutating the result never reaches the original.
 
 ```motoko
 { self with newField = "" }; // CORRECT for immutable records
@@ -875,13 +887,21 @@ Attaching cycles to an inter-canister call (`await (with cycles = ...) <call>`) 
 | M0038 misplaced await + M0188 send capability (paired) | `await <call>` inside a plain `query func` | Make it a `composite query func` (queries) or a plain update func (updates) |
 | `M0187` send capability in a composite query           | calling/awaiting an update from a `composite query func` | Make it a plain update func                |
 | `M0186` composite send capability required             | calling a `composite query func` from a non-composite func | Only ingress calls initiate composite queries; call it from the frontend, or make the callee a plain `query` |
-| `unexpected token '<name>'` at an identifier declaration | Reserved word used as an identifier | Rename it consistently across its contract and callers; see [references/reserved-keywords.md](references/reserved-keywords.md) |
+| `unexpected token '<name>'` (`M0274` on moc 2) at an identifier declaration | Reserved word used as an identifier | Rename it consistently across its contract and callers; see [references/reserved-keywords.md](references/reserved-keywords.md) |
 | `unexpected token 'public'` after a function           | Missing declaration `;`      | End function declarations with `};`         |
-| `M0219` implicitly transient                           | Actor not persistent         | Write `persistent actor`; see [references/project-setup.md](references/project-setup.md) |
-| `M0220` actor should be declared `persistent`          | Actor not persistent         | Write `persistent actor`; see [references/project-setup.md](references/project-setup.md) |
+| `M0219` / `M0220` actor should be declared `persistent` | moc 1 without `--default-persistent-actors` | See [references/project-setup.md](references/project-setup.md) |
+| `M0217` redundant `persistent` keyword                 | Actors are already persistent (moc 2, or the moc 1 flag) | Remove `persistent`                  |
 | `M0218` redundant `stable` keyword                     | `stable` under EOP           | Remove `stable` — a plain `let`/`var` is already stable |
 | `M0064` misplaced `'!'`                                | `!` outside an option block  | Wrap in `do ? { ... }`                      |
-| `M0145` `does not cover value`                         | Non-exhaustive switch        | Add the missing cases or a `case _`         |
+| `M0145` `does not cover value`                         | Non-exhaustive `switch` or `let` pattern | Add the missing cases or a `case _`; `let ... else { ... }` for a `let` |
+| `M0242` implicit oneway function                       | `public func` without a return type | `: async ()`, or `: ()` for an intended oneway |
+| `M0215` field provided but not expected                | A record field the expected type drops, usually a typo | Fix the field name, or drop the field |
+| `M0277` redundant `async`                              | `= async { ... }` function body (moc 2) | Write the body as a block: `func f() : async T { ... }` |
+| `M0273` braces enclose a record literal                | A block after `??` (moc 2)   | `opt ?? do { ... }`                         |
+| `M0275` expected a block                               | A branch glued to its condition (moc 2) | `if (c) -1 else 1` — space before a bare branch, or brace the branches |
+| `M0272` record field in block position                 | A record literal as a `case` or function body | Nest it as the block's result: `case null { { x = 0 } };` |
+| `M0116` pattern cannot consume / `M0050` literal does not have expected type | A variant tag or signed literal the scrutinee's type cannot hold | Fix the tag; to match a wider type, annotate the scrutinee: `switch (n : Int)` |
+| `M0074` / `M0081` / `M0101` inconsistent types         | Array elements or branches with nothing in common | Make them agree, or annotate `: Any`  |
 | `M0060` operator not defined for `{#tag : T}`          | Unparenthesized variant tag  | `#tag(x)`, never `#tag x`                   |
 | `M0060` operator not defined, on `==`                  | `==` on a record with a `var` field (not shared) | Use an `equal` function instead |
 | `M0230` cannot determine implicit argument `compare`   | Key type's module not in scope | Usually a missing import: `import` the key type's module (`Nat`, `Text`, …) in that file. For a record/variant key, add `compare` to the type's own module |
