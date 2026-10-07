@@ -4,7 +4,7 @@ description: >-
   Motoko actor migration and schema evolution with the enhanced migration
   chain (migrations/). Load when upgrading canisters or changing actor
   state shape.
-version: 0.2.6
+version: 0.2.7
 compatibility:
   toolchain:
     moc: ">=1.11.2"
@@ -230,7 +230,6 @@ module {
     { var newState = old.state.toFloat() };
   };
 };
-
 ```
 
 ### Drop a field intentionally
