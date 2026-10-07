@@ -1,7 +1,7 @@
 ---
 name: extension-object-storage
 description: General file/object storage, such as for images, videos, files, documents and other bulk data. Perfect fit for image galleries, video galleries, and other file or object management. Supports large files beyond IC limit, with browser-cached HTTP URL access.
-version: 1.1.0
+version: 1.1.1
 compatibility:
   mops:
     caffeineai-object-storage: "~1.1.0"
@@ -59,13 +59,13 @@ import Storage "mo:caffeineai-object-storage/Storage";
 actor {
   include MixinObjectStorage();
 
-   // Track file references
+  // Track file references
   type Data = {
-        id: Text;
-        blob: Storage.ExternalBlob;
-        name: Text;
-        // other metadata
-    };
+    id : Text;
+    blob : Storage.ExternalBlob;
+    name : Text;
+    // other metadata
+  };
 };
 ```
 
@@ -74,6 +74,7 @@ actor {
 NEVER create your own implementation of `_immutableObjectStorageCreateCertificate` or any other `_immutableObjectStorage*` method. These are platform-reserved method names provided exclusively by the `MixinObjectStorage` mixin from the mops package. Hand-written implementations produce wrong return types and cause `403 Forbidden: Invalid payload` at upload time.
 
 Wrong — inline stub in main.mo:
+<!-- motoko-check:skip -->
 ```motoko filepath=wrong.mo
 // WRONG: Do not write this yourself
 public shared func _immutableObjectStorageCreateCertificate(fileHash : Text) : async Blob {
