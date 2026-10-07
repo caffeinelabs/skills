@@ -16,7 +16,7 @@ description: >-
   Twilio, a Messaging Service, A2P 10DLC, toll-free verification, short codes, or
   an alphanumeric sender — and BEFORE writing any code that touches a Twilio
   endpoint.
-version: 0.1.1
+version: 0.1.2
 caffeineai-subscription: [none]
 compatibility:
   mops:
@@ -199,10 +199,10 @@ actor {
 
   // Admin-held Twilio credentials — never returned to the frontend.
   let twilioConfig : {
-    var accountSid : Text;   // AC… — also a positional arg on every v2010 call
-    var keySid : Text;       // SK… (or the Account SID again, in dev)
-    var keySecret : Text;    // the API-key secret (or the Auth Token, in dev)
-    var fromNumber : Text;   // E.164, e.g. "+15551234567"
+    var accountSid : Text; // AC… — also a positional arg on every v2010 call
+    var keySid : Text; // SK… (or the Account SID again, in dev)
+    var keySecret : Text; // the API-key secret (or the Auth Token, in dev)
+    var fromNumber : Text; // E.164, e.g. "+15551234567"
   };
   include MixinTwilioConfig(accessControlState, twilioConfig);
   include MixinTwilioMessaging(twilioConfig);
@@ -326,28 +326,31 @@ mixin (
     let msg = await* createMessage(
       twilioClientConfig(),
       twilioConfig.accountSid, // accountSid — in the URL path, not the credential
-      to,                      // to (E.164)
-      "", "",                  // statusCallback, applicationSid
-      0.0,                     // maxPrice (0 = no cap)
-      false,                   // provideFeedback
-      0, 0,                    // attempt, validityPeriod
-      false,                   // forceDelivery
-      null, null,              // contentRetention, addressRetention (omitted)
-      false,                   // smartEncoded
-      [],                      // persistentAction
-      null,                    // trafficType (omitted)
-      false,                   // shortenUrls
-      null,                    // scheduleType — MUST be null for an immediate send
-      "",                      // sendAt (scheduled sends only)
-      false,                   // sendAsMms
-      "",                      // contentVariables
-      null,                    // riskCheck (omitted)
+      to, // to (E.164)
+      "", // statusCallback
+      "", // applicationSid
+      0.0, // maxPrice (0 = no cap)
+      false, // provideFeedback
+      0, // attempt
+      0, // validityPeriod
+      false, // forceDelivery
+      null, // contentRetention (omitted)
+      null, // addressRetention (omitted)
+      false, // smartEncoded
+      [], // persistentAction
+      null, // trafficType (omitted)
+      false, // shortenUrls
+      null, // scheduleType — MUST be null for an immediate send
+      "", // sendAt (scheduled sends only)
+      false, // sendAsMms
+      "", // contentVariables
+      null, // riskCheck (omitted)
       twilioConfig.fromNumber, // from  (use EITHER from OR messagingServiceSid)
-      "",                      // fallbackFrom
-      "",                      // messagingServiceSid
-      body,                    // body
-      [],                      // mediaUrl (set for MMS)
-      "",                      // contentSid (Content API templates)
+      "", // fallbackFrom
+      "", // messagingServiceSid
+      body, // body
+      [], // mediaUrl (set for MMS)
+      "", // contentSid (Content API templates)
     );
     // `sid` is optional in the generated model because the spec marks it
     // nullable, though Twilio always sets it on a successful create. Fall back
