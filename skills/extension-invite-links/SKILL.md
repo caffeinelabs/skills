@@ -1,7 +1,7 @@
 ---
 name: extension-invite-links
 description: Requests invite-link / RSVP based access where guests can submit responses without login while admin can view responses with login.
-version: 1.0.2
+version: 1.0.3
 compatibility:
   mops:
     caffeineai-invite-links: "~1.0.0"
@@ -71,12 +71,12 @@ import MixinInviteLinks "mo:caffeineai-invite-links/MixinInviteLinks";
 import InviteLinksModule "mo:caffeineai-invite-links/invite-links-module";
 
 actor {
-    let accessControlState : AccessControl.AccessControlState;
-    include MixinAuthorization(accessControlState, null);
-    let inviteState : InviteLinksModule.InviteLinksSystemState;
-    include MixinInviteLinks(accessControlState, inviteState);
+  let accessControlState : AccessControl.AccessControlState;
+  include MixinAuthorization(accessControlState, null);
+  let inviteState : InviteLinksModule.InviteLinksSystemState;
+  include MixinInviteLinks(accessControlState, inviteState);
 
-    // Write additional application-specific code here.
+  // Write additional application-specific code here.
 };
 ```
 
@@ -87,17 +87,17 @@ import AccessControl "mo:caffeineai-authorization/access-control";
 import InviteLinksModule "mo:caffeineai-invite-links/invite-links-module";
 
 module {
-    type NewActor = {
-        accessControlState : AccessControl.AccessControlState;
-        inviteState : InviteLinksModule.InviteLinksSystemState;
-    };
+  type NewActor = {
+    accessControlState : AccessControl.AccessControlState;
+    inviteState : InviteLinksModule.InviteLinksSystemState;
+  };
 
-    public func migration(_old : {}) : NewActor {
-        {
-            accessControlState = AccessControl.initState();
-            inviteState = InviteLinksModule.initState();
-        };
+  public func migration(_old : {}) : NewActor {
+    {
+      accessControlState = AccessControl.initState();
+      inviteState = InviteLinksModule.initState();
     };
+  };
 };
 ```
 
