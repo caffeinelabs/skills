@@ -11,7 +11,7 @@ description: >-
   tweeting, live-tweeting, posting-to-X, posting-a-status,
   sharing-to-Twitter, or any equivalent phrasing — and BEFORE writing
   any code that touches `api.x.com`.
-version: 0.1.2
+version: 0.1.3
 compatibility:
   mops:
     x-client: "~0.3.0"
@@ -414,7 +414,9 @@ module {
     //              &state={fresh-csrf-token persisted alongside the verifier}
     //              &code_challenge={challenge}
     //              &code_challenge_method=S256
-    let _ = clientId; let _ = redirectUri; let _ = caller;
+    let _ = clientId;
+    let _ = redirectUri;
+    let _ = caller;
     Runtime.trap("startAuthorize: implement OAuth 2.0 PKCE handshake (see comment block)");
   };
 
@@ -428,7 +430,10 @@ module {
     //       & code_verifier={the verifier persisted in startAuthorize for `caller`}
     // Parse the JSON body, return XAuth { access_token; refresh_token;
     // expires_at = Time.now() + expires_in*1_000_000_000; scope }.
-    let _ = clientId; let _ = code; let _ = redirectUri; let _ = caller;
+    let _ = clientId;
+    let _ = code;
+    let _ = redirectUri;
+    let _ = caller;
     Runtime.trap("exchangeCode: implement OAuth 2.0 token exchange (see comment block)");
   };
 
