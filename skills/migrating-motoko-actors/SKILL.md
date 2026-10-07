@@ -4,7 +4,7 @@ description: >-
   Motoko actor migration and schema evolution with the enhanced migration
   chain (migrations/). Load when upgrading canisters or changing actor
   state shape.
-version: 0.2.7
+version: 0.2.8
 compatibility:
   toolchain:
     moc: ">=1.11.2"
@@ -110,7 +110,7 @@ module {
 
 Stable vars are declared with types, no initial values. Transient let/var fields use initializers as usual.
 
-> This no-initializer rule applies to enhanced-migration projects (this skill's subject), where the migration chain owns initial values. In a plain project without the enhanced-migration chain, stable fields are initialized with inline values in the actor body as usual (e.g. `persistent actor { let m = Map.empty<Nat, Text>(); }`).
+> This no-initializer rule applies to enhanced-migration projects (this skill's subject), where the migration chain owns initial values. In a plain project without the enhanced-migration chain, stable fields are initialized with inline values in the actor body as usual (e.g. `actor { let m = Map.empty<Nat, Text>(); }`).
 
 ```motoko
 actor {
