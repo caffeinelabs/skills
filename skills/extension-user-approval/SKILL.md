@@ -1,7 +1,7 @@
 ---
 name: extension-user-approval
 description: Approval-based user management.
-version: 1.0.2
+version: 1.0.3
 compatibility:
   mops:
     caffeineai-user-approval: "~1.0.0"
@@ -72,17 +72,17 @@ import UserApproval "mo:caffeineai-user-approval/approval";
 import Runtime "mo:core/Runtime";
 
 actor {
-    let accessControlState : AccessControl.AccessControlState;
-    include MixinAuthorization(accessControlState, null);
-    let approvalState : UserApproval.UserApprovalState;
-    include MixinUserApproval(accessControlState, approvalState);
+  let accessControlState : AccessControl.AccessControlState;
+  include MixinAuthorization(accessControlState, null);
+  let approvalState : UserApproval.UserApprovalState;
+  include MixinUserApproval(accessControlState, approvalState);
 
-    // Example custom endpoint with an approval guard:
-    // public shared ({ caller }) func protectedFeature() : async () {
-    //     if (not (UserApproval.isApproved(approvalState, caller) or AccessControl.hasPermission(accessControlState, caller, #admin))) {
-    //         Runtime.trap("Unauthorized: Only approved users can perform this action");
-    //     };
-    // };
+  // Example custom endpoint with an approval guard:
+  // public shared ({ caller }) func protectedFeature() : async () {
+  //     if (not (UserApproval.isApproved(approvalState, caller) or AccessControl.hasPermission(accessControlState, caller, #admin))) {
+  //         Runtime.trap("Unauthorized: Only approved users can perform this action");
+  //     };
+  // };
 };
 ```
 
@@ -93,18 +93,18 @@ import AccessControl "mo:caffeineai-authorization/access-control";
 import UserApproval "mo:caffeineai-user-approval/approval";
 
 module {
-    type NewActor = {
-        accessControlState : AccessControl.AccessControlState;
-        approvalState : UserApproval.UserApprovalState;
-    };
+  type NewActor = {
+    accessControlState : AccessControl.AccessControlState;
+    approvalState : UserApproval.UserApprovalState;
+  };
 
-    public func migration(_old : {}) : NewActor {
-        let accessControlState = AccessControl.initState();
-        {
-            accessControlState;
-            approvalState = UserApproval.initState(accessControlState);
-        };
+  public func migration(_old : {}) : NewActor {
+    let accessControlState = AccessControl.initState();
+    {
+      accessControlState;
+      approvalState = UserApproval.initState(accessControlState);
     };
+  };
 };
 ```
 
