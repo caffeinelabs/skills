@@ -6,7 +6,7 @@ description: >-
   against the project's `backend` canister: read the schema, form JSON
   queries (filter / order / paginate / aggregate / dotted-path edges),
   and parse the Candid result rows.
-version: 0.7.1
+version: 0.8.0
 compatibility:
   mops: {}
   npm: {}
@@ -93,6 +93,7 @@ Read it like this:
     Float equality is bitwise IEEE-754; use a range (`ge` + `le`) for
     decimals like `0.42` with no exact binary form.
   - `"Bool"` → `true` / `false`
+  - `"Null"` → every sampled value was `null`; the real type is unknown
   - `"Text"` → JSON string. `Principal` fields report as `"Text"`
     (canonical textual form) — filter them with a string value.
 
@@ -159,14 +160,15 @@ icp canister call backend execute '("{\"start\":\"customer\",\"where\":{\"iconta
 
 | JSON | Maps to | Use for fields with typeName |
 |---|---|---|
-| `null` | `null_` | any nullable field (rare in `where`) |
+| `null` | `null_` | any field — `eq null` finds rows where an optional field is empty, `ne null` where it is set |
 | `true` / `false` | `bool` | `"Bool"` |
 | `0`, `1`, `42` | `nat` | `"Nat"` (also matches `"Float"` via numeric bridging) |
 | `-1`, `-42` | `int` | `"Int"` (also matches `"Float"` via numeric bridging) |
 | `0.5`, `-3.14`, `1.0e2` | `float` | `"Float"` |
 | `"foo"` | `text` | `"Text"` |
 
-A row whose field is `null_` fails every relation **except** `ne`. Filter
+A row whose field is `null_` fails every relation **except** `ne` and
+`eq null`. Filter
 by relationship with `field` = `"<edge>"` and `value` = the target
 entity's **primary-key value**; or read *through* an edge with
 `"<edge>.<targetField>"` (§4.1).
