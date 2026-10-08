@@ -2,6 +2,7 @@
 /// text-search variants; remaining convenience predicates (`#between`,
 /// `#isNull`, ...) compose from these.
 
+import Array "mo:core/Array";
 import Bool  "mo:core/Bool";
 import Float "mo:core/Float";
 import Int   "mo:core/Int";
@@ -80,9 +81,180 @@ module {
     }
   };
 
+  /// `eval(p, _)` compiled once: leaves are specialised to their operand and
+  /// read flat rows by slot instead of by name. Answers exactly as `eval` does.
+  /// Use one compiled predicate per row stream: slots are resolved from the
+  /// first flat row and reused, per the `Row` contract that an entity's flat
+  /// rows share one resolver.
+  public func compile(p : Predicate) : Row -> Bool =
+    switch p {
+      case (#eq (path, v)) {
+        let rd = reader(path);
+        let ok = eqTo(v);
+        func r = switch (rd(r)) { case (?a) ok(a); case null false };
+      };
+      case (#ne (path, v)) {
+        let rd = reader(path);
+        let ok = eqTo(v);
+        func r = switch (rd(r)) { case (?a) not ok(a); case null true };
+      };
+      case (#lt (path, v)) { orderedLeaf(path, v, true, false, false) };
+      case (#le (path, v)) { orderedLeaf(path, v, true, true, false) };
+      case (#gt (path, v)) { orderedLeaf(path, v, false, false, true) };
+      case (#ge (path, v)) { orderedLeaf(path, v, false, true, true) };
+      case (#in_ (path, vs)) {
+        let rd = reader(path);
+        let oks = vs.map<Value, Value -> Bool>(eqTo);
+        func r = switch (rd(r)) {
+          case (?a) { for (ok in oks.vals()) { if (ok(a)) return true }; false };
+          case null false;
+        };
+      };
+      case (#contains (path, v)) {
+        textLeaf(path, v, func n { let pat = #text n; func h = h.contains(pat) })
+      };
+      case (#icontains (path, v)) {
+        textLeaf(path, v, func n { let pat = #text(n.toLower()); func h = h.toLower().contains(pat) })
+      };
+      case (#startsWith (path, v)) {
+        textLeaf(path, v, func n { let pat = #text n; func h = h.startsWith(pat) })
+      };
+      case (#endsWith (path, v)) {
+        textLeaf(path, v, func n { let pat = #text n; func h = h.endsWith(pat) })
+      };
+      case (#and_ ps) {
+        let cs = ps.map<Predicate, Row -> Bool>(compile);
+        func r { for (c in cs.vals()) { if (not c(r)) return false }; true };
+      };
+      case (#or_ ps) {
+        let cs = ps.map<Predicate, Row -> Bool>(compile);
+        func r { for (c in cs.vals()) { if (c(r)) return true }; false };
+      };
+      case (#not_ q) { let c = compile(q); func r = not c(r) };
+    };
+
+  func reader(path : Path) : Row -> ?Value {
+    if (path.size() != 1) return func r = r.get(path);
+    let name = path[0];
+    var resolved = false;
+    var at : ?Nat = null;
+    func r = switch (r.slot) {
+      case null r.get(path);
+      case (?resolve) {
+        if (not resolved) { at := resolve(name); resolved := true };
+        // An unresolved name (absent or masked) still goes through `get`.
+        switch at { case (?i) ?r.values[i]; case null r.get(path) };
+      };
+    };
+  };
+
+  // `compare(_, v) == #equal`, specialised to the operand.
+  func eqTo(v : Value) : Value -> Bool =
+    switch v {
+      case (#null_)  func a = switch a { case (#null_) true; case _ false };
+      case (#bool b) func a = switch a { case (#bool x) x == b; case _ false };
+      case (#text t) func a = switch a { case (#text x) x == t; case _ false };
+      case (#nat n)  eqToInt(n, v);
+      case (#int n)  eqToInt(n, v);
+      case (#float y) {
+        let cmp = cmpToFloat(y, v);
+        func a = switch a { case (#nat _ or #int _ or #float _) cmp(a) == #equal; case _ false };
+      };
+    };
+
+  func eqToInt(n : Int, v : Value) : Value -> Bool {
+    let cmp = cmpToInt(n, v);
+    func a = switch a {
+      case (#nat x) x == n;
+      case (#int x) x == n;
+      case (#float _) cmp(a) == #equal;
+      case _ false;
+    };
+  };
+
+  // `compare(_, v)`, specialised to the operand.
+  func cmpTo(v : Value) : Value -> Order.Order =
+    switch v {
+      case (#nat n)   cmpToInt(n, v);
+      case (#int n)   cmpToInt(n, v);
+      case (#float y) cmpToFloat(y, v);
+      case (#text t)  func a = switch a { case (#text x) x.compare(t); case _ compare(a, v) };
+      case _          func a = compare(a, v);
+    };
+
+  // Integers up to 2^53 convert to Float exactly, so a float row can compare
+  // against such an operand as a float; past it only `cmpFloatInt` is exact.
+  let EXACT_INT : Nat = 9_007_199_254_740_992;
+
+  func cmpToInt(n : Int, v : Value) : Value -> Order.Order {
+    if (Int.abs(n) > EXACT_INT) {
+      return func a = switch a {
+        case (#nat x) Int.compare(x, n);
+        case (#int x) Int.compare(x, n);
+        case _ compare(a, v);
+      };
+    };
+    let f = n.toFloat();
+    func a = switch a {
+      case (#nat x) Int.compare(x, n);
+      case (#int x) Int.compare(x, n);
+      case (#float x) Float.compare(x, f);
+      case _ compare(a, v);
+    };
+  };
+
+  // `compare(_, #float y)`; the integer cases are `cmpFloatInt` with `y`'s floor taken once.
+  func cmpToFloat(y : Float, v : Value) : Value -> Order.Order {
+    if (Float.isNaN(y - y)) {
+      return func a = switch a { case (#float x) Float.compare(x, y); case _ compare(a, v) };
+    };
+    let fl = Float.floor(y);
+    let fi = fl.toInt();
+    if (y == fl) {
+      func a = switch a {
+        case (#float x) Float.compare(x, y);
+        case (#nat x) Int.compare(x, fi);
+        case (#int x) Int.compare(x, fi);
+        case _ compare(a, v);
+      };
+    } else {
+      func a = switch a {
+        case (#float x) Float.compare(x, y);
+        case (#nat x) if (x <= fi) #less else #greater;
+        case (#int x) if (x <= fi) #less else #greater;
+        case _ compare(a, v);
+      };
+    };
+  };
+
+  // Compiled `ordered`: the flags say which orders satisfy the relation.
+  func orderedLeaf(path : Path, v : Value, onLess : Bool, onEqual : Bool, onGreater : Bool) : Row -> Bool {
+    let rd = reader(path);
+    switch v {
+      // Still reads the row, so a trapping traversal traps as it does in `eval`.
+      case (#null_) { func r { ignore rd(r); false } };
+      case _ {
+        let cmp = cmpTo(v);
+        func r = switch (rd(r)) {
+          case (null or ?#null_) false;
+          case (?a) switch (cmp(a)) { case (#less) onLess; case (#equal) onEqual; case (#greater) onGreater };
+        };
+      };
+    };
+  };
+
+  // Compiled `textTest`; `rel` receives the needle once and returns the per-row test.
+  func textLeaf(path : Path, v : Value, rel : Text -> (Text -> Bool)) : Row -> Bool {
+    let rd = reader(path);
+    switch v {
+      case (#text n) { let ok = rel(n); func r = switch (rd(r)) { case (?#text h) ok(h); case _ false } };
+      case _ { func r { ignore rd(r); false } }; // reads, as in `orderedLeaf`
+    };
+  };
+
   /// True when `actual` is present and `ok` accepts it; `onNull` is the
-  /// answer when the field is missing. Centralises the null policy so
-  /// strict 3VL is a single-flag change at every call site.
+  /// answer when the field is missing. `eval`'s null policy lives here;
+  /// `compile`'s leaves mirror it, so a policy change must edit both.
   func test(actual : ?Value, onNull : Bool, ok : Value -> Bool) : Bool =
     switch actual { case null { onNull }; case (?a) { ok(a) } };
 

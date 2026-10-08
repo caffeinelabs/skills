@@ -620,8 +620,9 @@ module {
         };
         // Primary keys of the targets the (rewritten) constraint admits.
         let pks = List.empty<Value>();
+        let matches = Predicate.compile(targetPred);
         func admit(trow : Row) {
-          if (Predicate.eval(targetPred, trow)) {
+          if (matches(trow)) {
             switch (trow.get([target.primaryKey])) { case (?pk) { pks.add(pk) }; case null {} };
           };
         };
@@ -650,7 +651,7 @@ module {
           // so it normally does).
           case null {
             switch (getIndex(hops, targetName)) {
-              case (?idx) { for ((pk, trow) in idx.entries()) { if (Predicate.eval(targetPred, trow)) { pks.add(pk) } } };
+              case (?idx) { for ((pk, trow) in idx.entries()) { if (matches(trow)) { pks.add(pk) } } };
               case null { for (trow in target.rows(tSubject)) { admit(trow) } };
             };
           };
@@ -726,7 +727,7 @@ module {
   /// The first `edge.col <op> v` (two-segment path, `<op>` ∈ `=`/`in`/range)
   /// through top-level `#and_` whose head is both a served index and a declared
   /// edge of `start`. Returns the FK column and the constraint rewritten onto the
-  /// target column (path `[col]`) so it can be `Predicate.eval`'d on target rows.
+  /// target column (path `[col]`) so it can be tested on target rows.
   func findEdgeFilter(cs : [Predicate.Predicate], s : Entity.Served, start : Entity.Decl)
     : ?(Text, Predicate.Predicate, Nat) {
     // (edge, col) when `path` is a two-segment `edge.col` on a served FK edge.
@@ -1165,7 +1166,7 @@ module {
   func filter(it : Iter.Iter<Row>, where_ : ?Predicate.Predicate, admit : ?(Row -> Bool), cap : ?Nat) : [Row] {
     let residual = switch where_ {
       case null    { it };
-      case (?p)    { it.filter(func row = Predicate.eval(p, row)) };
+      case (?p)    { it.filter(Predicate.compile(p)) };
     };
     // Ownership guard for a planned/pruned scoped read — applied on the LAZY
     // stream, after the residual (so app `canSee` code runs only on residual

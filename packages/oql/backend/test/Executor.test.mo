@@ -10,6 +10,7 @@
 import {test} "mo:test";
 import Iter      "mo:core/Iter";
 import Principal "mo:core/Principal";
+import Runtime   "mo:core/Runtime";
 import Text      "mo:core/Text";
 import OQL      "../src";
 // moc 1.11.2: implicits & contextual-dot calls no longer resolve through re-exports — import leaves directly.
@@ -285,6 +286,96 @@ test("auto-derives a Blob field, rendering through #text", func () {
   let r = run(blobRegistry(), emptyQuery("wb"));
   assert r.rows.size() == 1;
   assert cell(r.rows[0], "ref") == ?(#text("!caf!sha256:deadbeef"));
+});
+
+// Optional fields auto-derive via Entity's generic `?T` instance: `null`
+// stores `#null_`, `?v` stores what `v` would. The record mirrors an article
+// carrying an optional object-storage `ExternalBlob` (an alias of `Blob`).
+// With no `.sample`, the first row seeds the schema; its optionals are all
+// null, so the schema must read on to report each column's real type.
+type WithOptions = { id : Nat; photo : ?Blob; note : ?Text; score : ?Nat; never : ?Text };
+
+let withOptions : [WithOptions] = [
+  { id = 1; photo = null; note = null; score = null; never = null },
+  { id = 2; photo = ?Text.encodeUtf8("!caf!sha256:deadbeef"); note = ?"hi"; score = null; never = null },
+  { id = 3; photo = null; note = ?"yo"; score = ?7; never = null },
+];
+
+func optionRegistry() : Registry.Registry = Registry.build([
+  OQL.Entity.new<WithOptions>("wo", func () = withOptions.values(), "WithOptions", "id").build(),
+]);
+
+test("auto-derives optional fields, storing null as #null_", func () {
+  let r = run(optionRegistry(), emptyQuery("wo"));
+  assert r.rows.size() == 3;
+  assert cell(r.rows[0], "photo") == ?(#null_);
+  assert cell(r.rows[1], "photo") == ?(#text("!caf!sha256:deadbeef"));
+  assert cell(r.rows[1], "note")  == ?(#text("hi"));
+  assert cell(r.rows[2], "score") == ?(#nat(7));
+});
+
+test("schema types optional columns from their first non-null value", func () {
+  let e = (Registry.schema(optionRegistry(), unrestricted)).entities[0];
+  func typeOf(name : Text) : Text {
+    for (f in e.fields.values()) { if (f.name == name) return f.typeName };
+    "?"
+  };
+  assert e.fields.size() == 5;
+  assert typeOf("photo") == "Text";
+  assert typeOf("note")  == "Text";
+  assert typeOf("score") == "Nat";
+  assert typeOf("never") == "Null";   // no non-null value anywhere
+});
+
+test("an explicit .sample is authoritative: a null in it stays Null", func () {
+  let reg = Registry.build([
+    OQL.Entity.new<WithOptions>("wo", func () = withOptions.values(), "WithOptions", "id")
+      .sample({ id = 0; photo = null; note = ?"x"; score = null; never = null }).build(),
+  ]);
+  let e = (Registry.schema(reg, unrestricted)).entities[0];
+  for (f in e.fields.values()) {
+    if (f.name == "note")  assert f.typeName == "Text";
+    if (f.name == "score") assert f.typeName == "Null";
+  };
+});
+
+test("with a .sample, building never reads the row source", func () {
+  let reg = Registry.build([
+    OQL.Entity.new<WithOptions>("wo", func () : Iter.Iter<WithOptions> = Runtime.trap("source read at build"), "WithOptions", "id")
+      .sample({ id = 0; photo = null; note = null; score = null; never = null }).build(),
+  ]);
+  assert (Registry.schema(reg, unrestricted)).entities[0].fields.size() == 5;
+});
+
+test("an explicit .sample with the optionals set pins their types", func () {
+  let reg = Registry.build([
+    OQL.Entity.new<WithOptions>("wo", func () = withOptions.values(), "WithOptions", "id")
+      .sample({ id = 0; photo = null; note = null; score = null; never = ?"x" }).build(),
+  ]);
+  let e = (Registry.schema(reg, unrestricted)).entities[0];
+  for (f in e.fields.values()) { if (f.name == "never") assert f.typeName == "Text" };
+});
+
+test("where eq null matches rows whose optional field is empty", func () {
+  let q : Query.Query = { emptyQuery("wo") with where_ = ?(#eq(["note"], #null_)) };
+  let r = run(optionRegistry(), q);
+  assert r.rows.size() == 1;
+  assert cell(r.rows[0], "id") == ?(#nat(1));
+});
+
+test("where ne null matches rows whose optional field is set", func () {
+  let q : Query.Query = { emptyQuery("wo") with where_ = ?(#ne(["note"], #null_)) };
+  let r = run(optionRegistry(), q);
+  assert r.rows.size() == 2;
+});
+
+test("aggregates skip null optional cells", func () {
+  let q : Query.Query = {
+    emptyQuery("wo") with
+    aggregate = [{ fn = #max; field = ?["score"]; as_ = null }]
+  };
+  let r = run(optionRegistry(), q);
+  assert cell(r.rows[0], "max_score") == ?(#nat(7));
 });
 
 test("count aggregate over all rows returns a single tally row", func () {

@@ -524,13 +524,23 @@ module {
 
     // Schema derivation is caller-independent: prefer the explicit
     // `.sample`, otherwise take the first row of the unrestricted view.
-    let seed : ?T = switch (self.sample.first()) {
-      case (?s) ?s;
-      case null self.source(null).next();
+    // Without a sample, the rest of that view resolves null-seeded column
+    // types; with one, the source is never touched at build.
+    let unsampled : ?Iter.Iter<T> = switch (self.sample.first()) {
+      case (?_) null;
+      case null ?self.source(null);
+    };
+    let seed : ?T = switch (self.sample.first(), unsampled) {
+      case (?s, _)     ?s;
+      case (_, ?rows)  rows.next();
+      case (null, null) null;
     };
 
     let schemaFields = switch seed {
-      case (?v) computeFields(fullRow(v), edgeLookup, hiddenSet, domainLookup, ownerField);
+      case (?v) {
+        let fields = computeFields(fullRow(v), edgeLookup, hiddenSet, domainLookup, ownerField);
+        switch unsampled { case (?rows) resolveNullTypes(fields, rows, fullRow); case null fields };
+      };
       case null [];
     };
 
@@ -706,6 +716,51 @@ module {
         { name = k; typeName = typeOfValue(v); role; domain = domainLookup.get(Text.compare, k) }
       },
     )
+  };
+
+  /// Implicit instance: `?T -> Value` for any `T` that has its own `_toRow`.
+  /// `null` renders as `#null_`; `?v` renders exactly as `v` would. It lives
+  /// here, not in its own `<Type>Value` module, because every declaring file
+  /// already imports `Entity` — so optional fields (`?Text`, `?Nat`, an
+  /// optional object-storage `ExternalBlob`, …) derive with no extra import.
+  /// A more specific instance in scope (say `?Text` → `""`) still wins.
+  public func _toRow<T>(self : ?T, _toRow : (implicit : T -> Value)) : Value =
+    switch self {
+      case null #null_;
+      case (?v) _toRow(v);
+    };
+
+  /// How many rows `resolveNullTypes` looks at past the seed.
+  let nullTypeScan = 64;
+
+  /// A seed cell holding `#null_` (an optional field left empty) says
+  /// nothing about its column's type, so look at up to `nullTypeScan` of the
+  /// rows after the seed for a non-null value in each such column. A column
+  /// still all-null reports `"Null"`; pin it with a `.sample` that sets the
+  /// field. Entities whose seed has no null cell return without reading on.
+  func resolveNullTypes<T>(fields : [Schema.FieldDecl], rows : Iter.Iter<T>, fullRow : T -> Row) : [Schema.FieldDecl] {
+    let pending = Map.empty<Text, Nat>();
+    for (i in fields.keys()) {
+      if (fields[i].typeName == "Null") pending.add(Text.compare, fields[i].name, i);
+    };
+    if (pending.size() == 0) return fields;
+    let types = fields.map(func (f : Schema.FieldDecl) : Text = f.typeName).toVarArray();
+    var scanned = 0;
+    label scan while (pending.size() > 0 and scanned < nullTypeScan) {
+      switch (rows.next()) {
+        case null { break scan };
+        case (?r) {
+          scanned += 1;
+          for ((k, v) in fullRow(r).values()) {
+            if (v != #null_) switch (pending.take(Text.compare, k)) {
+              case (?i) { types[i] := typeOfValue(v) };
+              case null {};
+            };
+          };
+        };
+      };
+    };
+    fields.mapEntries(func (f : Schema.FieldDecl, i : Nat) : Schema.FieldDecl = { f with typeName = types[i] })
   };
 
   /// Per-row lookup table. Resolves exactly one segment; multi-segment

@@ -9,7 +9,7 @@
 ///
 /// Pinned here over FOUR paths that must all agree with a hand-computed truth:
 /// a heap scan, a heap `#ordered` index (the planner's index-served range — a
-/// superset whose residual filter is the fixed `eval`), a columnar scan, and a
+/// superset whose residual filter applies the fixed rule), a columnar scan, and a
 /// columnar table behind its zone map (both an in-range threshold, where rows
 /// are evaluated, and an out-of-range one, where whole segments are pruned).
 /// `eq`/`ne` against a `#null_` operand stay the explicit is-null / is-not-null
@@ -84,7 +84,7 @@ actor {
           };
         };
         // The same truths as AGGREGATE counts. Today a filtered count re-runs
-        // eval over the scan (the planner refuses to serve a range count from
+        // the predicate over the scan (the planner refuses to serve a range count from
         // anything precomputed), so this follows from the row cases — but that
         // refusal is the ONLY thing keeping it true, and it is exactly the
         // invariant a future optimization would break: the per-segment zone-map
