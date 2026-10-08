@@ -1,10 +1,10 @@
 ---
 name: extension-oql
 description: Make a canister's data queryable by the Caffeine Data Intelligence agent. Use whenever an app stores structured data (Maps/Lists/arrays of records) that should be answerable in natural language — "top customers", "revenue by region", "active projects". Adds a discoverable `schema()` and a JSON `execute()` query endpoint via the `caffeineai-oql` mops package's `Expose` mixin.
-version: 0.7.1
+version: 0.8.0
 compatibility:
   mops:
-    caffeineai-oql: "~0.7.1"
+    caffeineai-oql: "~0.8.0"
 caffeineai-subscription: [none]
 ---
 
@@ -22,18 +22,17 @@ your entities first, then pick a level per entity — see `## Auth`.
 
 ## Setup
 
-Run `mops add caffeineai-oql@0.7.1` in the **same write batch** as your first
+Run `mops add caffeineai-oql@0.8.0` in the **same write batch** as your first
 `mo:caffeineai-oql/...` import. Auto-derivation requires `moc >= 1.11` (the
 generated-app template already satisfies this).
 
 ### Build flags
 
-`--default-persistent-actors` is mandatory. `--implicit-package=core` is
-optional convenience; every snippet and source file must import the `mo:core`
-modules it uses. If the app uses `OQL.Table` and needs more than 4 GiB of
-`Region`, add `--max-stable-pages 1638400` as well; a dependency's own flags are
-not applied to the project that depends on it, so it has to be set in the app's
-own build.
+`--implicit-package=core` is optional convenience; every snippet and source
+file must import the `mo:core` modules it uses. If the app uses `OQL.Table` and
+needs more than 4 GiB of `Region`, add `--max-stable-pages 1638400`; a
+dependency's own flags are not applied to the project that depends on it, so it
+has to be set in the app's own build.
 
 ### Imports — one per resolver module
 
@@ -50,8 +49,10 @@ code uses:
 - for each **auto-derived** (`.toEntity`) record: `RecordValue`, plus one
   `<Type>Value` per primitive field type present — `NatValue`, `TextValue`,
   `PrincipalValue`, `BoolValue`, `IntValue`, `FloatValue`, the sized `Nat`/`Int`
-  widths, `BlobValue`. Manual `.payload` return types need their `<Type>Value`
-  too; manual-only entities need no `RecordValue`.
+  widths, `BlobValue` (also covers `Storage.ExternalBlob`). Optional fields
+  (`?T`) need nothing extra — `Entity` carries the `?T` instance. Manual
+  `.payload` return types need their `<Type>Value` too; manual-only entities
+  need no `RecordValue`.
 
 When a collection module is missing the compiler names it — *"field toEntity does
 not exist … Did you mean to import mo:caffeineai-oql/MapEntity?"* — add the named
@@ -378,8 +379,9 @@ still needs its own `import Entity "mo:caffeineai-oql/Entity";`. Unlike
 `.toEntity`, this failure carries no "Did you mean to import …?" hint.
 
 - `.payload(name, extract)` — `name` must not contain `.`. Prefer
-  `func r = r.field` (let Motoko infer; avoid redundant annotations). For
-  options/variants, return `Text`/`Nat` with a sentinel (see below).
+  `func r = r.field` (let Motoko infer; avoid redundant annotations). An
+  optional `?T` payload works as-is; for variants,
+  return `Text`/`Nat` (see below).
 - `.flatten(extract : T -> S)` — `S` must be flat; each of its fields becomes a
   top-level column. Drop unwanted ones with `.hidden`. Name collisions get
   `__1`, `__2` suffixes (nothing is dropped).
@@ -395,9 +397,21 @@ compare across each other, so a JSON integer threshold matches a `Float` value.
 | Row type `T` | Mode |
 |---|---|
 | All-primitive record | `.toEntity` |
-| Record with `?` / variant / nested field | `.toEntity` once you ship `<Type>Value.mo` (below); else manual |
+| Record with `?` field | `.toEntity` (inner type's `<Type>Value` imported as usual) |
+| Record with variant / nested field | `.toEntity` once you ship `<Type>Value.mo` (below); else manual |
 | Record with a collection field | manual — `.size()` or `Text.join` into a payload |
 | Tuple / primitive / computed | manual |
+
+## Optional fields
+
+Every `?T` whose `T` has an instance (`?Text`, `?Nat`,
+`?Storage.ExternalBlob`, …) derives through the `?T` instance in `Entity`:
+`null` is stored as `#null_`, `?v` as `v`. No extra import or per-type file. A `#null_` cell matches `eq value null`, fails ordered
+comparisons, and is skipped by aggregates.
+
+In the `.sample(...)` row, **set every optional field** (`note = ?""`,
+`score = ?0`, `photo = ?("" : Storage.ExternalBlob)`): the schema types each
+column from the sample, so a field left `null` there reports type `"Null"`.
 
 ## Converting non-primitive fields
 
@@ -409,10 +423,6 @@ the resolver does not walk submodules. Parent records then ride `.toEntity(...)`
 with no per-field `.payload`.
 
 ```mo
-// OptTextValue.mo — option → sentinel
-module { public func _toRow(self : ?Text) : OQL.Value =
-  switch self { case null { #text("") }; case (?t) { #text(t) } }; };
-
 // StatusValue.mo — variant → tag text
 module { public func _toRow(self : Status) : OQL.Value =
   #text(switch self { case (#draft) "draft"; case (#published) "published" }); };
@@ -421,10 +431,9 @@ module { public func _toRow(self : Status) : OQL.Value =
 module { public func _toRow(self : Department) : OQL.Value = #text(self.name); };
 ```
 
-**Always return ONE `Value` variant**, even for null (sentinel `""` / `0` /
-`false`) — a `_toRow` that sometimes returns `#null_` makes the reported schema
-type flip-flop by row order. Sentinels keep the field queryable (`eq value ""`
-matches the nulls). For a one-off field, inline the same conversion in a
+**Always return ONE `Value` variant** from a custom `_toRow` — one that
+returns different variants per row makes the reported schema type depend on
+which row was sampled. For a one-off field, inline the same conversion in a
 `.payload` instead of a module; lift to a module only when 2+ entities need it.
 A record used both as an entity and as a nested field just ships its
 `<Type>Value.mo` — the structural `Row` derivation and your `Value` collapse are
@@ -623,7 +632,7 @@ node <this skill's directory>/scripts/ingest.mjs \
 
 ## Checklist
 
-- [ ] `mops add caffeineai-oql@0.7.1` in the same batch as the first import
+- [ ] `mops add caffeineai-oql@0.8.0` in the same batch as the first import
 - [ ] Resolver modules imported top-level (see `## Setup` → Imports): `Entity`
       (**always** — every builder method including `.payload` / `.flatten`
       resolves through it), the collection module(s) (`MapEntity` / …), and
@@ -631,13 +640,14 @@ node <this skill's directory>/scripts/ingest.mjs \
       auto-derived record
 - [ ] Each entity: row iterator exists; `.toEntity` (all-primitive) or
       `.toEntityManual` / `OQL.Entity.manual` otherwise
+- [ ] The `.sample` sets every optional (`?T`) field to a non-null dummy
 - [ ] `<Type>Value.mo` for every non-primitive field reused across entities,
       imported top-level
 - [ ] `.sample(template)` on every `.toEntity` / `Entity.manual` chain (dummy values are fine)
 - [ ] FK fields `.edge(name, target)`; opaque/sensitive auto-derived fields
       `.hidden(name)` (manual: omit via no `.payload`, or `.hidden` only columns
       you did add)
-- [ ] Every sentinel conversion returns ONE `Value` variant
+- [ ] Every custom `_toRow` returns ONE `Value` variant
 - [ ] Per-user entities use `.ownedBy` / `.ownedByWith` **and** a scoped level
       (`.scopedPerUser()` / `.controllerOrScoped()`) — never bare
       `.controllerOnly()`
