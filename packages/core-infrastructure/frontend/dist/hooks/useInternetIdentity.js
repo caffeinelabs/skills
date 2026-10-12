@@ -4,7 +4,7 @@ import { AttributesIdentity } from "@icp-sdk/core/identity";
 import { Principal } from "@icp-sdk/core/principal";
 import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useRef, useState, } from "react";
 import { getCachedConfig, loadConfig } from "../config.js";
-import { II_MAINNET_CANISTER_ID, nextLoginStatus, resolveAttributeKeys, resolveIdentityProvider, } from "./internetIdentityAuth.js";
+import { II_MAINNET_CANISTER_ID, nextLoginStatus, resolveAgentOptions, resolveAttributeKeys, resolveIdentityProvider, } from "./internetIdentityAuth.js";
 // Inline Candid IDL for the two methods injected by the IdentityAttributes mixin.
 // Defined once at module level so it is not recreated on every render.
 const iiAttributesIDL = ({ IDL: I }) => I.Service({
@@ -39,6 +39,7 @@ function buildAuthClient(config, loginOptions, createOptions) {
     });
     const managed = {
         ...rest,
+        agentOptions: resolveAgentOptions(rest.agentOptions, process.env.II_URL),
         ...(identityProvider ? { identityProvider } : {}),
     };
     const ssoDomain = loginOptions?.ssoDomain?.trim();

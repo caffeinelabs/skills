@@ -25,6 +25,7 @@ import {
 	II_MAINNET_CANISTER_ID,
 	type LoginOptions,
 	nextLoginStatus,
+	resolveAgentOptions,
 	resolveAttributeKeys,
 	resolveIdentityProvider,
 	type Status,
@@ -160,6 +161,7 @@ function buildAuthClient(
 	});
 	const managed = {
 		...rest,
+		agentOptions: resolveAgentOptions(rest.agentOptions, process.env.II_URL),
 		...(identityProvider ? { identityProvider } : {}),
 	};
 
@@ -250,9 +252,9 @@ export function InternetIdentityProvider({
 	children: ReactNode;
 
 	/** Options for creating the {@link AuthClient}. `identityProvider` is not
-	 * accepted — Caffeine sets `II_URL` and `II_CANISTER_ID`. Session bounds
-	 * belong on `signIn()` (`maxTimeToIdle` / `maxTimeToLive`); the idle
-	 * manager is gone in `@icp-sdk/auth` v9.
+	 * accepted — Caffeine sets `II_URL` and `II_CANISTER_ID`. `agentOptions.host`
+	 * defaults to the origin of `II_URL`. Session bounds belong on `signIn()`
+	 * (`maxTimeToIdle` / `maxTimeToLive`); the idle manager is gone in `@icp-sdk/auth` v9.
 	 */
 	createOptions?: InternetIdentityCreateOptions;
 

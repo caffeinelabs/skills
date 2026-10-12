@@ -1,4 +1,7 @@
+import { type AuthClientCreateOptions } from "@icp-sdk/auth/client";
 export declare const II_MAINNET_CANISTER_ID = "rdmx6-jaaaa-aaaaa-aaadq-cai";
+export declare const II_MAINNET_URL = "https://id.ai";
+export type AgentOptions = NonNullable<AuthClientCreateOptions["agentOptions"]>;
 export type Status = "initializing" | "idle" | "logging-in" | "success" | "loginError" | "expired";
 export type SessionState = "signed-in" | "signed-in-elsewhere" | "expired" | "signed-out";
 export type IdentityProviderConfig = {
@@ -39,6 +42,13 @@ export declare function resolveIdentityProvider(options?: {
     envUrl?: string;
     envCanisterId?: string;
 }): IdentityProviderConfig | undefined;
+/**
+ * Point the agent that mints delegations at II's own origin. Left unset, the
+ * agent derives its host from the page, which on a local origin such as
+ * `http://<canister-id>.localhost:8000` is a replica that does not run II.
+ * A caller-supplied `host` wins.
+ */
+export declare function resolveAgentOptions(agentOptions: AgentOptions | undefined, envUrl: string | undefined): AgentOptions;
 /**
  * Pick the attribute keys to request from II for a sign-in variant. Explicit
  * keys from `withAttributes` always win; otherwise the keys are scoped to the

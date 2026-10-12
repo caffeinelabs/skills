@@ -4,6 +4,7 @@ import {
 	II_MAINNET_CANISTER_ID,
 	nextLoginStatus,
 	normalizeAuthorizeUrl,
+	resolveAgentOptions,
 	resolveAttributeKeys,
 	resolveIdentityProvider,
 } from "./internetIdentityAuth.js";
@@ -54,6 +55,48 @@ void describe("resolveIdentityProvider", () => {
 			authorizeUrl: "https://id.ai/authorize",
 			canisterId: II_MAINNET_CANISTER_ID,
 		});
+	});
+});
+
+void describe("resolveAgentOptions", () => {
+	it("defaults the host to the II_URL origin", () => {
+		assert.deepEqual(
+			resolveAgentOptions(undefined, "https://beta.id.ai/authorize"),
+			{ host: "https://beta.id.ai" },
+		);
+		assert.deepEqual(
+			resolveAgentOptions(undefined, "http://id.ai.localhost:8000"),
+			{ host: "http://id.ai.localhost:8000" },
+		);
+	});
+
+	it("defaults the host to mainnet II when II_URL is unset", () => {
+		assert.deepEqual(resolveAgentOptions(undefined, undefined), {
+			host: "https://id.ai",
+		});
+		assert.deepEqual(resolveAgentOptions(undefined, ""), {
+			host: "https://id.ai",
+		});
+	});
+
+	it("keeps a caller-supplied host", () => {
+		assert.deepEqual(
+			resolveAgentOptions(
+				{ host: "http://localhost:4943" },
+				"https://id.ai/authorize",
+			),
+			{ host: "http://localhost:4943" },
+		);
+	});
+
+	it("keeps the caller's other agent options", () => {
+		assert.deepEqual(
+			resolveAgentOptions(
+				{ shouldFetchRootKey: true },
+				"http://id.ai.localhost:8000",
+			),
+			{ shouldFetchRootKey: true, host: "http://id.ai.localhost:8000" },
+		);
 	});
 });
 

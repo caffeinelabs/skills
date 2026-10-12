@@ -1,5 +1,9 @@
 
 
+### Bug Fixes
+
+- **core-infrastructure**: send II delegation calls to the II origin (#338)
+
 ### Features
 
 - **core-infrastructure**: lift AuthClient to @icp-sdk/auth v9 (#289)

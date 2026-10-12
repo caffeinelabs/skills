@@ -1,5 +1,6 @@
 import { scopedKeys } from "@icp-sdk/auth/client";
 export const II_MAINNET_CANISTER_ID = "rdmx6-jaaaa-aaaaa-aaadq-cai";
+export const II_MAINNET_URL = "https://id.ai";
 const DEFAULT_ATTRIBUTE_KEYS = ["verified_email"];
 /**
  * II's authorize URL is used verbatim. Origin-only overrides (e.g.
@@ -22,6 +23,18 @@ export function resolveIdentityProvider(options) {
     return {
         authorizeUrl: normalizeAuthorizeUrl(options.envUrl),
         canisterId: options.envCanisterId ?? II_MAINNET_CANISTER_ID,
+    };
+}
+/**
+ * Point the agent that mints delegations at II's own origin. Left unset, the
+ * agent derives its host from the page, which on a local origin such as
+ * `http://<canister-id>.localhost:8000` is a replica that does not run II.
+ * A caller-supplied `host` wins.
+ */
+export function resolveAgentOptions(agentOptions, envUrl) {
+    return {
+        ...agentOptions,
+        host: agentOptions?.host ?? new URL(envUrl || II_MAINNET_URL).origin,
     };
 }
 /**
