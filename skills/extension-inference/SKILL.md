@@ -12,7 +12,7 @@ description: >-
   BEFORE writing any code that talks to an LLM host. Use `extension-openai`
   only when the spec explicitly requires a user- or admin-pasted `sk-...`
   key against `api.openai.com`.
-version: 0.1.0
+version: 0.1.1
 compatibility:
   mops:
     caffeineai-inference-client: "~0.1.0"
@@ -59,9 +59,14 @@ app. There is no key to collect and nothing to configure.
   `<system>`-parameterised helper, on **every** request. A module-level
   `let config = fromEnv` will not compile, and a cached `Config` can go stale
   when the platform rotates credentials on a running canister.
-- It traps when the app has no inference credentials. That is a platform
-  condition, not something the app can fix — do not add a "configure AI"
-  empty state or a key-input fallback for it.
+- It traps when the app has no inference credentials. Let that error reach
+  the caller; hiding it makes a failed AI call look like a working feature:
+  - Never pre-check `CAFFEINE_INFERENCE_API_KEY` (or any other environment
+    variable) and never guard `fromEnv` with a check that skips the call.
+  - Never turn a failed call into an empty success, such as an empty string,
+    an empty list, or placeholder text. Trap or return the error so the
+    frontend can show it and offer a retry.
+  - Do not add a "configure AI" empty state or a key-input fallback.
 - Never log the `Config`, never copy its `auth` into actor state, and never
   return it (or any part of it) from a `query` / `shared` function.
 
@@ -169,6 +174,7 @@ the full body. Leave `stream = null`.
 ## 9. Things that will bite you
 
 - Call `fromEnv<system>()` inside the `shared` method (or a `<system>` helper). A module-level `let config = fromEnv` will not compile.
+- Surface failures. No credential pre-checks, no guard around `fromEnv`, and no empty result in place of an error. See §2.
 - `model = "router"` — not `"gpt-4o-mini"`. See §5.
 - User turns are `#user(ChatCompletionRequestMessageOneOf2.JSON.init({ content = #string(prompt); role = #user }))`.
 - `JSON.init` for required fields; layer optionals with record update. Do not hand-list every `null`.
