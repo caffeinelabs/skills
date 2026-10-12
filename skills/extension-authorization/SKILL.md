@@ -1,7 +1,7 @@
 ---
 name: extension-authorization
 description: Authorization system with role-based access control. Must-have for all apps that manage personal or access-restricted data.
-version: 1.3.2
+version: 1.3.3
 compatibility:
   mops:
     caffeineai-authorization: "~1.0.0"
@@ -191,10 +191,12 @@ The field is named `email`, but it only ever holds II's `verified_email` value -
 
 Which attributes arrive depends on the sign-in variant the frontend used (see the `extension-authorization`-compatible `login()` options in the `extension-core-infrastructure` skill):
 
-- `login()` (plain Internet Identity): `email` is present when the user has a verified email in II; `sso` is null.
+- `login()` (plain Internet Identity): requests `verified_email` and shows an Internet Identity consent step first. `email` is present only when the user's identity is linked to a Google or Microsoft account; passkey-only and Apple identities never have one. `sso` is null.
 - `login({ provider: 'google' })`: verified `name` and `email` from the user's Google account; `sso` is null.
 - `login({ provider: 'microsoft' })`: verified `name` and `email` from the user's Microsoft account; `sso` is null.
 - `login({ ssoDomain: 'acme.com' })`: verified `name` and `email` from the company's identity provider; `sso` holds the domain (e.g. `"acme.com"`). Use `attrs.sso` to gate features to company members or auto-assign roles by domain.
+
+Treat `email` as optional for every variant: show or use it when it is present, and keep the feature working for a user without one. Never add an email-verification step for an address that arrived here.
 
 Store them in your own state and expose a getter to read them back:
 
