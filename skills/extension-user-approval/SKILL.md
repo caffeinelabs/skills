@@ -1,10 +1,10 @@
 ---
 name: extension-user-approval
 description: Approval-based user management.
-version: 1.0.3
+version: 1.1.0
 compatibility:
   mops:
-    caffeineai-user-approval: "~1.0.0"
+    caffeineai-user-approval: "~1.1.0"
     caffeineai-authorization: "~1.0.0"
 caffeineai-subscription: [none]
 ---
@@ -41,6 +41,7 @@ module {
     public func isApproved(state : UserApprovalState, caller : Principal) : Bool;
     public func requestApproval(state : UserApprovalState, caller : Principal);
     public func setApproval(state : UserApprovalState, user : Principal, approval : ApprovalStatus);
+    public func removeApproval(state : UserApprovalState, user : Principal);
 
     public type UserApprovalInfo = {
         principal : Principal;
@@ -58,6 +59,7 @@ module {
 - `isCallerApproved()`
 - `requestApproval()`
 - `setApproval(user, status)`
+- `removeApproval(user)`
 - `listApprovals()`
 
 Keep `approvalState` in scope for custom approval guards in app-specific endpoints.
@@ -110,6 +112,8 @@ module {
 
 On `initState`, existing admins are automatically approved. All other users are pending.
 
+The anonymous principal is never approved: `requestApproval` and `setApproval` trap for it, and `isCallerApproved` returns `false`. `isCallerApproved` also returns `false`, rather than trapping, for a signed-in caller that has not registered yet.
+
 IMPORTANT: Apply the right authorization and/or approval check to each custom public function.
 
 # Frontend
@@ -118,7 +122,7 @@ Approval-based user management:
 
 # User Approval Flow
 - Check approval status (`isCallerApproved`)
-- If not approved, show option to request approval (`requestApproval`)
+- If not approved, show option to request approval (`requestApproval`). Show it only to signed-in users; it traps for the anonymous principal
 - Block access to main features for non-approved users
 - Admins have access to all features of the application
 - Display approval status clearly in the UI
@@ -126,7 +130,8 @@ Approval-based user management:
 # Admin Dashboard
 For admin users, provide a dashboard to:
 - List all users with their approval status (`listApprovals`)
-- Approve or reject users (`setApproval`)
+- Approve or reject users (`setApproval`). A rejected user cannot request approval again
+- Remove a user's entry (`removeApproval`), so they can request approval again
 - View and assign user roles (using `getCallerUserRole` and `assignCallerUserRole`)
 
 # Backend Integration
@@ -144,6 +149,9 @@ listApprovals(): Promise<Array<UserApprovalInfo>>;
 
 // Approve or reject a user (admin only)
 setApproval(user: Principal, status: ApprovalStatus): Promise<void>;
+
+// Delete a user's approval entry, so they can request approval again (admin only)
+removeApproval(user: Principal): Promise<void>;
 
 // Assign a role to a user (admin only)
 assignCallerUserRole(user: Principal, role: UserRole): Promise<void>;
