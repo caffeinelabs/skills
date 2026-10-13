@@ -5,6 +5,7 @@ import Nat "mo:core/Nat";
 import Set "mo:core/Set";
 import Text "mo:core/Text";
 import VerifiedEmails "mo:caffeineai-email-verification/verifiedEmails";
+import UnsubscribeTokens "unsubscribeTokens";
 
 module {
   public type State = {
@@ -73,10 +74,14 @@ module {
     };
   };
 
-  // Remove a topic. Also removes all subscribers from that topic.
-  public func removeTopic(state : State, topicId : Nat) {
+  // Remove a topic. Also removes all subscribers from that topic, and their
+  // unsubscribe links stop working.
+  public func removeTopic(state : State, tokens : UnsubscribeTokens.State, topicId : Nat) {
     switch (state.topics.get(topicId)) {
       case (?topicRecord) {
+        for (email in topicRecord.subscribers.values()) {
+          UnsubscribeTokens.remove(tokens, email, topicId);
+        };
         state.topicsByName.remove(topicRecord.name);
         state.topics.remove(topicId);
       };
@@ -115,20 +120,24 @@ module {
     };
   };
 
-  // Remove a subscriber from a topic
-  public func remove(state : State, topicId : Nat, email : Text) {
+  // Remove a subscriber from a topic. The unsubscribe link in mail already
+  // sent to them stops working; a later re-subscription mints a fresh one on
+  // the next send.
+  public func remove(state : State, tokens : UnsubscribeTokens.State, topicId : Nat, email : Text) {
     switch (state.topics.get(topicId)) {
       case (?topicRecord) {
         topicRecord.subscribers.remove(email);
       };
       case (_) {};
     };
+    UnsubscribeTokens.remove(tokens, email, topicId);
   };
 
   // Remove a subscriber from all topics
-  public func removeFromAllTopics(state : State, email : Text) {
-    for (topicRecord in state.topics.values()) {
+  public func removeFromAllTopics(state : State, tokens : UnsubscribeTokens.State, email : Text) {
+    for ((topicId, topicRecord) in state.topics.entries()) {
       topicRecord.subscribers.remove(email);
+      UnsubscribeTokens.remove(tokens, email, topicId);
     };
   };
 
