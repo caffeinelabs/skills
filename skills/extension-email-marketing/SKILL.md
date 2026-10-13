@@ -1,12 +1,12 @@
 ---
 name: extension-email-marketing
 description: Send personalised marketing emails to subscribers with an unsubscribe link.
-version: 0.2.0
+version: 0.2.1
 compatibility:
   mops:
-    caffeineai-email-marketing: "~0.2.0"
-    caffeineai-email-verification: "~0.2.0"
-    caffeineai-email: "~0.3.0"
+    caffeineai-email-marketing: "~0.2.1"
+    caffeineai-email-verification: "~0.3.0"
+    caffeineai-email: "~0.4.0"
     caffeineai-authorization: "~1.0.1"
   npm:
     "@caffeineai/email-marketing": "~0.2.0"
@@ -123,7 +123,7 @@ module {
 
 Use the prefabricated module `mo:caffeineai-email-marketing/unsubscribeMixin.mo` which cannot be modified.
 
-`MixinEmailUnsubscribe` takes the subscribers state and the token state. It adds `_caffeineEmailUnsubscribe(token)`, which the app's frontend calls from the unsubscribe page: it removes the subscriber from the topic the token was minted for and returns the topic's name. Anyone holding a valid token can call it, the anonymous principal included, so the recipient needs no account. It also keeps the legacy `_caffeineEmailUnsubscribeFromTopic` callback so links in mail sent before this version keep working.
+`MixinEmailUnsubscribe` takes the subscribers state and the token state. It adds `_caffeineEmailUnsubscribe(token)`, which the app's frontend calls from the unsubscribe page: it removes the subscriber from the topic the token was minted for and returns the topic's name. Anyone holding a valid token can call it, the anonymous principal included, so the recipient needs no account. It also keeps the legacy `_caffeineEmailUnsubscribeFromTopic` callback, so the links in marketing mail the transport canister sent before 0.2.0 keep working until the transport is decommissioned.
 
 ```mo:caffeineai-email-marketing/unsubscribeMixin.mo
 import MixinEmailUnsubscribe "mo:caffeineai-email-marketing/unsubscribeMixin";
@@ -135,7 +135,7 @@ mixin (subscribers : Subscribers.State, unsubscribeTokens : UnsubscribeTokens.St
 
 ### For sending direct marketing emails from the backend
 
-- Use the `sendMarketingEmail` function of the prefabricated module `mo:caffeineai-email-marketing/marketing.mo` which cannot be modified. Do NOT call `EmailClient.broadcastViaGateway` from app code: this module prepares the tokens, the link template and the `List-Unsubscribe` header it sends.
+- Use the `sendMarketingEmail` function of the prefabricated module `mo:caffeineai-email-marketing/marketing.mo` which cannot be modified. Do NOT call `EmailClient.broadcast` from app code: this module prepares the tokens, the link template and the `List-Unsubscribe` header it sends.
 - This MUST be used alongside the subscribers.mo module and unsubscribeMixin.mo module
 - `sendMarketingEmail` sends to every verified subscriber of the topic. Its `personalise` argument is a function from an email address to that recipient's substitution name/value pairs (`[]` for none).
   - These substitutions allow the email to be personalised for each recipient.
@@ -143,7 +143,7 @@ mixin (subscribers : Subscribers.State, unsubscribeTokens : UnsubscribeTokens.St
 - `sendMarketingEmailTo` sends to explicit addresses, cut down to the verified subscribers of the topic, with the same `personalise` argument. `#err` when none remain.
 - It returns a Result which is #ok if the email is sent successfully otherwise #err(error) with the error text.
 - The placeholder text {{UNSUBSCRIBE_URL}} in the htmlBody is replaced with the recipient's unsubscribe link on the app's `/unsubscribe` page; when the placeholder is missing an unsubscribe line is appended to the body. Every copy also carries a `List-Unsubscribe` header with the same link, so mail clients show their own unsubscribe control.
-- The link lands on the app's `/unsubscribe` page, and the `List-Unsubscribe` header is added, when the canister has the mail gateway key (`INTEGRATIONS_GATEWAY_URL` / `INTEGRATIONS_GATEWAY_API_KEY`, injected by the platform where the gateway is enabled). Without the key the mail goes through the transport canister as before: the transport fills `{{UNSUBSCRIBE_URL}}` with its own link and the click is handled through `_caffeineEmailUnsubscribeFromTopic`. The app code is the same either way.
+- The mail goes through the mail gateway with the settings the platform injects on every deploy (`INTEGRATIONS_GATEWAY_URL` / `INTEGRATIONS_GATEWAY_API_KEY`); without them the functions return `#err`.
 
 ```mo:caffeineai-email-marketing/marketing.mo
 module {
@@ -424,7 +424,9 @@ module {
 
 ## Upgrading from the previous version
 
-An app built with `caffeineai-email-marketing` 0.1.x needs all of these (and the upgrade steps of [extension-email-verification](../extension-email-verification/SKILL.md)):
+An app built with `caffeineai-email-marketing` 0.2.0 re-pins with `mops add caffeineai-email-marketing@0.2.1`, `mops add caffeineai-email-verification@0.3.0` and `mops add caffeineai-email@0.4.0`. Nothing in the app code changes: marketing mail now always goes through the mail gateway, and the mixin keeps the `_caffeineEmailUnsubscribeFromTopic` callback so the links in mail the transport sent keep working.
+
+An app built with `caffeineai-email-marketing` 0.1.x needs all of these (and the upgrade steps of [extension-email-verification](../extension-email-verification/SKILL.md)), then the re-pin above:
 
 1. Re-pin: `mops add caffeineai-email-marketing@0.2.0`, `mops add caffeineai-email-verification@0.2.0` and `mops add caffeineai-email@0.3.0`.
 2. Declare the new stable field `unsubscribeTokens : UnsubscribeTokens.State` and add it to the migration chain (a new migration file initialising it with `UnsubscribeTokens.new()`; `emailSubscribers` keeps its shape and its data, and existing subscribers get their tokens on the next send).
