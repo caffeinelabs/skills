@@ -6,7 +6,7 @@ description: >-
   mops.toml, mops.lock, running mops commands, adding/removing packages,
   pinning moc or lintoko versions, checking or building canisters,
   configuring moc flags, or setting up a new Motoko project.
-version: 0.1.9
+version: 0.1.10
 compatibility:
   toolchain:
     mops: "3.x"
@@ -338,7 +338,7 @@ Benchmarks live in `bench/*.bench.mo`:
 ```bash
 mops bench                        # run all benchmarks
 mops bench my-bench               # filter by name
-mops bench --gc incremental       # select GC
+mops bench --gc copying           # moc 1.x only: legacy GC (moc 2 has only incremental)
 mops bench --save                 # save results to .bench/<name>.json
 mops bench --compare              # compare with saved results
 mops bench -- -Werror             # pass extra moc flags
