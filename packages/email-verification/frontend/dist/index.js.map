@@ -1,0 +1,1 @@
+{"version":3,"file":"index.js","sourceRoot":"","sources":["../src/index.ts"],"names":[],"mappings":"AAAA,OAAO,EAGN,oBAAoB,GACpB,MAAM,iCAAiC,CAAC","sourcesContent":["export {\n\ttype EmailVerificationActor,\n\ttype EmailVerificationStatus,\n\tuseEmailVerification,\n} from \"./hooks/useEmailVerification.js\";\n"]}
