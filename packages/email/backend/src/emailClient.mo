@@ -4,7 +4,6 @@ import Cycles "mo:core/Cycles";
 import Error "mo:core/Error";
 import Int "mo:core/Int";
 import Prim "mo:⛔";
-import Principal "mo:core/Principal";
 import Random "mo:core/Random";
 import Nat "mo:core/Nat";
 import Nat8 "mo:core/Nat8";
@@ -17,10 +16,12 @@ import { type Config } "mo:caffeine-integrations-mail-client/Config";
 import { type MailV2BroadcastRecipient } "mo:caffeine-integrations-mail-client/Models/MailV2BroadcastRecipient";
 import { type MailV2BroadcastResponse } "mo:caffeine-integrations-mail-client/Models/MailV2BroadcastResponse";
 import MailV2BroadcastSubType "mo:caffeine-integrations-mail-client/Values/MailV2BroadcastSubType";
-import EmailService "emailService";
 
 module {
-  public type BroadcastEmailRecipient = EmailService.BroadcastEmailRecipient;
+  public type BroadcastEmailRecipient = {
+    email : Text;
+    substitutions : ?[(Text, Text)];
+  };
 
   // A message header added to every copy of a broadcast, as (name, value).
   // The gateway accepts `List-Unsubscribe` only and fills `{{PLACEHOLDER}}`
@@ -38,53 +39,27 @@ module {
     #err : Text;
   };
 
-  type GatewayEnv = { url : Text; apiKey : Text };
-
-  // Read on every send, never cached: a settings update on a running
-  // canister must be visible to the next send without a redeploy
-  // (planning/mail-integration-api-key, D12).
-  func gatewayEnv<system>() : ?GatewayEnv {
-    let ?apiKey = Prim.envVar<system>("INTEGRATIONS_GATEWAY_API_KEY") else return null;
-    if (apiKey == "") return null;
-    let ?url = Prim.envVar<system>("INTEGRATIONS_GATEWAY_URL") else return null;
-    if (url == "") return null;
-    ?{ url; apiKey };
-  };
-
-  // Whether this canister sends through the mail gateway. The verification
-  // and marketing packages ask before minting tokens: without the key their
-  // mail goes through the transport with its own links, as before 0.3.0.
-  public func gatewayConfigured<system>() : Bool {
-    switch (gatewayEnv<system>()) {
-      case (?_) true;
-      case null false;
-    };
-  };
-
-  // The gateway sends are reached only after `gatewayConfigured` answered
-  // true, so a call without the key is a caller bug rather than a
-  // configuration to fall back from here.
-  func requireGatewayEnv<system>() : GatewayEnv {
-    gatewayEnv<system>() ?? Runtime.trap(
-      "the mail gateway is not configured: INTEGRATIONS_GATEWAY_URL and INTEGRATIONS_GATEWAY_API_KEY are not set; check gatewayConfigured first"
-    );
-  };
-
-  // The generated client's config for a call to the gateway, for a package
-  // that drives one of its routes itself (the calendar package).
-  public func gatewayConfig<system>() : Config {
-    gatewayConfigFor(requireGatewayEnv<system>());
-  };
+  // The error every send answers with while the platform has not injected
+  // the gateway settings into the canister.
+  public let gatewayNotConfigured = "The integrations gateway is not configured: INTEGRATIONS_GATEWAY_URL and INTEGRATIONS_GATEWAY_API_KEY are not set";
 
   // The gateway bills sends server-side via the API key, so attached
   // cycles only fund the HTTPS outcall itself (non-replicated; unused
   // cycles are refunded). 10B covers multi-megabyte bodies with margin.
   let maxOutcallCycles = 10_000_000_000;
 
-  func gatewayConfigFor(env : GatewayEnv) : Config {
-    {
-      baseUrl = env.url;
-      auth = ?#bearer(env.apiKey);
+  // The generated client's config for a call to the gateway, or null while
+  // the canister has no gateway settings. Read on every send, never cached:
+  // a settings update on a running canister must be visible to the next
+  // send without a redeploy (planning/mail-integration-api-key, D12).
+  public func gatewayConfig<system>() : ?Config {
+    let ?apiKey = Prim.envVar<system>("INTEGRATIONS_GATEWAY_API_KEY") else return null;
+    if (apiKey == "") return null;
+    let ?url = Prim.envVar<system>("INTEGRATIONS_GATEWAY_URL") else return null;
+    if (url == "") return null;
+    ?{
+      baseUrl = url;
+      auth = ?#bearer(apiKey);
       max_response_bytes = ?(16_384 : Nat64);
       transform = null;
       is_replicated = ?false;
@@ -140,63 +115,32 @@ module {
     subject : Text,
     htmlBody : Text,
   ) : async SendResult {
-    switch (gatewayEnv<system>()) {
-      case (?env) {
-        try {
-          // The 2xx body carries no signal beyond success (status is always
-          // "sent"); every failure — gateway validation, auth, rate limit,
-          // SES — arrives as a thrown error whose message includes the
-          // parsed structured envelope from the gateway.
-          await* sendOnce(
-            func(idempotencyKey : Text) : async* () {
-              ignore await* MailV2Api.mailV2Send(
-                gatewayConfigFor(env),
-                idempotencyKey,
-                {
-                  fromUsername;
-                  to;
-                  cc;
-                  bcc;
-                  subject;
-                  htmlBody;
-                  attachments = [];
-                },
-              );
-            }
+    let ?config = gatewayConfig<system>() else return #err(gatewayNotConfigured);
+    try {
+      // The 2xx body carries no signal beyond success (status is always
+      // "sent"); every failure — gateway validation, auth, rate limit,
+      // SES — arrives as a thrown error whose message includes the
+      // parsed structured envelope from the gateway.
+      await* sendOnce(
+        func(idempotencyKey : Text) : async* () {
+          ignore await* MailV2Api.mailV2Send(
+            config,
+            idempotencyKey,
+            {
+              fromUsername;
+              to;
+              cc;
+              bcc;
+              subject;
+              htmlBody;
+              attachments = [];
+            },
           );
-          #ok;
-        } catch (error) {
-          #err("Failed to send email: " # error.message());
-        };
-      };
-      case null {
-        let maxEmailCost = 50_000_000_000; // 50B CYCLES
-
-        if (Cycles.balance() < maxEmailCost) {
-          return #err("Not enough cycles to send email");
-        };
-
-        let integrationsCanisterId = await getIntegrationsCanisterId();
-        let emailService = actor (integrationsCanisterId.toText()) : EmailService.EmailService;
-
-        try {
-          let response = await (with cycles = maxEmailCost) emailService.send_email({
-            from_username = fromUsername;
-            to;
-            cc;
-            bcc;
-            subject;
-            html_body = htmlBody;
-          });
-
-          switch (response.result) {
-            case (#Ok(_)) { return #ok };
-            case (#Err(error)) { return #err(debug_show (error)) };
-          };
-        } catch (error) {
-          return #err("Failed to send email: " # error.message());
-        };
-      };
+        }
+      );
+      #ok;
+    } catch (error) {
+      #err("Failed to send email: " # error.message());
     };
   };
 
@@ -214,64 +158,7 @@ module {
         };
       }
     );
-
-    if (gatewayConfigured<system>()) {
-      await broadcastViaGateway(#service, fromUsername, asBroadcastRecipients, subject, htmlBody, []);
-    } else {
-      await broadcastEmail(#Service, fromUsername, asBroadcastRecipients, subject, htmlBody);
-    };
-  };
-
-  // The transport path for verification mail, taken while the canister has
-  // no gateway key: the transport fills `{{VERIFICATION_URL}}` with its own
-  // link and the click lands on `_caffeineEmailVerify`, as before 0.3.0.
-  public func sendVerificationEmailViaTransport(
-    fromUsername : Text,
-    recipients : [Text],
-    subject : Text,
-    htmlBody : Text,
-  ) : async SendResult {
-    await broadcastEmail(
-      #Verification,
-      fromUsername,
-      recipients.map(
-        func(email) {
-          {
-            email;
-            substitutions = null;
-          };
-        }
-      ),
-      subject,
-      htmlBody,
-    );
-  };
-
-  // The transport path for marketing mail, taken while the canister has no
-  // gateway key: the transport fills `{{UNSUBSCRIBE_URL}}` with its own link
-  // and the click lands on `_caffeineEmailUnsubscribeFromTopic`, as before
-  // 0.3.0.
-  public func sendMarketingEmailViaTransport(
-    topicId : Nat,
-    fromUsername : Text,
-    recipients : [BroadcastEmailRecipient],
-    subject : Text,
-    htmlBody : Text,
-  ) : async SendResult {
-    await broadcastEmail(
-      #Marketing({ topic_id = Nat.toNat32(topicId) }),
-      fromUsername,
-      recipients,
-      subject,
-      htmlBody,
-    );
-  };
-
-  public func getIntegrationsCanisterId() : async Principal {
-    Principal.fromText(
-      Prim.envVar<system>("INTEGRATIONS_CANISTER_ID")
-        ?? Runtime.trap("INTEGRATIONS_CANISTER_ID environment variable is not set")
-    );
+    await broadcast(#service, fromUsername, asBroadcastRecipients, subject, htmlBody, []);
   };
 
   func toGatewayRecipient(recipient : BroadcastEmailRecipient) : MailV2BroadcastRecipient {
@@ -289,7 +176,7 @@ module {
   // their tokens in the substitutions and their link templates in the body.
   // The kind is a label the gateway carries into its monitoring; the body
   // goes out as given.
-  public func broadcastViaGateway(
+  public func broadcast(
     kind : BroadcastKind,
     fromUsername : Text,
     recipients : [BroadcastEmailRecipient],
@@ -297,7 +184,7 @@ module {
     htmlBody : Text,
     headers : [Header],
   ) : async SendResult {
-    let env = requireGatewayEnv<system>();
+    let ?config = gatewayConfig<system>() else return #err(gatewayNotConfigured);
     let subType = switch (kind) {
       case (#service) MailV2BroadcastSubType.service;
       case (#verification) MailV2BroadcastSubType.verification;
@@ -308,7 +195,7 @@ module {
       await* sendOnce(
         func(idempotencyKey : Text) : async* () {
           response := ?(await* MailV2Api.mailV2Broadcast(
-            gatewayConfigFor(env),
+            config,
             idempotencyKey,
             {
               subType;
@@ -330,50 +217,15 @@ module {
     };
   };
 
-  // Partial failure keeps the transport path's contract (#ok once the
-  // broadcast was accepted; the gateway already emits per-recipient
-  // metrics), but a broadcast where nothing sent is a failure even if
-  // the gateway ever stops mapping it to a 5xx itself.
+  // #ok once the broadcast was accepted, even with some recipients failed
+  // (the gateway emits per-recipient metrics); a broadcast where nothing
+  // sent is a failure even if the gateway ever stops mapping it to a 5xx
+  // itself.
   public func broadcastResult(response : MailV2BroadcastResponse) : SendResult {
     if (response.failures > 0 and response.emailsSent == 0) {
       return #err("Failed to send broadcast: " # (response.firstError ?? "all recipients failed"));
     };
     #ok;
-  };
-
-  func broadcastEmail(
-    subType : EmailService.BroadcastEmailType,
-    fromUsername : Text,
-    recipients : [BroadcastEmailRecipient],
-    subject : Text,
-    htmlBody : Text,
-  ) : async SendResult {
-    // TODO: This needs to be calculated here based om the number of recipients and body size
-    let maxEmailCost = 50_000_000_000; // 50B CYCLES
-
-    if (Cycles.balance() < maxEmailCost) {
-      return #err("Not enough cycles to send email");
-    };
-
-    let integrationsCanisterId = await getIntegrationsCanisterId();
-    let emailService = actor (integrationsCanisterId.toText()) : EmailService.EmailService;
-
-    try {
-      let response = await (with cycles = maxEmailCost) emailService.broadcast_email({
-        sub_type = subType;
-        from_username = fromUsername;
-        recipients;
-        subject;
-        html_body = htmlBody;
-      });
-
-      switch (response.result) {
-        case (#Ok(_)) { return #ok };
-        case (#Err(error)) { return #err(debug_show (error)) };
-      };
-    } catch (error) {
-      return #err(error.message());
-    };
   };
 
 };

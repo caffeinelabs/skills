@@ -2,6 +2,10 @@
 
 ### Features
 
+- **email**: [APP-2869] every send goes through the mail gateway (#346)
+
+### Features
+
 - **email-calendar-events**: [APP-2869] the organizer is the sender, named by display name only (#322)
 
 ### Features
