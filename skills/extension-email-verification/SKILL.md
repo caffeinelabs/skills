@@ -1,13 +1,13 @@
 ---
 name: extension-email-verification
 description: Support for sending an email with a link the recipient can click to prove they own the email address.
-version: 0.2.0
+version: 0.3.0
 compatibility:
   mops:
-    caffeineai-email-verification: "~0.2.0"
-    caffeineai-email: "~0.3.0"
+    caffeineai-email-verification: "~0.3.0"
+    caffeineai-email: "~0.4.0"
   npm:
-    "@caffeineai/email-verification": "~0.2.0"
+    "@caffeineai/email-verification": "~0.3.0"
 caffeineai-subscription: [plus, pro]
 ---
 
@@ -76,7 +76,7 @@ module {
 
 Use the prefabricated module `mo:caffeineai-email-verification/verificationMixin.mo` which cannot be modified.
 
-`MixinEmailVerification` takes both states. It adds `_caffeineEmailConfirmVerification(token)`, which the app's frontend calls from the verification page: it marks the address the token was sent to as verified and returns it. Anyone holding a valid token can call it, the anonymous principal included, so the recipient needs no account. It also keeps the legacy `_caffeineEmailVerify` callback so links in mail sent before this version keep working.
+`MixinEmailVerification` takes both states. It adds `_caffeineEmailConfirmVerification(token)`, which the app's frontend calls from the verification page: it marks the address the token was sent to as verified and returns it. Anyone holding a valid token can call it, the anonymous principal included, so the recipient needs no account.
 
 ```mo:caffeineai-email-verification/verificationMixin.mo
 import MixinEmailVerification "mo:caffeineai-email-verification/verificationMixin";
@@ -88,11 +88,11 @@ mixin (verifiedEmails : VerifiedEmails.State, verificationTokens : VerificationT
 
 ### For sending users a verification email
 
-- Use the `sendVerificationEmail` function of the prefabricated module `mo:caffeineai-email-verification/verification.mo` which cannot be modified. Do NOT call `EmailClient.broadcastViaGateway` from app code: this module prepares the tokens and the link template it sends.
+- Use the `sendVerificationEmail` function of the prefabricated module `mo:caffeineai-email-verification/verification.mo` which cannot be modified. Do NOT call `EmailClient.broadcast` from app code: this module prepares the tokens and the link template it sends.
 - It returns a SendResult which is #ok if the email is sent successfully otherwise #err(error) with the error text.
 - Each recipient receives an individual email with a specific verification link for them, pointing at the app's `/verify-email` page.
 - The htmlBody MUST contain the placeholder text {{VERIFICATION_URL}}; the function returns #err when it is missing.
-- The link lands on the app's `/verify-email` page when the canister has the mail gateway key (`INTEGRATIONS_GATEWAY_URL` / `INTEGRATIONS_GATEWAY_API_KEY`, injected by the platform where the gateway is enabled). Without the key the mail goes through the transport canister as before: the transport fills `{{VERIFICATION_URL}}` with its own link and the click is confirmed through `_caffeineEmailVerify`. The app code is the same either way.
+- The mail goes through the mail gateway with the settings the platform injects on every deploy (`INTEGRATIONS_GATEWAY_URL` / `INTEGRATIONS_GATEWAY_API_KEY`); without them the function returns `#err`.
 
 ```mo:caffeineai-email-verification/verification.mo
 module {
@@ -209,7 +209,9 @@ module {
 
 ## Upgrading from the previous version
 
-An app built with `caffeineai-email-verification` 0.1.x and `caffeineai-email` 0.2.x needs all of these:
+An app built with `caffeineai-email-verification` 0.2.x re-pins with `mops add caffeineai-email-verification@0.3.0` and `mops add caffeineai-email@0.4.0`, and bumps `@caffeineai/email-verification` to 0.3.0. Nothing in the app code changes. The mixin no longer has the `_caffeineEmailVerify` callback of the transport canister: verification mail now always goes through the mail gateway, and the links in mail the transport sent before 0.2.0 stop working.
+
+An app built with `caffeineai-email-verification` 0.1.x and `caffeineai-email` 0.2.x needs all of these, then the re-pin above:
 
 1. Re-pin: `mops add caffeineai-email-verification@0.2.0` and `mops add caffeineai-email@0.3.0`.
 2. Declare the new stable field `verificationTokens : VerificationTokens.State` and add it to the migration chain (a new migration file initialising it with `VerificationTokens.new()`; `verifiedEmails` keeps its shape and its data).
