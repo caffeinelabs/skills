@@ -47,10 +47,3 @@ test("an unknown uid changes nothing and returns null", func() {
   let ?unchanged = CalendarEvents.get(state, "evt-1") else { assert false; return };
   assert unchanged.sequence == 0;
 });
-
-test("hostOf keeps the host of the frontend URL: no scheme, port or path", func() {
-  assert CalendarEvents.hostOf("https://my-app.caffeine.xyz") == "my-app.caffeine.xyz";
-  assert CalendarEvents.hostOf("https://my-app.caffeine.xyz/") == "my-app.caffeine.xyz";
-  assert CalendarEvents.hostOf("http://localhost:3000/events") == "localhost";
-  assert CalendarEvents.hostOf("my-app.caffeine.xyz") == "my-app.caffeine.xyz";
-});

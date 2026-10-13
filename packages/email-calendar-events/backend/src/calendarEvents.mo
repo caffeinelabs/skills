@@ -1,18 +1,13 @@
 import Array "mo:core/Array";
-import Cycles "mo:core/Cycles";
 import Error "mo:core/Error";
 import Iter "mo:core/Iter";
 import List "mo:core/List";
 import Map "mo:core/Map";
-import Nat "mo:core/Nat";
 import Nat32 "mo:core/Nat32";
 import Nat64 "mo:core/Nat64";
-import Prim "mo:⛔";
-import Principal "mo:core/Principal";
 import Runtime "mo:core/Runtime";
 import Text "mo:core/Text";
 import EmailClient "mo:caffeineai-email/emailClient";
-import EmailService "mo:caffeineai-email/emailService";
 import MailV2Api "mo:caffeine-integrations-mail-client/Apis/MailV2Api";
 import { type MailV2BroadcastResponse } "mo:caffeine-integrations-mail-client/Models/MailV2BroadcastResponse";
 import MailV2CalendarEventMethod "mo:caffeine-integrations-mail-client/Values/MailV2CalendarEventMethod";
@@ -253,85 +248,9 @@ module {
     self.events.reverseValues();
   };
 
-  // One invitation copy per attendee: through the mail gateway's
-  // calendar-event route when the canister has the gateway key, through the
-  // transport canister otherwise.
+  // One invitation copy per attendee through the mail gateway's
+  // calendar-event route.
   public func sendCalendarEvent(fromUsername : Text, event : CalendarEvent) : async EmailClient.SendResult {
-    if (EmailClient.gatewayConfigured<system>()) {
-      await* gatewayCalendarEvent(fromUsername, event);
-    } else {
-      await transportCalendarEvent(fromUsername, event);
-    };
-  };
-
-  // The transport canister takes the organizer as a full mailbox, so this path
-  // builds it from the sender and the app's own host, read from the
-  // platform-injected FRONTEND_URL.
-  func transportCalendarEvent<system>(fromUsername : Text, event : CalendarEvent) : async EmailClient.SendResult {
-    let maxEmailCost = 50_000_000_000; // 50B CYCLES
-
-    if (Cycles.balance() < maxEmailCost) {
-      return #err("Not enough cycles to send calendar event email");
-    };
-
-    let ?url = Prim.envVar<system>("FRONTEND_URL") else {
-      return #err("FRONTEND_URL is not set: the organizer address needs the app's domain");
-    };
-    let organizer = { email = fromUsername # "@" # hostOf(url); name = event.organizer.name };
-
-    let integrationsCanisterId = await EmailClient.getIntegrationsCanisterId();
-    let emailService = actor (integrationsCanisterId.toText()) : EmailService.EmailService;
-
-    try {
-      let method = switch (event.method) {
-        case (#request) { #Request };
-        case (#publish) { #Publish };
-        case (#cancel) { #Cancel };
-      };
-
-      let attendees = event.attendees.map(
-        func(attendee) {
-          {
-            who = attendee.who;
-            role = switch (attendee.role) {
-              case (#chair) { #Chair };
-              case (#required) { #Required };
-              case (#optional) { #Optional };
-              case (#notParticipating) { #NotParticipating };
-            };
-          };
-        }
-      );
-
-      let response = await (with cycles = maxEmailCost) emailService.send_calendar_event({
-        from_username = fromUsername;
-        uid = event.uid;
-        sequence = event.sequence;
-        method;
-        summary = event.summary;
-        description = event.description;
-        location = event.location;
-        start_time = event.startTime;
-        end_time = event.endTime;
-        organizer;
-        attendees;
-      });
-
-      switch (response.result) {
-        case (#Ok(_)) { #ok };
-        case (#Err(error)) { return #err(debug_show (error)) };
-      };
-    } catch (error) {
-      return #err("Failed to send calendar event email: " # error.message());
-    };
-  };
-
-  public func hostOf(url : Text) : Text {
-    let authority = url.stripStart(#text "https://") ?? (url.stripStart(#text "http://") ?? url);
-    Text.fromIter(authority.chars().takeWhile(func(c : Char) : Bool { c != '/' and c != ':' }));
-  };
-
-  func gatewayCalendarEvent<system>(fromUsername : Text, event : CalendarEvent) : async* EmailClient.SendResult {
     let method = MailV2CalendarEventMethod.toText(event.method);
     let attendees = event.attendees.map(
       func(attendee) {
@@ -342,12 +261,13 @@ module {
         };
       }
     );
+    let ?config = EmailClient.gatewayConfig<system>() else return #err(EmailClient.gatewayNotConfigured);
     var response : ?MailV2BroadcastResponse = null;
     try {
       await* EmailClient.sendOnce(
         func(idempotencyKey : Text) : async* () {
           response := ?(await* MailV2Api.mailV2CalendarEvent(
-            EmailClient.gatewayConfig<system>(),
+            config,
             idempotencyKey,
             {
               fromUsername;
