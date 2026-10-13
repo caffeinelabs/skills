@@ -1,10 +1,10 @@
 ---
 name: extension-email-raw
 description: Send an email with multiple to, cc and bcc addresses.
-version: 0.1.7
+version: 0.2.0
 compatibility:
   mops:
-    caffeineai-email: "~0.3.0"
+    caffeineai-email: "~0.4.0"
 caffeineai-subscription: [plus, pro]
 ---
 
@@ -80,5 +80,7 @@ actor {
 ```
 
 ## Upgrading from the previous version
+
+An app built with `caffeineai-email` 0.3.x re-pins with `mops add caffeineai-email@0.4.0`. `sendRawEmail` keeps its signature. Every send now goes through the mail gateway with the settings the platform injects on every deploy (`INTEGRATIONS_GATEWAY_URL` / `INTEGRATIONS_GATEWAY_API_KEY`); the transport canister and `INTEGRATIONS_CANISTER_ID` are no longer used, and a send without those settings returns `#err` instead of falling back.
 
 An app built with `caffeineai-email` 0.2.x re-pins with `mops add caffeineai-email@0.3.0`. `sendRawEmail` keeps their signatures; every send now carries an idempotency key, so a retried outcall is sent and charged once. Apps that use verification or marketing email follow the upgrade sections of those skills.
