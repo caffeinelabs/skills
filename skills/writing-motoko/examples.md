@@ -564,7 +564,6 @@ actor {
 
 ```motoko
 import Runtime "mo:core/Runtime";
-import someModule "../lib/someModule";
 
 actor {
   public func safeDivide(a : Nat, b : Nat) : async Nat {
@@ -572,16 +571,6 @@ actor {
       Runtime.trap("Division by zero is not defined");
     } else {
       (a / b);
-    };
-  };
-
-  // Inter-canister calls that trap will cause the entire function to trap
-  public func callOtherCanister() : async Text {
-    try {
-      // If someModule.method() traps, this will trap too, so you need to wrap it in try catch
-      let result = await someModule.method();
-    } catch (error) {
-      "Canister call failed. ";
     };
   };
 };

@@ -3,7 +3,7 @@ name: writing-motoko
 description: >-
   Motoko language reference, architecture patterns, and dependency tooling
   (mops). Load when writing or modifying backend .mo files.
-version: 0.2.11
+version: 0.2.12
 compatibility:
   toolchain:
     moc: ">=1.11.2"
@@ -724,7 +724,7 @@ public shared ({ caller }) func book(roomId : Nat, at : Time.Time) : async Resul
 
 **Never launder an error into `Text`.** `Result<Booking, Text>` forces every caller — including the frontend — to string-match to tell "slot taken" from "not authorized". Make `Err` a variant; put the data each failure needs inside its own tag. A `Text` payload is fine *inside* a tag when it is a message for a human, not a discriminator.
 
-**Do not trap on caller error.** A trap rolls back the whole message and reaches the frontend as an opaque reject — the caller cannot branch on it and the user gets no actionable message. Reserve traps for "this cannot happen" (see `?? Runtime.trap(...)` above).
+**Do not trap on caller error.** A trap rolls back the message's uncommitted state changes and reaches the frontend as an opaque reject — the caller cannot branch on it and the user gets no actionable message. Reserve traps for "this cannot happen" (see `?? Runtime.trap(...)` above).
 
 **Chain, do not nest.** `mapOk`, `mapErr`, and `chain` take `self`, so they are dot notation like every other self-parameter API and a pipeline stays flat. `Result.fromOption` has no `self` — it is the module-call bridge from `?T` at the edge where absence becomes a caller-visible error.
 
@@ -752,6 +752,57 @@ actor {
 ```
 
 Use `switch` on `#ok` / `#err` when the arms do different work; do not write `isOk`/`isErr` followed by an unwrap — that discards the payload the type was carrying.
+
+## Error Handling: `try` / `catch`
+
+`try` catches a reject: a `throw`, or an `await` / `await*` whose call fails, such as a call to another canister, or a library call that throws. Whether and when a call throws is part of its API: check the package's own skill. It cannot catch a trap. A trap ends the message and rolls back the state changes made since the last commit point, which is the last `await` (an `await*` commits only if its body awaits). A trap in the callee's own message (another canister, or an `async` function) is different: it reaches the caller as a reject. An `async*` callee runs in the caller's message, so its trap cannot be caught. Code with no `await` and no `throw` needs no `try`.
+
+A reject rolls nothing back. State the function changed before the failing call stays changed, and trapping in the `catch` arm is no reliable way to undo it: once the call has suspended, that state is committed. Undoing it is the most common reason to catch.
+
+**Read the callee's return type first.** A callee that returns `Result` or `?T` reports failure in its value and does not throw for it. Switch on the value. `try { ignore await f() } catch _ {}` drops the real `#err` and catches nothing it can act on.
+
+**Catch only when the `catch` arm does work that a propagated reject cannot:**
+
+| Need                                                  | `catch` arm                                       |
+| ----------------------------------------------------- | ------------------------------------------------- |
+| Undo state changed before the `await`                 | Remove the reservation, mark the job failed       |
+| Give the caller a failure it can act on               | `return #err(...)` with a variant tag             |
+| Recover                                               | Retry, or fall back to another source             |
+| Keep a loop or background job going past one failure  | Skip the item and continue                        |
+
+Otherwise, let the reject propagate. An empty `catch _ {}` belongs only around a side effect that nothing depends on. A `catch` arm that handles only some errors rethrows the rest with `throw e`; a trap there stops every caller from catching it.
+
+```motoko project=try-catch filepath=src/backend/main.mo
+import Error "mo:core/Error";
+import Map "mo:core/Map";
+import Nat "mo:core/Nat";
+import Result "mo:core/Result";
+
+actor {
+  type Quote = { price : Nat };
+  type HoldError = { #taken; #quoteFailed : Text };
+
+  let holds : Map.Map<Nat, Principal>;
+
+  // Stands in for any call that can reject.
+  func fetchQuote(seat : Nat) : async* Quote {
+    if (seat == 0) throw Error.reject("HTTP 503");
+    { price = 100 };
+  };
+
+  public shared ({ caller }) func hold(seat : Nat) : async Result.Result<Quote, HoldError> {
+    if (holds.containsKey(seat)) return #err(#taken);
+    holds.add(seat, caller);
+    try {
+      #ok(await* fetchQuote(seat));
+    } catch e {
+      // A reject keeps the hold, so release the seat here.
+      holds.remove(seat);
+      #err(#quoteFailed(e.message()));
+    };
+  };
+};
+```
 
 ## Common Patterns
 
@@ -943,6 +994,7 @@ Attaching cycles to an inter-canister call (`await (with cycles = ...) <call>`) 
 9. Record spread `{ self with ... }` for immutable records; mutate or rebuild records that contain `var` fields
 10. No inline initializers on stable actor fields — initial values come from the migration chain
 11. Inline `func` arguments carry no type annotations (except `: async ()` on async callbacks); instantiate the call instead, and only when the compiler reports M0098
+12. `try` only around an `await` that can reject, and only when the `catch` arm undoes state, returns a typed `#err`, recovers, skips an item, or guards a best-effort side effect; read a returned `Result`'s failure by switching on it, not with `try`
 
 ## Additional Resources
 
