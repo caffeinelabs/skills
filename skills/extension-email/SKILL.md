@@ -1,7 +1,7 @@
 ---
 name: extension-email
 description: Support for sending service/transactional emails. Don't use this for sending marketing emails or verification emails.
-version: 0.4.0
+version: 0.4.1
 compatibility:
   mops:
     caffeineai-email: "~0.4.0"
@@ -24,6 +24,7 @@ There is the prefabricated module `mo:caffeineai-email/emailClient.mo` which can
 - Use the sendServiceEmail function. 
 - Each recipient is sent an individual email
 - It returns a SendResult which is #ok if the email is sent successfully otherwise #err(error) with the error text. 
+- A failed send never throws. Every failure, a gateway error included, comes back as `#err`.
 
 ```mo:caffeineai-email/emailClient.mo
 module {
