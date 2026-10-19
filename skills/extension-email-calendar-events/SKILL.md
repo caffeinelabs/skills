@@ -1,7 +1,7 @@
 ---
 name: extension-email-calendar-events
 description: Support for organising events/meetings and sending invitations by email.
-version: 0.4.0
+version: 0.4.1
 compatibility:
   mops:
     caffeineai-email-calendar-events: "~0.4.0"
@@ -141,7 +141,7 @@ module {
 - Use the `sendCalendarEvent` function of the same module. It sends one copy per attendee through the mail gateway with the settings the platform injects on every deploy (`INTEGRATIONS_GATEWAY_URL` / `INTEGRATIONS_GATEWAY_API_KEY`); without them it returns `#err`. `caffeineai-email` is a dependency of this package, and the app does not call it for calendar mail.
 - `fromUsername` is the local part of the sender only, such as `events` or `no-reply`. The invitation comes from `<fromUsername>@<app domain>`, and the app domain is the project's own, resolved by the mail gateway. Never pass a full address and never read or guess the domain in the app.
 - The organizer is that same mailbox. `CalendarEvent.organizer` carries only a display name, `{ name = ?"Community Team" }`, shown as the ICS `ORGANIZER` and the first guest, so calendars see the invitation arrive from its organizer. Attendees are the only mailboxes with addresses; the organizer receives a copy only when also listed as an attendee. Do not model the organizer as a user with an email address.
-- It returns `#ok` once the invitation was accepted for every attendee, otherwise `#err(error)` with the error text.
+- It returns `#ok` once the invitation was accepted for every attendee, otherwise `#err(error)` with the error text. A failed send never throws.
 
 ### Example usage for an app which can add/update/cancel/delete/get/list calendar events and send invitations to them by email
 
@@ -317,10 +317,12 @@ actor {
     let event = calendarEvents.get(uid)
       ?? Runtime.trap("Calendar event not found");
 
-    ignore await CalendarEvents.sendCalendarEvent(
-      "events",
-      event
-    );
+    switch (await CalendarEvents.sendCalendarEvent("events", event)) {
+      case (#ok) {};
+      case (#err(error)) {
+        Runtime.trap("Failed to send the invitation: " # error);
+      };
+    };
   };
 };
 ```
