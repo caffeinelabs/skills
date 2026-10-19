@@ -12,7 +12,7 @@ description: >-
   mentions sending email, Gmail, "notify via email", "forward results by
   email", or any equivalent phrasing — and BEFORE writing any code that
   touches a Google endpoint.
-version: 0.2.9
+version: 0.2.10
 caffeineai-subscription: [none]
 compatibility:
   mops:
@@ -446,6 +446,7 @@ module {
 
   /// Send an email. On HTTP 401, refreshes the access token once and retries.
   /// Persists the refreshed token into `gmailConnections` keyed by `caller`.
+  /// Any other failure propagates to the caller.
   public func sendEmail(
     clientId : Text,
     clientSecret : Text,
@@ -480,7 +481,7 @@ module {
     } catch e {
       let msg = e.message();
       if (not (msg.contains(#text("401")) or msg.contains(#text("Unauthorized")))) {
-        Runtime.trap("Gmail send failed: " # msg);
+        throw e;
       };
       let refreshed = await OAuth.refreshAccessToken(clientId, clientSecret, connection.refreshToken);
       let newToken = accessTokenOf(refreshed, "Token refresh");
@@ -635,7 +636,10 @@ may include large payloads.
   function in §4 handles this.
 - **Access tokens expire in 1 hour.** The `sendEmail` function catches
   HTTP 401, silently refreshes via `google-oauth.refreshAccessToken`, and
-  retries once. If the refresh also fails, surface "re-connect your account".
+  retries once. Every other failure propagates as a reject, so a caller that
+  must survive it (for example, a send that should not fail a larger update)
+  catches it there. A failed refresh still traps in `accessTokenOf`, so no
+  caller can catch it; surface "re-connect your account" for it.
 - **Callback URI exact-match.** Every character (trailing slash, query
   string, port) must match between the authorize URL and the redirect.
   Google returns `redirect_uri_mismatch` otherwise. Use the fixed
