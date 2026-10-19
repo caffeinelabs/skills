@@ -12,7 +12,7 @@ description: >-
   or any prior task mentions scheduling, calendar events, appointments,
   meetings, "add to calendar", or any equivalent phrasing — and BEFORE
   writing any code that touches a Google endpoint.
-version: 0.3.1
+version: 0.3.2
 caffeineai-subscription: [none]
 compatibility:
   mops:
@@ -448,10 +448,11 @@ module {
     connection : CalendarConnection,
     caller : Principal,
     calendarConnections : Map.Map<Principal, CalendarConnection>,
-    errorMsg : Text,
+    error : Error,
   ) : async* ?Text {
-    if (not (errorMsg.contains(#text("401")) or errorMsg.contains(#text("Unauthorized")))) {
-      Runtime.trap("Calendar API failed: " # errorMsg);
+    let message = error.message();
+    if (not (message.contains(#text("401")) or message.contains(#text("Unauthorized")))) {
+      throw error;
     };
     let refreshed = await OAuth.refreshAccessToken(clientId, clientSecret, connection.refreshToken);
     let newToken = accessTokenOf(refreshed, "Token refresh");
@@ -559,7 +560,7 @@ module {
         connection,
         caller,
         calendarConnections,
-        e.message(),
+        e,
       ) else Runtime.trap("Calendar API failed");
       await* calendar_events_list(
         configForToken(newToken),
@@ -634,7 +635,7 @@ module {
         connection,
         caller,
         calendarConnections,
-        e.message(),
+        e,
       ) else Runtime.trap("Calendar API failed");
       await* calendar_freebusy_query(
         configForToken(newToken),
@@ -729,7 +730,7 @@ module {
         connection,
         caller,
         calendarConnections,
-        e.message(),
+        e,
       ) else Runtime.trap("Calendar API failed");
       await* calendar_events_insert(
         configForToken(newToken),
@@ -970,7 +971,10 @@ large payloads.
   `refresh_token` and only persist the new `access_token`.
 - **Access tokens expire in 1 hour.** The `refreshIfNeeded` helper catches
   HTTP 401, silently refreshes via `google-oauth.refreshAccessToken`, and
-  retries once. If the refresh also fails, surface "re-connect your account".
+  retries once. Every other failure propagates as a reject, so a caller that
+  must survive it (for example, skip one user's calendar) catches it there.
+  A failed refresh still traps in `accessTokenOf`, so no caller can catch it;
+  surface "re-connect your account" for it.
 - **Callback URI exact-match.** Every character (trailing slash, query
   string, port) must match between the authorize URL and the redirect.
   Google returns `redirect_uri_mismatch` otherwise. Use the fixed
