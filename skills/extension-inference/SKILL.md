@@ -12,10 +12,10 @@ description: >-
   BEFORE writing any code that talks to an LLM host. Use `extension-openai`
   only when the spec explicitly requires a user- or admin-pasted `sk-...`
   key against `api.openai.com`.
-version: 0.1.1
+version: 0.1.2
 compatibility:
   mops:
-    caffeineai-inference-client: "~0.1.0"
+    caffeineai-inference-client: "~0.2.0"
 caffeineai-subscription: [none]
 ---
 
@@ -44,10 +44,10 @@ key-settings page, or a model picker.
 ## 1. Add `caffeineai-inference-client` to `mops.toml`
 
 ```bash
-mops add caffeineai-inference-client@0.1.0
+mops add caffeineai-inference-client@0.2.0
 ```
 
-Requires Mops ≥ 2.13. **Minimum version:** `caffeineai-inference-client ≥ 0.1.0`.
+Requires Mops ≥ 2.13. **Minimum version:** `caffeineai-inference-client ≥ 0.2.0`.
 
 ## 2. Config comes from the platform
 
@@ -139,7 +139,7 @@ names never reach the app.
 
 ## 7. Available API surface — chat completions
 
-`caffeineai-inference-client@0.1.0` is generated from
+`caffeineai-inference-client@0.2.0` is generated from
 [`public-api-v0.1.0`](https://github.com/caffeinelabs/inference/releases/tag/public-api-v0.1.0):
 
 | Module | Entry point | Route |
@@ -161,12 +161,9 @@ spec genuinely needs an OpenAI-only API with a pasted `sk-...`, switch to
 
 ## 8. Cycles
 
-`defaultConfig.cycles = 30_000_000_000`. Bump for long completions:
-
-<!-- motoko-check:skip -->
-```motoko
-{ fromEnv<system>() with cycles = 100_000_000_000 }
-```
+Leave `cycles` unset (`null`): each call attaches the fee the IC charges for
+that request, which is zero on subnets where outcalls are free. `?n` attaches
+exactly `n` cycles and fails on a subnet where the canister holds fewer.
 
 Streaming (`stream = ?true`) is unsupported — management-canister HTTP returns
 the full body. Leave `stream = null`.
