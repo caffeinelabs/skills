@@ -12,7 +12,7 @@ description: >-
   BEFORE writing any code that talks to an LLM host. Use `extension-openai`
   only when the spec explicitly requires a user- or admin-pasted `sk-...`
   key against `api.openai.com`.
-version: 0.1.2
+version: 0.1.3
 compatibility:
   mops:
     caffeineai-inference-client: "~0.2.0"
@@ -162,8 +162,7 @@ spec genuinely needs an OpenAI-only API with a pasted `sk-...`, switch to
 ## 8. Cycles
 
 Leave `cycles` unset (`null`): each call attaches the fee the IC charges for
-that request, which is zero on subnets where outcalls are free. `?n` attaches
-exactly `n` cycles and fails on a subnet where the canister holds fewer.
+that request, which is zero on subnets where outcalls are free. `?n` attaches exactly `n` cycles: the IC rejects the call when `n` is below its fee, and the call traps on a subnet where the canister holds fewer than `n`.
 
 Streaming (`stream = ?true`) is unsupported — management-canister HTTP returns
 the full body. Leave `stream = null`.
