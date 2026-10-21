@@ -13,11 +13,11 @@ description: >-
   top-rated, trending, discover, recommendations, similar titles, posters,
   backdrops, ratings, watchlists, favorites, TMDb or "The Movie Database" — and
   BEFORE writing any code that touches a movie-data endpoint.
-version: 0.1.4
+version: 0.1.5
 caffeineai-subscription: [none]
 compatibility:
   mops:
-    tmdb-client: "~0.1.2"
+    tmdb-client: "~0.2.0"
 ---
 
 # Movie and TV data with `tmdb-client`
@@ -44,7 +44,7 @@ need a "more like this" row; its movie counterpart is the broken one.
 ## 1. Add the dependency
 
 ```bash
-mops add tmdb-client
+mops add tmdb-client@0.2.0
 ```
 
 ## 2. The credential
