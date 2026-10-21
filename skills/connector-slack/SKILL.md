@@ -11,11 +11,11 @@ description: >-
   a fully supported platform feature yet. Hand-rolling `ic.http_request` calls to `slack.com/api` is still the wrong
   move — prefer the generated client so bearer auth, percent-encoding, and JSON
   parsing come for free.
-version: 0.1.2
+version: 0.1.3
 caffeineai-subscription: [none]
 compatibility:
   mops:
-    slack-client: "0.1.0"
+    slack-client: "~0.2.0"
     caffeineai-authorization: "~1.0.1"
 ---
 
@@ -172,7 +172,7 @@ The admin gate in the recipe below needs the authorization component alongside
 the client:
 
 ```bash
-mops add slack-client@0.1.0
+mops add slack-client@0.2.0
 mops add caffeineai-authorization@1.0.1
 ```
 
@@ -472,7 +472,7 @@ same wording here as in the settings-page panel so the two cannot drift.
 
 ## Related
 
-- [`mops add slack-client@0.1.0`](https://mops.one/slack-client) — the generated Slack Web API bindings.
+- [`mops add slack-client@0.2.0`](https://mops.one/slack-client) — the generated Slack Web API bindings.
 - [Slack Web API reference](https://api.slack.com/methods) — every method, its scopes, and its error strings.
 - [`chat.postMessage`](https://api.slack.com/methods/chat.postMessage) — the one runtime-verified path; its `channel`/`text`/`blocks` semantics.
 - [Slack token types](https://api.slack.com/concepts/token-types) — bot (`xoxb-`) vs user (`xoxp-`), and what a reinstall does to them.
