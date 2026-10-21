@@ -9,11 +9,11 @@ description: >-
   null-field JSON handling. Load this skill whenever the user, spec, or any prior
   task mentions posting a tweet, "tweet this", X/Twitter, sharing to X, or any
   equivalent phrasing — and BEFORE writing any code that touches an X endpoint.
-version: 0.3.2
+version: 0.3.3
 caffeineai-subscription: [none]
 compatibility:
   mops:
-    x-client: "~0.3.0"
+    x-client: "~0.4.0"
 ---
 
 # Posting to X with `x-client`
