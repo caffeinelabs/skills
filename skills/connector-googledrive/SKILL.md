@@ -16,11 +16,11 @@ description: >-
   documents, uploads, or access-control features that are not Google Drive —
   those are unrelated and this connector must not be attached to them. When it does apply, load it BEFORE writing any code that touches a Google
   endpoint.
-version: 0.1.0
+version: 0.1.1
 caffeineai-subscription: [none]
 compatibility:
   mops:
-    googledrive-client: "~0.1.0"
+    googledrive-client: "~0.2.0"
     google-oauth: "~0.2.0"
 ---
 
@@ -69,7 +69,7 @@ The connector has two mops packages:
 ## 1. Add dependencies
 
 ```bash
-mops add googledrive-client
+mops add googledrive-client@0.2.0
 mops add google-oauth@0.2.0
 ```
 
