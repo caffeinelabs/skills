@@ -12,11 +12,11 @@ description: >-
   mentions sending email, Gmail, "notify via email", "forward results by
   email", or any equivalent phrasing — and BEFORE writing any code that
   touches a Google endpoint.
-version: 0.2.10
+version: 0.2.11
 caffeineai-subscription: [none]
 compatibility:
   mops:
-    googlemail-client: "~0.2.0"
+    googlemail-client: "~0.3.0"
     google-oauth: "~0.2.1"
     caffeineai-authorization: "~1.0.1"
 ---
@@ -70,7 +70,7 @@ Gmail on behalf of the signed-in user. The ingredients are:
 ## 1. Add dependencies
 
 ```bash
-mops add googlemail-client@0.2.0
+mops add googlemail-client@0.3.0
 mops add google-oauth@0.2.1
 mops add caffeineai-authorization@1.0.1
 ```
@@ -622,10 +622,12 @@ auto-computes and attaches the exact required cycles via the
 `ic0.cost_http_request` system API. No manual cycle budgeting is needed
 for token exchange or refresh calls.
 
-For `googlemail-client` calls, `defaultConfig.cycles = 30_000_000_000`
-(30B). A typical send costs ~10–15B cycles. Bump to 60B for large
-messages. Set `max_response_bytes = ?2_000_000` for message reads that
-may include large payloads.
+For `googlemail-client` calls, leave `cycles` unset (`null`): each call
+attaches the fee the IC charges for that request, sized from the message
+actually sent, so large messages need no manual budget, and the fee is zero
+on subnets where outcalls are free. `?n` attaches exactly `n` cycles: the IC rejects the call when `n` is below its fee, and the call traps on a subnet where the canister holds fewer than `n`. Set
+`max_response_bytes = ?2_000_000` for message reads that may include large
+payloads.
 
 ## 7. Things that will bite you
 
@@ -947,7 +949,7 @@ the user explicitly asks to connect two different Google accounts.
 
 ## Related
 
-- [`mops add googlemail-client@0.2.0`](https://mops.one/googlemail-client) — Gmail REST API bindings.
+- [`mops add googlemail-client@0.3.0`](https://mops.one/googlemail-client) — Gmail REST API bindings.
 - [`mops add google-oauth@0.2.1`](https://mops.one/google-oauth) — Google OAuth 2.0 library (token exchange, refresh, PKCE, `getUserEmail` userinfo, `DateTime` RFC 3339 helpers).
 - [Google OAuth 2.0 for Web Server Applications](https://developers.google.com/identity/protocols/oauth2/web-server) — Web-client redirect URI and authorization-code flow reference.
 - [Gmail API v1 reference](https://developers.google.com/gmail/api/reference/rest) — what `googlemail-client` wraps.
