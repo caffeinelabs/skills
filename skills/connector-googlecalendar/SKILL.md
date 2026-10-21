@@ -12,11 +12,11 @@ description: >-
   or any prior task mentions scheduling, calendar events, appointments,
   meetings, "add to calendar", or any equivalent phrasing — and BEFORE
   writing any code that touches a Google endpoint.
-version: 0.3.2
+version: 0.3.3
 caffeineai-subscription: [none]
 compatibility:
   mops:
-    googlecalendar-client: "~0.2.0"
+    googlecalendar-client: "~0.3.0"
     google-oauth: "~0.2.1"
     caffeineai-authorization: "~1.0.1"
 ---
@@ -74,7 +74,7 @@ Google Calendar on behalf of the signed-in user. The ingredients are:
 ## 1. Add dependencies
 
 ```bash
-mops add googlecalendar-client@0.2.0
+mops add googlecalendar-client@0.3.0
 mops add google-oauth@0.2.1
 mops add caffeineai-authorization@1.0.1
 ```
@@ -958,10 +958,10 @@ auto-computes and attaches the exact required cycles via the
 `ic0.cost_http_request` system API. No manual cycle budgeting is needed
 for token exchange or refresh calls.
 
-For `googlecalendar-client` calls, `defaultConfig.cycles = 30_000_000_000`
-(30B). A typical list/insert costs ~10–15B cycles. Set
-`max_response_bytes = ?2_000_000` for event list reads that may include
-large payloads.
+For `googlecalendar-client` calls, leave `cycles` unset (`null`): each call
+attaches the fee the IC charges for that request, which is zero on subnets
+where outcalls are free. `?n` attaches exactly `n` cycles: the IC rejects the call when `n` is below its fee, and the call traps on a subnet where the canister holds fewer than `n`. Set `max_response_bytes = ?2_000_000`
+for event list reads that may include large payloads.
 
 ## 7. Things that will bite you
 
@@ -1335,7 +1335,7 @@ the user explicitly asks to connect two different Google accounts.
 
 ## Related
 
-- [`mops add googlecalendar-client@0.2.0`](https://mops.one/googlecalendar-client) — Calendar REST API v3 bindings.
+- [`mops add googlecalendar-client@0.3.0`](https://mops.one/googlecalendar-client) — Calendar REST API v3 bindings.
 - [`mops add google-oauth@0.2.1`](https://mops.one/google-oauth) — Google OAuth 2.0 library (token exchange, refresh, PKCE, `getUserEmail` userinfo, `DateTime` RFC 3339 helpers).
 - [Google OAuth 2.0 for Web Server Applications](https://developers.google.com/identity/protocols/oauth2/web-server) — Web-client redirect URI and authorization-code flow reference.
 - [Google Calendar API v3 reference](https://developers.google.com/calendar/api/v3/reference) — what `googlecalendar-client` wraps.
