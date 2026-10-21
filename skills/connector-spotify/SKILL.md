@@ -14,11 +14,11 @@ description: >-
   (play / pause / skip / shuffle / repeat), a saved library, podcasts (shows or
   episodes), chapters or audiobooks — and BEFORE writing any code that touches a
   Spotify endpoint.
-version: 0.3.1
+version: 0.3.2
 caffeineai-subscription: [none]
 compatibility:
   mops:
-    spotify-client: "~0.3.0"
+    spotify-client: "~0.4.0"
 ---
 
 # Spotify with `spotify-client`
@@ -190,10 +190,10 @@ successful no-op.
 
 ## Cycles and response sizes
 
-`defaultConfig.cycles = 30_000_000_000` suits a typical single-object read.
-Large pages need more: `search` with `limit=50`, `getAnAlbum` on a long
-tracklist, or `getAudioAnalysis` (which returns a very large object) want
-`cycles = 100_000_000_000` and an explicit
+Leave `cycles` unset (`null`): each call attaches the fee the IC charges for
+that request, which is zero on subnets where outcalls are free. `?n` attaches exactly `n` cycles: the IC rejects the call when `n` is below its fee, and the call traps on a subnet where the canister holds fewer than `n`.
+Large pages — `search` with `limit=50`, `getAnAlbum` on a long tracklist, or
+`getAudioAnalysis` (which returns a very large object) — want an explicit
 `max_response_bytes = ?2_000_000`.
 
 ## Errors
