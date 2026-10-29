@@ -6,11 +6,11 @@ description: >-
   entries in QuickBooks Online (QBO), email an invoice, or run a QuickBooks query.
   The package wraps the QuickBooks Online Accounting API v3 at
   `https://quickbooks.api.intuit.com` via outbound HTTPS calls.
-version: 0.2.1
+version: 0.3.0
 caffeineai-subscription: [none]
 compatibility:
   mops:
-    quickbooks-client: "~0.3.0"
+    quickbooks-client: "~0.4.0"
 ---
 
 # quickbooks-client
