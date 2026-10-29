@@ -65,7 +65,8 @@ module {
       is_replicated = ?false;
       // Engines report Cycles.balance() as 0 and subsidize outcalls, so
       // never attach more than the available balance.
-      cycles = Nat.min(maxOutcallCycles, Cycles.balance());
+      cycles = ?Nat.min(maxOutcallCycles, Cycles.balance());
+      pricing_version = ?2;
     };
   };
 
