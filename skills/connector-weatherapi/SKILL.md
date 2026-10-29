@@ -12,11 +12,11 @@ description: >-
   wind, rain, snow, conditions, sunrise, sunset, moon phase, astronomy,
   timezone, IP geolocation, marine or tide forecasts, or location autocomplete —
   and BEFORE writing any code that touches a weather endpoint.
-version: 0.2.2
+version: 0.3.0
 caffeineai-subscription: [none]
 compatibility:
   mops:
-    weatherapi-client: "~0.3.0"
+    weatherapi-client: "~0.4.0"
 ---
 
 # Weather data with `weatherapi-client`
