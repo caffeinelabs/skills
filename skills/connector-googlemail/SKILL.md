@@ -12,12 +12,12 @@ description: >-
   mentions sending email, Gmail, "notify via email", "forward results by
   email", or any equivalent phrasing — and BEFORE writing any code that
   touches a Google endpoint.
-version: 0.2.11
+version: 0.3.0
 caffeineai-subscription: [none]
 compatibility:
   mops:
-    googlemail-client: "~0.3.0"
-    google-oauth: "~0.2.1"
+    googlemail-client: "~0.4.0"
+    google-oauth: "~0.3.0"
     caffeineai-authorization: "~1.0.1"
 ---
 
@@ -70,8 +70,8 @@ Gmail on behalf of the signed-in user. The ingredients are:
 ## 1. Add dependencies
 
 ```bash
-mops add googlemail-client@0.3.0
-mops add google-oauth@0.2.1
+mops add googlemail-client@0.4.0
+mops add google-oauth@0.3.0
 mops add caffeineai-authorization@1.0.1
 ```
 
@@ -949,8 +949,8 @@ the user explicitly asks to connect two different Google accounts.
 
 ## Related
 
-- [`mops add googlemail-client@0.3.0`](https://mops.one/googlemail-client) — Gmail REST API bindings.
-- [`mops add google-oauth@0.2.1`](https://mops.one/google-oauth) — Google OAuth 2.0 library (token exchange, refresh, PKCE, `getUserEmail` userinfo, `DateTime` RFC 3339 helpers).
+- [`mops add googlemail-client@0.4.0`](https://mops.one/googlemail-client) — Gmail REST API bindings.
+- [`mops add google-oauth@0.3.0`](https://mops.one/google-oauth) — Google OAuth 2.0 library (token exchange, refresh, PKCE, `getUserEmail` userinfo, `DateTime` RFC 3339 helpers).
 - [Google OAuth 2.0 for Web Server Applications](https://developers.google.com/identity/protocols/oauth2/web-server) — Web-client redirect URI and authorization-code flow reference.
 - [Gmail API v1 reference](https://developers.google.com/gmail/api/reference/rest) — what `googlemail-client` wraps.
 - [RFC 7636 — Proof Key for Code Exchange](https://datatracker.ietf.org/doc/html/rfc7636) — PKCE spec.
