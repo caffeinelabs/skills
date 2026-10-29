@@ -12,10 +12,10 @@ description: >-
   any prior task mentions ChatGPT, GPT (any version), OpenAI, an LLM, a
   chatbot, or embeddings — and BEFORE writing any code that touches
   `api.openai.com`.
-version: 0.1.5
+version: 0.2.0
 compatibility:
   mops:
-    openai-client: "~0.4.0"
+    openai-client: "~0.5.0"
     caffeineai-authorization: "~1.0.1"
 caffeineai-subscription: [none]
 ---
@@ -76,12 +76,12 @@ Use this skill whenever the user wants their canister to call OpenAI. The ingred
 Use the mops tool, not manual file edits:
 
 ```bash
-mops add openai-client@0.4.0
+mops add openai-client@0.5.0
 ```
 
-This updates `mops.toml` (adds `openai-client = "0.4.0"` to `[dependencies]`) and rewrites `mops.lock` in one step. **Requires Mops ≥ 2.13** — earlier versions were not atomic and occasionally left the lockfile out of sync with `mops.toml`.
+This updates `mops.toml` (adds `openai-client = "0.5.0"` to `[dependencies]`) and rewrites `mops.lock` in one step. **Requires Mops ≥ 2.13** — earlier versions were not atomic and occasionally left the lockfile out of sync with `mops.toml`.
 
-**Minimum version:** `openai-client ≥ 0.4.0`. Ships the `JSON.init` constructors used in §4 (so you don't have to hand-list every nullable optional), and `is_replicated = ?false` already set in `defaultConfig` (see §3). Its eight API modules are **partly usable — per operation, not per module**, on a JSON-in/JSON-out rule: chat completions (and stored-completion management), text-to-image, model discovery and Files metadata work; embeddings, moderation, legacy completions, every file upload, speech-to-text, text-to-speech and file download do not (§6). That is unchanged from 0.2.5 — the difference is that §6 now documents it.
+**Minimum version:** `openai-client ≥ 0.5.0`. Ships the `JSON.init` constructors used in §4 (so you don't have to hand-list every nullable optional), and `is_replicated = ?false` already set in `defaultConfig` (see §3). Its eight API modules are **partly usable — per operation, not per module**, on a JSON-in/JSON-out rule: chat completions (and stored-completion management), text-to-image, model discovery and Files metadata work; embeddings, moderation, legacy completions, every file upload, speech-to-text, text-to-speech and file download do not (§6). That is unchanged from 0.2.5 — the difference is that §6 now documents it.
 
 ## 2. Auth model — API-key bearer, not OAuth
 
@@ -355,7 +355,7 @@ import { defaultConfig } "mo:openai-client/Config";
 import CreateChatCompletionRequest "mo:openai-client/Models/CreateChatCompletionRequest";
 ```
 
-**Not shipped** by `openai-client@0.4.0`: Assistants, Realtime, Responses, Batch, Audit Logs, Evals, FineTuning, Invites, Projects, Uploads, Usage, Users, VectorStores. If a build spec needs one of these, raise an issue on [`caffeinelabs/skills-internal`](https://github.com/caffeinelabs/skills-internal) — do not paper over it with hand-rolled `ic.http_request`.
+**Not shipped** by `openai-client@0.5.0`: Assistants, Realtime, Responses, Batch, Audit Logs, Evals, FineTuning, Invites, Projects, Uploads, Usage, Users, VectorStores. If a build spec needs one of these, raise an issue on [`caffeinelabs/skills-internal`](https://github.com/caffeinelabs/skills-internal) — do not paper over it with hand-rolled `ic.http_request`.
 
 ## 7. Cycles and response sizes
 
@@ -553,7 +553,7 @@ Suggested route layout:
 
 ## Related
 
-- [`mops add openai-client@0.4.0`](https://mops.one/openai-client) — connector source.
+- [`mops add openai-client@0.5.0`](https://mops.one/openai-client) — connector source.
 - [`caffeinelabs/skills-internal`](https://github.com/caffeinelabs/skills-internal) — home of the generated bindings (`packages/connectors/openai`); file issues here for missing or trapping API surface. The standalone `caffeinelabs/openai-client` repo is retired.
 - [OpenAI API reference](https://platform.openai.com/docs/api-reference) — upstream.
 - [OpenAI API keys page](https://platform.openai.com/api-keys) — where the admin gets the `sk-...` to paste.
