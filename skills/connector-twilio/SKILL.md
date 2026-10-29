@@ -16,11 +16,11 @@ description: >-
   Twilio, a Messaging Service, A2P 10DLC, toll-free verification, short codes, or
   an alphanumeric sender — and BEFORE writing any code that touches a Twilio
   endpoint.
-version: 0.2.0
+version: 0.3.0
 caffeineai-subscription: [none]
 compatibility:
   mops:
-    twilio-client: "~0.3.0"
+    twilio-client: "~0.4.0"
     caffeineai-authorization: "~1.0.1"
 ---
 
@@ -149,7 +149,7 @@ The admin gate in the recipe below needs the authorization component alongside t
 client:
 
 ```bash
-mops add twilio-client@0.3.0
+mops add twilio-client@0.4.0
 mops add caffeineai-authorization@1.0.1
 ```
 
@@ -634,7 +634,7 @@ panel so the two cannot drift.
 
 ## Related
 
-- [`mops add twilio-client@0.3.0`](https://mops.one/twilio-client) — the generated Twilio REST bindings (35 messaging modules).
+- [`mops add twilio-client@0.4.0`](https://mops.one/twilio-client) — the generated Twilio REST bindings (35 messaging modules).
 - [Twilio Messaging docs](https://www.twilio.com/docs/messaging) — the API this wraps.
 - [`chat`-free quickstart: sending SMS](https://www.twilio.com/docs/messaging/api/message-resource) — the `Message` resource, its fields and statuses.
 - [Twilio error codes](https://www.twilio.com/docs/api/errors) — the numeric codes surfaced in reject messages.
