@@ -13,7 +13,7 @@ description: >-
   top-rated, trending, discover, recommendations, similar titles, posters,
   backdrops, ratings, watchlists, favorites, TMDb or "The Movie Database" — and
   BEFORE writing any code that touches a movie-data endpoint.
-version: 0.2.0
+version: 0.2.1
 caffeineai-subscription: [none]
 compatibility:
   mops:
@@ -32,7 +32,7 @@ does not.** Of the 124 operations, **111 are usable** and **13 are broken**:
 
 - **12** carry a request body — 11 of the 12 POSTs plus `authenticationDeleteSession`
   — and go out double-wrapped (§6).
-- **1** read, `movieRecommendations`, throws on every successful response (§6).
+- **1** read, `movieRecommendations`, returns an opaque `Any` you cannot read (§6).
 
 Plan features around catalog reads (search, details, trending, discover,
 now-playing) and keep favorites, ratings and watchlists out of scope unless you
@@ -44,7 +44,7 @@ need a "more like this" row; its movie counterpart is the broken one.
 ## 1. Add the dependency
 
 ```bash
-mops add tmdb-client@0.3.0
+mops add tmdb-client@0.3.1
 ```
 
 ## 2. The credential
@@ -254,22 +254,16 @@ other mode — but for TMDb there is no endpoint that does.
 
 ## 6. What is broken, and why
 
-### `movieRecommendations` throws on every success
+### `movieRecommendations` returns an opaque `Any`
 
-It is generated as `: async* Any`, and its 2xx path accepts only a Candid
-integer:
-
-```mo:tmdb-client
-case (#Int i__) i__;
-case _ throw Error.reject(… "Unexpected primitive shape");
-```
-
-TMDb answers with a paginated object, so this rejects **every** successful
-response. The cause is a generator gap rather than a bad spec: TMDb declares the
-200 body as `{"type": "object", "properties": {}}` — an object with no declared
-properties — and the plugin renders that as `Any` with a primitive-only decoder
-instead of passing the Candid value through. It is the only operation in the
-package with that shape. `tvSeriesRecommendations` is typed normally and works.
+It is generated as `: async* Any`. Its 2xx path parses the paginated JSON
+object and returns it as `Any`, and Motoko code can't inspect a value of type
+`Any`, so the call succeeds but the results are out of reach. The cause is a
+generator gap: TMDb declares the 200 body as `{"type": "object", "properties": {}}`,
+a free-form object, and the plugin renders that as `Any` instead of a readable
+JSON value. It is
+the only operation in the package with that shape. `tvSeriesRecommendations` is
+typed normally and works.
 
 ### The write surface
 
