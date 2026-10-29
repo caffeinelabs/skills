@@ -1,10 +1,10 @@
 ---
 name: extension-email
 description: Support for sending service/transactional emails. Don't use this for sending marketing emails or verification emails.
-version: 0.4.1
+version: 0.5.0
 compatibility:
   mops:
-    caffeineai-email: "~0.4.0"
+    caffeineai-email: "~0.5.0"
 caffeineai-subscription: [plus, pro]
 ---
 
@@ -67,6 +67,8 @@ actor {
 ```
 
 ## Upgrading from the previous version
+
+An app built with `caffeineai-email` 0.4.x re-pins with `mops add caffeineai-email@0.5.0`. `sendServiceEmail` and `sendRawEmail` keep their signatures. 0.5.0 compiles with `ic` 5.0.0, where 0.4.x fails. In an app that pins `ic` 5.0.0, its gateway calls use outcall pricing version 2; on `ic` 4.2.0 they keep version 1. `gatewayConfig` returns the mail client 0.7.0 `Config`, whose `cycles` is optional and which adds `pricing_version`. Apps that use verification, marketing or calendar email follow the upgrade sections of those skills.
 
 An app built with `caffeineai-email` 0.3.x re-pins with `mops add caffeineai-email@0.4.0`. `sendServiceEmail` and `sendRawEmail` keep their signatures. Every send now goes through the mail gateway with the settings the platform injects on every deploy (`INTEGRATIONS_GATEWAY_URL` / `INTEGRATIONS_GATEWAY_API_KEY`); the transport canister and `INTEGRATIONS_CANISTER_ID` are no longer used, and a send without those settings returns `#err` instead of falling back. Apps that use verification, marketing or calendar email follow the upgrade sections of those skills.
 
