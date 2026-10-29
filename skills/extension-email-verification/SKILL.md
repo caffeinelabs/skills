@@ -1,11 +1,11 @@
 ---
 name: extension-email-verification
 description: Support for sending an email with a link the recipient can click to prove they own the email address.
-version: 0.3.0
+version: 0.4.0
 compatibility:
   mops:
-    caffeineai-email-verification: "~0.3.0"
-    caffeineai-email: "~0.4.0"
+    caffeineai-email-verification: "~0.3.1"
+    caffeineai-email: "~0.5.0"
   npm:
     "@caffeineai/email-verification": "~0.3.0"
 caffeineai-subscription: [plus, pro]
@@ -208,6 +208,8 @@ module {
 ```
 
 ## Upgrading from the previous version
+
+An app built with `caffeineai-email-verification` 0.3.0 re-pins with `mops add caffeineai-email-verification@0.3.1` and `mops add caffeineai-email@0.5.0`. Nothing in the app code changes. Both compile with `ic` 5.0.0, where 0.3.0 fails.
 
 An app built with `caffeineai-email-verification` 0.2.x re-pins with `mops add caffeineai-email-verification@0.3.0` and `mops add caffeineai-email@0.4.0`, and bumps `@caffeineai/email-verification` to 0.3.0. Nothing in the app code changes. The mixin no longer has the `_caffeineEmailVerify` callback of the transport canister: verification mail now always goes through the mail gateway, and the links in mail the transport sent before 0.2.0 stop working.
 
