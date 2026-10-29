@@ -1,12 +1,12 @@
 ---
 name: extension-email-marketing
 description: Send personalised marketing emails to subscribers with an unsubscribe link.
-version: 0.2.1
+version: 0.3.0
 compatibility:
   mops:
-    caffeineai-email-marketing: "~0.2.1"
-    caffeineai-email-verification: "~0.3.0"
-    caffeineai-email: "~0.4.0"
+    caffeineai-email-marketing: "~0.2.2"
+    caffeineai-email-verification: "~0.3.1"
+    caffeineai-email: "~0.5.0"
     caffeineai-authorization: "~1.0.1"
   npm:
     "@caffeineai/email-marketing": "~0.2.0"
@@ -423,6 +423,8 @@ module {
 ```
 
 ## Upgrading from the previous version
+
+An app built with `caffeineai-email-marketing` 0.2.1 re-pins with `mops add caffeineai-email-marketing@0.2.2`, `mops add caffeineai-email-verification@0.3.1` and `mops add caffeineai-email@0.5.0`. Nothing in the app code changes. All three compile with `ic` 5.0.0, where 0.2.1 fails.
 
 An app built with `caffeineai-email-marketing` 0.2.0 re-pins with `mops add caffeineai-email-marketing@0.2.1`, `mops add caffeineai-email-verification@0.3.0` and `mops add caffeineai-email@0.4.0`. Nothing in the app code changes: marketing mail now always goes through the mail gateway, and the mixin keeps the `_caffeineEmailUnsubscribeFromTopic` callback so the links in mail the transport sent keep working.
 
