@@ -14,11 +14,11 @@ description: >-
   (play / pause / skip / shuffle / repeat), a saved library, podcasts (shows or
   episodes), chapters or audiobooks — and BEFORE writing any code that touches a
   Spotify endpoint.
-version: 0.3.2
+version: 0.4.0
 caffeineai-subscription: [none]
 compatibility:
   mops:
-    spotify-client: "~0.4.0"
+    spotify-client: "~0.5.0"
 ---
 
 # Spotify with `spotify-client`
