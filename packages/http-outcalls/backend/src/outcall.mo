@@ -65,6 +65,7 @@ module {
         context = Blob.fromArray([]);
       };
       is_replicated = ?false;
+      pricing_version = null;
     };
     await Call.httpRequest(args);
   };

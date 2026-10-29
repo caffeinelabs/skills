@@ -2,6 +2,10 @@
 
 ### Features
 
+- move the build template and `caffeineai-http-outcalls` to `ic` 5.0.0 (#358)
+
+### Features
+
 - **http-outcalls**: enforce bounded, verified HTTP outcalls (#209)
 
 ### Features
