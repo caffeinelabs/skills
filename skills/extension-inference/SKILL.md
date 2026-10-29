@@ -14,7 +14,7 @@ description: >-
   BEFORE writing any code that talks to an LLM host. Use `extension-openai`
   only when the spec explicitly requires a user- or admin-pasted `sk-...`
   key against `api.openai.com`.
-version: 0.2.0
+version: 0.2.1
 compatibility:
   mops:
     caffeineai-inference-client: "~0.4.0"
@@ -73,7 +73,7 @@ with the app's own access rule.
 ## 1. Add `caffeineai-inference-client` to `mops.toml`
 
 ```bash
-mops add caffeineai-inference-client@0.4.0
+mops add caffeineai-inference-client@0.4.1
 ```
 
 Requires Mops ≥ 2.13. **Minimum version:** `caffeineai-inference-client ≥ 0.4.0`.
@@ -189,7 +189,7 @@ names never reach the app.
 
 ## 7. Available API surface — chat completions
 
-`caffeineai-inference-client@0.4.0` is generated from
+`caffeineai-inference-client@0.4.1` is generated from
 [`public-api-v0.1.0`](https://github.com/caffeinelabs/inference/releases/tag/public-api-v0.1.0):
 
 | Module | Entry point | Route |
