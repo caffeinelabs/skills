@@ -5,10 +5,10 @@ description: >-
   including mandatory local verification of external REST API requests.
   Canister → internet only. For inbound webhooks / curl endpoints served by
   the canister, use extension-http-endpoints instead.
-version: 0.1.11
+version: 0.1.12
 compatibility:
   mops:
-    caffeineai-http-outcalls: "~0.1.4"
+    caffeineai-http-outcalls: "~0.1.5"
 caffeineai-subscription: [none]
 ---
 
@@ -137,8 +137,9 @@ Use `httpRequest` when the status, headers, a custom response limit, or a method
 other than GET or POST is needed. `maxResponseBytes` may set a lower limit; the
 module caps every request at `defaultMaxResponseBytes` (1 MB). The module
 executes every HTTP outcall with `is_replicated = ?false`; callers cannot enable
-replicated execution. The backward-compatible helper stays the shortest path for
-a simple GET:
+replicated execution. It uses pricing version 1 (`pricing_version = null`) and
+attaches the exact cycles that pricing charges. The backward-compatible helper
+stays the shortest path for a simple GET:
 
 ```motoko filepath=src/backend/main.mo
 import Text "mo:core/Text";
@@ -167,6 +168,10 @@ actor {
 ```
 
 POST usage through `httpPostRequest` is analogous.
+
+## Upgrading from the previous version
+
+An app built with `caffeineai-http-outcalls` 0.1.4 or earlier re-pins with `mops add caffeineai-http-outcalls@0.1.5` before it moves to `ic` 5.0.0, where 0.1.4 fails to compile. Nothing in the app code changes.
 
 ## Verify every external API request
 
