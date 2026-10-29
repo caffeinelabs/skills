@@ -1,18 +1,18 @@
 {
   "version": 3,
   "mopsTomlDepsHash": "3bc7de3a90142c2293ebaa0528b8035d69b2a0854925344c266177a55c2543b2",
-  "localDepsHash": "65efa0af48be53b7cccab01efca951264a3589a4bbba165ff96d373e5f00006e",
+  "localDepsHash": "5f2313e2170c6e216a52d708a16acef7fb00dd58ef7b296c97df1b82015bf8f6",
   "deps": {
     "caffeineai-authorization": "../../authorization/backend",
     "caffeineai-http-outcalls": "../../http-outcalls/backend",
     "core": "2.5.0",
-    "ic": "4.2.0",
+    "ic": "5.0.0",
     "identity-attributes": "0.4.0"
   },
   "graph": {
     "core@2.2.0": {},
     "core@2.5.0": {},
-    "ic@4.2.0": {
+    "ic@5.0.0": {
       "core": "2.5.0"
     },
     "identity-attributes@0.4.0": {
@@ -79,13 +79,13 @@
       "core@2.5.0/src/pure/RealTimeQueue.mo": "af133ae61c69ce4e00db5e9db53ddeccad84373fef82a156c85360c2426349dd",
       "core@2.5.0/src/pure/Set.mo": "f0155b1d548cbc8889fcff75ef52f0cab7998b034621e4faac8d3b79d7bbac07"
     },
-    "ic@4.2.0": {
-      "ic@4.2.0/LICENSE": "ec415b57f8143746b567c94bfad243f5342f3edf110c94641a1a60e02722db55",
-      "ic@4.2.0/README.md": "4aacc06321244e54f741e9d826f3d374144a4b32372cb58dddaedcaad2e12bc3",
-      "ic@4.2.0/mops.toml": "90a4087e4c1fb5ca9b976d824370bca632d860191eedd0461ac85bdbc4169f55",
-      "ic@4.2.0/src/Call.mo": "b4a3572e5617d0b1eb696450344b65e99504f844794e7ddf1cff664fcfeb2994",
-      "ic@4.2.0/src/Types.mo": "3d145437f9b8c6a661266ec659c9522c4b9001b50954945816e746f48028c9fc",
-      "ic@4.2.0/src/lib.mo": "9d9ec84a85eb25d191c1cae99cb841d9b6e0cf0f9bc27c3f3805ac9673d7bef1"
+    "ic@5.0.0": {
+      "ic@5.0.0/LICENSE": "ec415b57f8143746b567c94bfad243f5342f3edf110c94641a1a60e02722db55",
+      "ic@5.0.0/README.md": "7fda4fcef042163c81c1faf17412659764bd46d5c4358f0c9c76dcc051e1cb2a",
+      "ic@5.0.0/mops.toml": "004cc7b96c882b3a269078a794cee865ede1f1c9a95ff6a040440e29def487dd",
+      "ic@5.0.0/src/Call.mo": "6f80e43e14c977a518130f0c323ee4ebdc66a801e980d0c45e9c747d342132cf",
+      "ic@5.0.0/src/Types.mo": "cb28f0e8b65762a7ac1385088e35062966ba7e0d40a073335657897a9ef2da21",
+      "ic@5.0.0/src/lib.mo": "9d9ec84a85eb25d191c1cae99cb841d9b6e0cf0f9bc27c3f3805ac9673d7bef1"
     },
     "identity-attributes@0.4.0": {
       "identity-attributes@0.4.0/LICENSE": "840e3d57a38a8061f55d04470fbd58b9345326fa04ea10ee42add5c6e3b2aa08",

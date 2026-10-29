@@ -2,6 +2,10 @@
 
 ### Features
 
+- move the build template and `caffeineai-http-outcalls` to `ic` 5.0.0 (#358)
+
+### Features
+
 - **stripe**: add MixinStripe and mixin-aware lint rules (#155)
 
 ### Features
