@@ -4,11 +4,11 @@ description: >-
   Payment support based on Stripe, supporting credit cards and debit cards.
   Checkout and session status use HTTP outcalls. For inbound Stripe webhooks
   (POST to the canister), also load extension-http-endpoints.
-version: 1.0.2
+version: 1.0.3
 compatibility:
   mops:
-    caffeineai-stripe: "~1.0.0"
-    caffeineai-http-outcalls: "~0.1.3"
+    caffeineai-stripe: "~1.0.1"
+    caffeineai-http-outcalls: "~0.1.5"
     caffeineai-authorization: "~1.0.1"
 caffeineai-subscription: [none]
 ---
@@ -164,6 +164,10 @@ module {
   };
 };
 ```
+
+## Upgrading from the previous version
+
+An app built with `caffeineai-stripe` 1.0.0 re-pins with `mops add caffeineai-stripe@1.0.1` and `mops add caffeineai-http-outcalls@0.1.5` before it moves to `ic` 5.0.0, where 1.0.0 fails to compile. Nothing in the app code changes.
 
 # Frontend
 
