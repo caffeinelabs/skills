@@ -12,7 +12,7 @@ description: >-
   mentions sending email, Gmail, "notify via email", "forward results by
   email", or any equivalent phrasing — and BEFORE writing any code that
   touches a Google endpoint.
-version: 0.3.0
+version: 0.3.1
 caffeineai-subscription: [none]
 compatibility:
   mops:
@@ -70,7 +70,7 @@ Gmail on behalf of the signed-in user. The ingredients are:
 ## 1. Add dependencies
 
 ```bash
-mops add googlemail-client@0.4.0
+mops add googlemail-client@0.4.1
 mops add google-oauth@0.3.0
 mops add caffeineai-authorization@1.0.1
 ```
@@ -949,7 +949,7 @@ the user explicitly asks to connect two different Google accounts.
 
 ## Related
 
-- [`mops add googlemail-client@0.4.0`](https://mops.one/googlemail-client) — Gmail REST API bindings.
+- [`mops add googlemail-client@0.4.1`](https://mops.one/googlemail-client) — Gmail REST API bindings.
 - [`mops add google-oauth@0.3.0`](https://mops.one/google-oauth) — Google OAuth 2.0 library (token exchange, refresh, PKCE, `getUserEmail` userinfo, `DateTime` RFC 3339 helpers).
 - [Google OAuth 2.0 for Web Server Applications](https://developers.google.com/identity/protocols/oauth2/web-server) — Web-client redirect URI and authorization-code flow reference.
 - [Gmail API v1 reference](https://developers.google.com/gmail/api/reference/rest) — what `googlemail-client` wraps.
