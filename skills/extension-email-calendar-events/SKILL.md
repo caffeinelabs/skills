@@ -1,11 +1,11 @@
 ---
 name: extension-email-calendar-events
 description: Support for organising events/meetings and sending invitations by email.
-version: 0.4.1
+version: 0.5.0
 compatibility:
   mops:
-    caffeineai-email-calendar-events: "~0.4.0"
-    caffeineai-email: "~0.4.0"
+    caffeineai-email-calendar-events: "~0.5.0"
+    caffeineai-email: "~0.5.0"
     caffeineai-authorization: "~1.0.1"
 caffeineai-subscription: [plus, pro]
 ---
@@ -360,6 +360,8 @@ module {
 ```
 
 ## Upgrading from the previous version
+
+An app built with `caffeineai-email-calendar-events` 0.4.x re-pins with `mops add caffeineai-email-calendar-events@0.5.0` and `mops add caffeineai-email@0.5.0` together: 0.5.0 builds on mail client 0.7.0, which `caffeineai-email` 0.4.x does not compile against. Nothing in the app code changes. Both compile with `ic` 5.0.0, where 0.4.x fails.
 
 An app built with `caffeineai-email-calendar-events` 0.3.x re-pins with `mops add caffeineai-email-calendar-events@0.4.0` and `mops add caffeineai-email@0.4.0`. Nothing in the app code changes: invitations now always go through the mail gateway, and `sendCalendarEvent` returns `#err` instead of falling back to the transport canister when the gateway settings are missing.
 
