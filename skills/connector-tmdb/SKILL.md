@@ -13,11 +13,11 @@ description: >-
   top-rated, trending, discover, recommendations, similar titles, posters,
   backdrops, ratings, watchlists, favorites, TMDb or "The Movie Database" — and
   BEFORE writing any code that touches a movie-data endpoint.
-version: 0.2.1
+version: 0.2.2
 caffeineai-subscription: [none]
 compatibility:
   mops:
-    tmdb-client: "~0.3.0"
+    tmdb-client: "~0.3.2"
 ---
 
 # Movie and TV data with `tmdb-client`
@@ -28,23 +28,22 @@ generated from TMDb's OpenAPI spec. **124 operations in one module**
 and no nested facade.
 
 **Read this before planning the app: the read surface works, the write surface
-does not.** Of the 124 operations, **111 are usable** and **13 are broken**:
-
-- **12** carry a request body — 11 of the 12 POSTs plus `authenticationDeleteSession`
-  — and go out double-wrapped (§6).
-- **1** read, `movieRecommendations`, returns an opaque `Any` you cannot read (§6).
+does not.** Of the 124 operations, **112 are usable** and **12 are broken**:
+they carry a request body — 11 of the 12 POSTs plus `authenticationDeleteSession`
+— and go out double-wrapped (§6). One usable read, `movieRecommendations`,
+returns an untyped value you walk by hand (§6).
 
 Plan features around catalog reads (search, details, trending, discover,
 now-playing) and keep favorites, ratings and watchlists out of scope unless you
-are prepared to fix the generator first. Use `tvSeriesRecommendations` if you
-need a "more like this" row; its movie counterpart is the broken one.
+are prepared to fix the generator first. For a "more like this" row, prefer
+`tvSeriesRecommendations`, which is typed.
 
 # Backend
 
 ## 1. Add the dependency
 
 ```bash
-mops add tmdb-client@0.3.1
+mops add tmdb-client@0.3.2
 ```
 
 ## 2. The credential
@@ -212,12 +211,12 @@ groups:
 | group | representative operations | use for |
 |---|---|---|
 | search | `searchMovie`, `searchTv`, `searchPerson`, `searchMulti` | a search box. `searchMulti` returns movies + TV + people in one call |
-| movie detail | `movieDetails`, `movieCredits`, `movieImages`, `movieVideos`, `movieSimilar`, `movieReleaseDates` | a title page. **Not `movieRecommendations`** — see §6 |
+| movie detail | `movieDetails`, `movieCredits`, `movieImages`, `movieVideos`, `movieSimilar`, `movieReleaseDates` | a title page. `movieRecommendations` is untyped — see §6 |
 | TV detail | `tvSeriesDetails`, `tvSeasonDetails`, `tvEpisodeDetails`, `tvSeriesCredits`, `tvSeriesRecommendations` | a series page, drilling season → episode |
 | people | `personDetails`, `personMovieCredits`, `personTvCredits`, `personImages` | a cast/crew page |
 | feeds | `movieNowPlayingList`, `movieUpcomingList`, `moviePopularList`, `movieTopRatedList`, `tvSeriesPopularList` | landing pages, carousels |
 | trending | `trendingMovies`, `trendingTv`, `trendingPeople`, `trendingAll` | a "what's hot" row. Takes a `timeWindow` enum (`#day` / `#week`) as a **path** parameter, so it is bare, not `?T` |
-| recommendations | `tvSeriesRecommendations` works; **`movieRecommendations` does not** — §6 | "more like this" for TV only |
+| recommendations | `tvSeriesRecommendations` (typed); `movieRecommendations` (untyped, §6) | "more like this" rows |
 | discover | `discoverMovie`, `discoverTv` | filtered browse: genre, year, rating, language, sort |
 | account reads | `accountGetFavorites`, `accountWatchlistMovies`, `accountWatchlistTv`, `accountRatedMovies`, `accountRatedTv`, `accountLists`, `accountDetails` | reading a user's own lists. Correctly generated, but they need a `sessionId` that cannot currently be obtained — see §6. There is no `accountGetWatchlist`; movies and TV are separate operations |
 | configuration | `configurationDetails`, `configurationLanguages`, `configurationCountries` | image base URLs, language codes. Fetch once and cache — it changes rarely |
@@ -252,18 +251,26 @@ directions here, and it is a **change from 0.1.1**, which shipped `null`
 Override per call site with record update when a specific endpoint wants the
 other mode — but for TMDb there is no endpoint that does.
 
-## 6. What is broken, and why
+## 6. What is broken or untyped, and why
 
-### `movieRecommendations` returns an opaque `Any`
+### `movieRecommendations` returns an untyped `Candid.Candid`
 
-It is generated as `: async* Any`. Its 2xx path parses the paginated JSON
-object and returns it as `Any`, and Motoko code can't inspect a value of type
-`Any`, so the call succeeds but the results are out of reach. The cause is a
-generator gap: TMDb declares the 200 body as `{"type": "object", "properties": {}}`,
-a free-form object, and the plugin renders that as `Any` instead of a readable
-JSON value. It is
-the only operation in the package with that shape. `tvSeriesRecommendations` is
-typed normally and works.
+TMDb declares its 200 body as `{"type": "object", "properties": {}}`, a
+free-form object, so there is no model to decode into. The call returns the
+parsed JSON as `Candid.Candid` from `serde-core`: an object is
+`#Record([(key, value)])`, an array is `#Array([...])`, and leaves are `#Text`,
+`#Nat`, `#Int`, `#Float`, `#Bool`, or `#Null`. Switch on the result and look up
+`"results"`, then read each entry's fields such as `"id"` and `"title"` the same
+way. It is the only operation in the package with that shape;
+`tvSeriesRecommendations` is typed normally.
+
+- **A number's tag follows how TMDb wrote it, not the field.** A whole number
+  is `#Nat` (or `#Int` if negative), and only a number with a decimal point or
+  exponent is `#Float`, so `vote_average` can arrive as `#Nat(7)` or
+  `#Float(7.4)`. Handle both.
+- **You don't need to name the type to switch on it.** To name it, for example
+  in a helper's signature, run `mops add serde-core@0.2.1` and
+  `import { Candid } "mo:serde-core"`.
 
 ### The write surface
 
