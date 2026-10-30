@@ -11,7 +11,7 @@ description: >-
   tweeting, live-tweeting, posting-to-X, posting-a-status,
   sharing-to-Twitter, or any equivalent phrasing — and BEFORE writing
   any code that touches `api.x.com`.
-version: 0.2.1
+version: 0.2.2
 compatibility:
   mops:
     x-client: "~0.5.0"
@@ -97,10 +97,10 @@ variant: the bearer token belongs to the signed-in user, full stop.
 Use the mops tool, not manual file edits:
 
 ```bash
-mops add x-client@0.5.1
+mops add x-client@0.5.2
 ```
 
-This updates `mops.toml` (adds `x-client = "0.5.1"` to `[dependencies]`)
+This updates `mops.toml` (adds `x-client = "0.5.2"` to `[dependencies]`)
 and rewrites `mops.lock` in one step.
 
 **Minimum version:** `x-client ≥ 0.5.0`, where `Config.cycles` is optional (§7) and `Config.pricing_version` defaults to `?2`. Versions before 0.3.0 emitted
@@ -490,7 +490,7 @@ mix them inside the same `shared` body.
 
 ## 6. Available API surface
 
-`x-client@0.5.1` ships a curated subset of the X API v2. The most
+`x-client@0.5.2` ships a curated subset of the X API v2. The most
 relevant module for this skill is `TweetsApi`:
 
 | Module        | Primary entry point | What it does                                            |
@@ -503,7 +503,7 @@ For X *reads* (timeline, search, lookup) the curated surface is much
 smaller — `x-client` focuses on writes. Pull data from X via
 `extension-http-outcalls` like any other public REST API.
 
-If a build spec needs an X *write* not covered by `x-client@0.5.1`
+If a build spec needs an X *write* not covered by `x-client@0.5.2`
 (e.g. media upload, replies-to-replies semantics, retweet endpoints),
 raise an issue on [`caffeinelabs/skills-internal`](https://github.com/caffeinelabs/skills-internal) — do not paper over it
 with hand-rolled `ic.http_request`.
@@ -801,7 +801,7 @@ resolvable for the caller (admin default OR per-user override).
 
 ## Related
 
-- [`mops add x-client@0.5.1`](https://mops.one/x-client) — connector source.
+- [`mops add x-client@0.5.2`](https://mops.one/x-client) — connector source.
 - [`skills/connector-x/SKILL.md`](../connector-x/SKILL.md) — the authoritative connector skill: step-by-step Developer Portal walkthrough (§ OAuth 2.0 setup) and the operational gotchas (non-replication, optional fields, sub-object rules, token refresh, rate limits).
 - [X Developer Portal](https://developer.x.com/en/portal/dashboard) — where the Client ID is created.
 - [OAuth 2.0 Authorization Code with PKCE (X docs)](https://developer.x.com/en/docs/authentication/oauth-2-0/authorization-code) — canonical authorise/token endpoint details.
