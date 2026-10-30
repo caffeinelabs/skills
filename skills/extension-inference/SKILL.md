@@ -6,15 +6,15 @@ description: >-
   The ONLY supported path is the `caffeineai-inference-client` mops package
   with `Config.fromEnv<system>()`, which hands the canister a ready-to-use
   authenticated config — the app never asks for, stores, or returns a key.
-  For interactive features the browser can call the API itself with a
-  short-lived key that `Ephemeral.Broker` mints. Hand-rolling
+  For interactive features that only signed-in users use, the browser can
+  call the API itself with a short-lived key that `Ephemeral.Broker` mints. Hand-rolling
   `ic.http_request` to `inference.caffeine.ai` (or `api.openai.com`) is a
   FORBIDDEN anti-pattern. Load this skill whenever
   the user, spec, or any prior task wants an LLM in a Caffeine app — and
   BEFORE writing any code that talks to an LLM host. Use `extension-openai`
   only when the spec explicitly requires a user- or admin-pasted `sk-...`
   key against `api.openai.com`.
-version: 0.2.1
+version: 0.2.2
 compatibility:
   mops:
     caffeineai-inference-client: "~0.4.0"
@@ -36,7 +36,7 @@ The frontend-direct path gives the browser short-lived child keys instead.
 | User intent | Capability |
 | --- | --- |
 | Chat / summarise / classify with an LLM in a Caffeine app | `caffeineai-inference-client` `ChatApi.createChatCompletion` via this skill |
-| Chat, lookups, or translation where the user waits for the reply | The frontend-direct path of this skill: the browser calls the API with a key from `Ephemeral.Broker` |
+| Chat, lookups, or translation where a signed-in user waits for the reply | The frontend-direct path of this skill: the browser calls the API with a key from `Ephemeral.Broker` |
 | Call `api.openai.com` with a user-pasted `sk-...` | [`extension-openai`](../extension-openai/SKILL.md) only |
 
 Do **not** load `extension-openai` for a normal Caffeine-app LLM. Do **not**
@@ -53,18 +53,20 @@ key-settings page, or a model picker.
 | Prompt | Hidden in the canister, so the backend can trust the result | Visible and editable in the browser |
 | Result | The canister has it | The browser has it and saves it in the background |
 
-- Use the frontend-direct path for features a signed-in user waits on:
-  chat, word lookups, translation, suggestions.
+- Use the frontend-direct path for features only signed-in users use and
+  wait on: chat, word lookups, translation, suggestions.
 - Use the backend path when the backend must trust or keep the result
   (grading, moderation, anything other users see), when no user is
-  waiting (timers), and in apps without sign-in.
+  waiting (timers), for public features, and in apps without sign-in.
 - An app can use both, one per feature.
 
 Never mint keys for anonymous callers: a key leaves the canister, so anyone
 could spend the app's credits with it. Check the caller in the mint method,
 with the app's own access rule.
 
-- In an app with sign-in, also run that rule in every backend chat method.
+- Each backend chat method runs the access rule the spec gives its feature.
+  A feature for signed-in users checks the caller. A public feature, such as
+  a chat any visitor can use, takes any caller, even in an app with sign-in.
 - An app without sign-in uses only the backend path, and its chat methods
   take any caller.
 
@@ -227,7 +229,7 @@ the frontend-direct path.
 - User turns are `#user(ChatCompletionRequestMessageOneOf2.JSON.init({ content = #string(prompt); role = #user }))`.
 - `JSON.init` for required fields; layer optionals with record update. Do not hand-list every `null`.
 - `resp.choices[0].message.content` is `?Text`. Check `choices.size()` first.
-- One chat call is one HTTP outcall inside an update call: budget seconds, not milliseconds. When a user waits on it, use the frontend-direct path.
+- One chat call is one HTTP outcall inside an update call: budget seconds, not milliseconds. When a signed-in user waits on it, use the frontend-direct path.
 - `Ephemeral.Broker` reuses a caller's key for 15 minutes and allows 30 mints per caller per hour. Pass your own `Limits` to change that.
 
 # Frontend
