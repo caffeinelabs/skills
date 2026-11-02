@@ -1,0 +1,18 @@
+name = "no-redeclare-remove-approval"
+description = "Do NOT redeclare removeApproval — it is provided by MixinUserApproval"
+query = """
+(source_file
+  (obj_dec "actor"
+    (obj_body
+      (dec_field
+        (func_dec
+          (_) @error
+          (#eq? @error "removeApproval"))))))
+(source_file
+  (class_dec "actor"
+    (obj_body
+      (dec_field
+        (func_dec
+          (_) @error
+          (#eq? @error "removeApproval"))))))
+"""

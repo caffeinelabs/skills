@@ -1,6 +1,7 @@
 import Map "mo:core/Map";
 import Iter "mo:core/Iter";
 import Principal "mo:core/Principal";
+import Runtime "mo:core/Runtime";
 import AccessControl "mo:caffeineai-authorization/access-control";
 
 module {
@@ -27,18 +28,35 @@ module {
     { var approvalStatus };
   };
 
+  // The anonymous check also covers state recorded before anonymous callers were rejected.
   public func isApproved(state : UserApprovalState, caller : Principal) : Bool {
-    state.approvalStatus.get(caller) == ?#approved;
+    not caller.isAnonymous() and state.approvalStatus.get(caller) == ?#approved;
+  };
+
+  public func isRejected(state : UserApprovalState, user : Principal) : Bool {
+    state.approvalStatus.get(user) == ?#rejected;
   };
 
   public func requestApproval(state : UserApprovalState, caller : Principal) {
+    if (caller.isAnonymous()) {
+      Runtime.trap("Anonymous principals cannot request approval");
+    };
     if (state.approvalStatus.get(caller) == null) {
       setApproval(state, caller, #pending);
     };
   };
 
+  // Approving the anonymous principal would approve every signed-out visitor.
   public func setApproval(state : UserApprovalState, user : Principal, approval : ApprovalStatus) {
+    if (user.isAnonymous()) {
+      Runtime.trap("The anonymous principal cannot be approved, rejected, or set to pending");
+    };
     state.approvalStatus.add(user, approval);
+  };
+
+  // Unlike #rejected, a removed user can request approval again.
+  public func removeApproval(state : UserApprovalState, user : Principal) {
+    state.approvalStatus.remove(user);
   };
 
   public type UserApprovalInfo = {
