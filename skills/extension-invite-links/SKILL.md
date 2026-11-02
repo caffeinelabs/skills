@@ -1,7 +1,7 @@
 ---
 name: extension-invite-links
-description: Requests invite-link / RSVP based access where guests can submit responses without login while admin can view responses with login.
-version: 1.0.3
+description: Event RSVPs through invite codes, where guests submit responses without login and the admin views them. Not for granting access to the app; for member invite links use extension-user-approval.
+version: 1.0.4
 compatibility:
   mops:
     caffeineai-invite-links: "~1.0.0"
@@ -15,6 +15,8 @@ Invite links & RSVP extension for [Caffeine AI](https://caffeine.ai?utm_source=c
 ## Overview
 
 This skill adds invite-link generation and RSVP collection. Admins generate unique invite codes; guests use them to submit responses without authentication.
+
+This is for events, not app access: an RSVP code grants nothing else in the app. To let people join a private app through a link, use [extension-user-approval](../extension-user-approval/SKILL.md).
 
 Prerequisite: You must follow [extension-authorization](../extension-authorization/SKILL.md) first, as this integration depends on it.
 
