@@ -1,0 +1,24 @@
+[package]
+name = "caffeineai-mcp-server"
+version = "0.1.0"
+description = "MCP server for a Motoko canister, so users connect the app to Claude and other MCP clients with Internet Identity sign-in (OAuth 2.1)."
+license = "Apache-2.0"
+repository = "https://github.com/caffeinelabs/skills"
+keywords = ["motoko", "icp", "mcp", "oauth", "claude"]
+
+[dependencies]
+core = "2.6.0"
+jayson = "0.1.1"
+sha2 = "0.2.5"
+caffeineai-http-endpoints = "../../http-endpoints/backend"
+caffeineai-authorization = "../../authorization/backend"
+
+[dev-dependencies]
+test = "2.1.2"
+
+[requirements]
+moc = "1.14.0"
+
+[toolchain]
+moc = "1.16.0"
+mo-fmt = "0.4.0"
