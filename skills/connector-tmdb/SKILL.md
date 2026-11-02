@@ -13,11 +13,11 @@ description: >-
   top-rated, trending, discover, recommendations, similar titles, posters,
   backdrops, ratings, watchlists, favorites, TMDb or "The Movie Database" — and
   BEFORE writing any code that touches a movie-data endpoint.
-version: 0.2.2
+version: 0.3.0
 caffeineai-subscription: [none]
 compatibility:
   mops:
-    tmdb-client: "~0.3.2"
+    tmdb-client: "~0.4.0"
 ---
 
 # Movie and TV data with `tmdb-client`
@@ -27,23 +27,19 @@ generated from TMDb's OpenAPI spec. **124 operations in one module**
 (`Apis/DefaultApi`) — the spec carries no tags, so there is nothing to split on
 and no nested facade.
 
-**Read this before planning the app: the read surface works, the write surface
-does not.** Of the 124 operations, **112 are usable** and **12 are broken**:
-they carry a request body — 11 of the 12 POSTs plus `authenticationDeleteSession`
-— and go out double-wrapped (§6). One usable read, `movieRecommendations`,
-returns an untyped value you walk by hand (§6).
-
-Plan features around catalog reads (search, details, trending, discover,
-now-playing) and keep favorites, ratings and watchlists out of scope unless you
-are prepared to fix the generator first. For a "more like this" row, prefer
-`tvSeriesRecommendations`, which is typed.
+**Read this before planning the app.** Catalog reads (search, details,
+trending, discover, now-playing) need only the token. Favorites, watchlists,
+ratings and lists also need a **user session**, which takes a browser redirect
+to TMDb (§6). One read, `movieRecommendations`, returns an untyped value you
+walk by hand (§6); for a "more like this" row, prefer `tvSeriesRecommendations`,
+which is typed.
 
 # Backend
 
 ## 1. Add the dependency
 
 ```bash
-mops add tmdb-client@0.3.2
+mops add tmdb-client@0.4.0
 ```
 
 ## 2. The credential
@@ -218,7 +214,7 @@ groups:
 | trending | `trendingMovies`, `trendingTv`, `trendingPeople`, `trendingAll` | a "what's hot" row. Takes a `timeWindow` enum (`#day` / `#week`) as a **path** parameter, so it is bare, not `?T` |
 | recommendations | `tvSeriesRecommendations` (typed); `movieRecommendations` (untyped, §6) | "more like this" rows |
 | discover | `discoverMovie`, `discoverTv` | filtered browse: genre, year, rating, language, sort |
-| account reads | `accountGetFavorites`, `accountWatchlistMovies`, `accountWatchlistTv`, `accountRatedMovies`, `accountRatedTv`, `accountLists`, `accountDetails` | reading a user's own lists. Correctly generated, but they need a `sessionId` that cannot currently be obtained — see §6. There is no `accountGetWatchlist`; movies and TV are separate operations |
+| account reads | `accountGetFavorites`, `accountWatchlistMovies`, `accountWatchlistTv`, `accountRatedMovies`, `accountRatedTv`, `accountLists`, `accountDetails` | reading a user's own lists. They need a `sessionId` — see §6. There is no `accountGetWatchlist`; movies and TV are separate operations |
 | configuration | `configurationDetails`, `configurationLanguages`, `configurationCountries` | image base URLs, language codes. Fetch once and cache — it changes rarely |
 
 Everything in a response is optional (`?T`), because TMDb omits fields rather
@@ -251,7 +247,69 @@ directions here, and it is a **change from 0.1.1**, which shipped `null`
 Override per call site with record update when a specific endpoint wants the
 other mode — but for TMDb there is no endpoint that does.
 
-## 6. What is broken or untyped, and why
+## 6. Sessions, writes, and the one untyped read
+
+### Getting a user session
+
+Every account read and write takes a `sessionId`, the user's TMDb session. The
+v4 read-access token alone can't act for a user. Get a session in three steps:
+
+1. Call `authenticationCreateRequestToken(config)` and store its
+   `request_token` in actor state, keyed by the caller. Don't count on reading
+   it back from the redirect: TMDb's docs don't say what they append to
+   `redirect_to`.
+2. Send the user's browser to
+   `https://www.themoviedb.org/authenticate/<request_token>?redirect_to=<your app URL>`,
+   with the app URL percent-encoded, to approve it. TMDb sends the browser back
+   to `redirect_to` once the user approves. The token expires after 60 minutes.
+3. Call `authenticationCreateSession(config, { request_token })` and keep the
+   returned `session_id`, per user, in actor state. Treat it like a credential.
+
+Every response field is optional, so unwrap before you reuse one. For example,
+with `import Error "mo:core/Error"`,
+`let ?request_token = tokenResponse.request_token else throw Error.reject("no request token")`,
+and the same for `session_id` and `guest_session_id`.
+
+To end a session, call `authenticationDeleteSession(config, { session_id })`.
+Don't use `authenticationCreateSessionFromLogin`: it would route the user's TMDb
+password through your canister.
+
+For ratings only, `authenticationCreateGuestSession(config)` returns a
+`guest_session_id` without any redirect. Pass it as `guestSessionId` to the
+rating operations, with `sessionId = ""`. TMDb deletes a guest session if it
+isn't used within 60 minutes of being issued. A guest's ratings can't be read
+back: the `guest-session-rated-*` operations are pruned (§8).
+
+The account operations also take an `accountId`. `accountDetails` returns it as
+`id : ?Int`, but TMDb's docs mark `accountId` required on `accountDetails` too
+and don't say how to get one first. This client hasn't been tested against the
+live API, so raise that with the user before you build account features on a
+guessed ID.
+
+### Writes take typed request models
+
+The 12 operations with a request body each take a record built from the
+spec's request examples:
+
+| operation | request |
+|---|---|
+| `accountAddFavorite` | `{ media_type = #movie; media_id = 550; favorite = true }` |
+| `accountAddToWatchlist` | `{ media_type = #tv; media_id = 1399; watchlist = true }` |
+| `movieAddRating`, `tvSeriesAddRating`, `tvEpisodeAddRating` | `{ value = 8.5 }` |
+| `listCreate` | `{ name = "Watch later"; description = ?"Films to catch"; language = ?"en" }` |
+| `listAddMovie`, `listRemoveMovie` | `{ media_id = 18 }` |
+| `authenticationCreateSession` | `{ request_token }`, with `request_token : Text` |
+| `authenticationDeleteSession` | `{ session_id }`, with `session_id : Text` |
+
+- `media_type` is the `MediaType` variant, `#movie` or `#tv`.
+- A rating `value` runs from 0.5 to 10 in steps of 0.5.
+- The models live in `mo:tmdb-client/Models/<Name>` if you need to name them,
+  for example `FavoriteRequest` or `ListCreateRequest`.
+  TMDb's docs don't say whether `description` and `language` may be left out,
+  so set both. `ListCreateRequest.init({ name })` leaves them `null`, which
+  drops them from the JSON and is untested.
+- Each rating operation takes both `guestSessionId` and `sessionId` as `Text`;
+  pass `""` for the one you don't use.
 
 ### `movieRecommendations` returns an untyped `Candid.Candid`
 
@@ -271,59 +329,6 @@ way. It is the only operation in the package with that shape;
 - **You don't need to name the type to switch on it.** To name it, for example
   in a helper's signature, run `mops add serde-core@0.2.1` and
   `import { Candid } "mo:serde-core"`.
-
-### The write surface
-
-All 12 body-carrying operations **will be rejected by TMDb**. Do not build
-features on them and do not report them as working:
-
-| | |
-|---|---|
-| account writes | `accountAddFavorite`, `accountAddToWatchlist` |
-| ratings | `movieAddRating`, `tvSeriesAddRating`, `tvEpisodeAddRating` |
-| lists | `listCreate`, `listAddMovie`, `listRemoveMovie` |
-| sessions | `authenticationCreateSession`, `authenticationCreateSessionFromLogin`, `authenticationCreateSessionFromV4Token`, `authenticationDeleteSession` |
-
-Note the last row: **`authenticationDeleteSession` is a DELETE, not a POST** —
-TMDb puts the session id in its body. It is the one DELETE affected; the other
-four take query parameters and work.
-
-The cause is in the spec, faithfully reproduced by the generator. TMDb models
-every POST body as a placeholder rather than a real schema:
-
-```json
-{ "type": "object", "required": ["RAW_BODY"],
-  "properties": { "RAW_BODY": { "type": "string", "format": "json" } } }
-```
-
-So the generated model has a single `RAW_BODY : Text` field, and the API module
-encodes it as a JSON object with that field in it. The wire body becomes
-
-```json
-{"RAW_BODY":"{\"name\":\"My list\"}"}
-```
-
-where TMDb expects `{"name":"My list"}`. The payload is double-wrapped: correct
-against the spec, wrong against the service.
-
-Two consequences worth knowing:
-
-- Because the placeholder is shared, **every** body-carrying operation takes one
-  of the same two generated types (`AccountAddFavoriteRequest`,
-  `ListAddMovieRequest`), so `listCreate` asks for an
-  `AccountAddFavoriteRequest`. That is not a naming bug to work around; it is
-  the same placeholder under two names.
-- `listClear` is the one POST with no body, so it is unaffected and works.
-- This is also why the sessions row is unusable end to end: you cannot create a
-  session, so the user-scoped GETs (`accountGetFavorites`, `accountLists`, …)
-  have no `sessionId` to be called with, even though those GETs are themselves
-  correctly generated.
-
-**What would fix all twelve at once:** one generator change — recognise a
-request schema whose only property is a `format: json` string and pass that
-string through as the body verbatim, instead of encoding the wrapper object. The
-machinery already exists for the `x-body-is-text` / passthrough cases. Until
-then, the account-write surface is out of scope.
 
 ## 7. Response sizes and cycles
 
