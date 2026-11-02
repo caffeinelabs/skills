@@ -1,7 +1,7 @@
 ---
 name: extension-authorization
 description: Authorization system with role-based access control. Must-have for all apps that manage personal or access-restricted data.
-version: 1.3.3
+version: 1.4.0
 compatibility:
   mops:
     caffeineai-authorization: "~1.0.0"
@@ -163,6 +163,18 @@ if (not AccessControl.hasPermission(accessControlState, caller, #user)) {
 
 // Any user including guests: No check needed
 ```
+
+## Who Gets In
+
+`#user` is not membership: every visitor who signs in becomes a `#user` automatically, so a `#user` guard only keeps out signed-out visitors.
+
+Add [extension-user-approval](../extension-user-approval/SKILL.md) and guard features with `UserApproval.isApproved` when any of these hold:
+
+- The app is private: personal records, a family or team space, or content meant only for invited people.
+- A feature costs the owner money or quota per use, for example AI inference, HTTP outcalls, sending email or SMS, file storage, or paid third-party APIs.
+- The app's owner should decide who joins.
+
+Members then join through an admin's invite link or by requesting access. Skip it for apps meant to be open to anyone, such as public sign-up products, community boards, or single-user tools where only the admin signs in.
 
 ## Design Guidelines
 
