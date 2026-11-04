@@ -1,7 +1,7 @@
 ---
 name: extension-authorization
 description: Authorization system with role-based access control. Must-have for all apps that manage personal or access-restricted data.
-version: 1.4.0
+version: 1.4.1
 compatibility:
   mops:
     caffeineai-authorization: "~1.0.0"
@@ -285,8 +285,12 @@ Rules:
 ### Preventing Profile Setup Modal Flash
 
 ```typescript
+import { useActor } from '@caffeineai/core-infrastructure';
+import { useQuery } from '@tanstack/react-query';
+import { createActor, type UserProfile } from '@/backend';
+
 export function useGetCallerUserProfile() {
-  const { actor, isFetching: actorFetching } = useActor();
+  const { actor, isFetching: actorFetching } = useActor(createActor);
 
   const query = useQuery<UserProfile | null>({
     queryKey: ['currentUserProfile'],
@@ -357,8 +361,8 @@ export default function LoginButton() {
       disabled={isInitializing || isLoggingIn}
       className={`px-6 py-2 rounded-full transition-colors font-medium ${
         isAuthenticated
-          ? 'bg-gray-200 hover:bg-gray-300 text-gray-800'
-          : 'bg-blue-600 hover:bg-blue-700 text-white'
+          ? 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+          : 'bg-primary text-primary-foreground hover:bg-primary/90'
       } disabled:opacity-50`}
     >
       {isInitializing ? 'Loading...' : isAuthenticated ? 'Logout' : 'Login'}
