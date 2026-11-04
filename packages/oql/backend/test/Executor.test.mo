@@ -164,6 +164,30 @@ test("hasMore is false when the window covers everything", func () {
   assert not r.hasMore;
 });
 
+test("a capped scan stops pulling rows at the cap", func () {
+  // Only ids 0-2 match. `limit 2` needs offset + limit + 1 = 3 survivors, so
+  // the scan stops at the third row instead of reading on for a fourth.
+  var pulled = 0;
+  func source() : Iter.Iter<Customer> {
+    var k = 0;
+    {
+      next = func () : ?Customer {
+        if (k == 1_000) return null;
+        pulled += 1;
+        let c = { id = k; name = "c"; country = if (k < 3) "XX" else "DE" };
+        k += 1;
+        ?c
+      };
+    }
+  };
+  let reg = Registry.build([OQL.Entity.new<Customer>("c", source, "Customer", "id").build()]);
+  pulled := 0;
+  let r = run(reg, { emptyQuery("c") with where_ = ?#eq(["country"], #text "XX"); limit = ?2 });
+  assert r.rows.size() == 2;
+  assert r.hasMore;
+  assert pulled == 3;
+});
+
 test("select projects only the requested paths", func () {
   let q : Query.Query = {
     emptyQuery("customer") with

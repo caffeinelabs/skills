@@ -1,10 +1,11 @@
-/// Differential test: `Predicate.compile(p)` answers exactly as
-/// `Predicate.eval(p, _)` over every operator, operand kind and row value, on
-/// flat, map-backed, hidden-masked and edge-path rows.
+/// Differential test: `Predicate.filter(p, rows)` keeps exactly the rows
+/// `Predicate.eval(p, _)` accepts, over every operator, operand kind and row
+/// value, on flat, map-backed, hidden-masked and edge-path rows.
 
 import {test} "mo:test";
 import Array "mo:core/Array";
 import Float "mo:core/Float";
+import Iter "mo:core/Iter";
 import List "mo:core/List";
 import Map "mo:core/Map";
 import Nat "mo:core/Nat";
@@ -145,16 +146,29 @@ func withEdge(r : Row, target : ?Value) : Row = {
   values = r.values;
 };
 
-// Compiles each predicate once and runs it over the whole stream, so the
-// lazily resolved slots are reused exactly as the executor reuses them.
+// Filters each predicate over the whole stream, so the lazily resolved slots
+// are reused exactly as the executor reuses them, and records which rows pass.
 func check(what : Text, ps : [Pred], rows : [Row]) {
   var hits = 0;
   var misses = 0;
   for (p in ps.vals()) {
-    let c = Predicate.compile(p);
+    // The filter yields each row right after pulling it, so `last` is the
+    // index of the row it just yielded.
+    var pos = 0;
+    var last = 0;
+    let source : Iter.Iter<Row> = {
+      next = func () : ?Row {
+        if (pos == rows.size()) return null;
+        last := pos;
+        pos += 1;
+        ?rows[last]
+      };
+    };
+    let kept = Map.empty<Nat, ()>();
+    for (_ in Predicate.filter(p, source)) kept.add(Nat.compare, last, ());
     for (i in rows.keys()) {
       let want = Predicate.eval(p, rows[i]);
-      if (c(rows[i]) != want) {
+      if ((kept.get(Nat.compare, i) != null) != want) {
         Runtime.trap(what # ": row " # i.toText() # " " # debug_show (p) # " expected " # debug_show (want));
       };
       if (want) hits += 1 else misses += 1;
@@ -189,8 +203,8 @@ test("hidden columns read as absent through the mask", func () {
   // Same answers as a row that never had the column.
   let absent = mapRows(["k"], [[?#nat 0]])[0];
   for (p in leaves(["h"]).vals()) {
-    let c = Predicate.compile(p);
-    for (r in rows.vals()) assert c(r) == Predicate.eval(p, absent);
+    let kept = Predicate.filter(p, rows.vals()).size();
+    assert kept == (if (Predicate.eval(p, absent)) rows.size() else 0);
   };
 });
 
@@ -207,6 +221,21 @@ test("edge paths always go through get", func () {
   let rows = flatRows(["k", "e"], [[#nat 0, #nat 1]]);
   let wrapped = VALUES.map<Value, Row>(func v = withEdge(rows[0], ?v));
   check("edge", leaves(["e", "x"]), wrapped.concat([withEdge(rows[0], null)]));
+});
+
+test("each filter call resolves slots for its own stream", func () {
+  // `x` sits at a different slot in each layout, so a slot resolved on the
+  // first stream would misread the second.
+  let p : Pred = #eq(["x"], #nat 1);
+  assert Predicate.filter(p, flatRows(["k", "x"], [[#nat 0, #nat 1]]).vals()).size() == 1;
+  assert Predicate.filter(p, flatRows(["x", "k"], [[#nat 0, #nat 1]]).vals()).size() == 0;
+});
+
+test("filterBy keeps the items whose row passes", func () {
+  let rows = flatRows(["k", "x"], [[#nat 0, #nat 1], [#nat 1, #nat 2], [#nat 2, #nat 1]]);
+  let items : [(Nat, Row)] = [(10, rows[0]), (11, rows[1]), (12, rows[2])];
+  let kept = Predicate.filterBy(#eq(["x"], #nat 1), items.vals(), func ((_, r) : (Nat, Row)) : Row = r);
+  assert kept.map(func ((k, _) : (Nat, Row)) : Nat = k).toArray() == [10, 12];
 });
 
 test("streams mixing flat and map-backed rows of one layout", func () {
@@ -244,13 +273,12 @@ test("reads and short-circuits exactly as eval", func () {
   let rows = mapRows(["x", "y"], [[?#nat 5, ?#null_], [?#text "abc", null], [null, ?#float 1.5]])
     .map<Row, Row>(counting);
   for (p in combos().concat(leaves(["x"])).vals()) {
-    let c = Predicate.compile(p);
     for (r in rows.vals()) {
       calls := 0;
       ignore Predicate.eval(p, r);
       let byEval = calls;
       calls := 0;
-      ignore c(r);
+      ignore Predicate.filter(p, [r].vals()).next();
       assert calls == byEval;
     };
   };

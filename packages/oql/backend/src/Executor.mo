@@ -620,11 +620,8 @@ module {
         };
         // Primary keys of the targets the (rewritten) constraint admits.
         let pks = List.empty<Value>();
-        let matches = Predicate.compile(targetPred);
         func admit(trow : Row) {
-          if (matches(trow)) {
-            switch (trow.get([target.primaryKey])) { case (?pk) { pks.add(pk) }; case null {} };
-          };
+          switch (trow.get([target.primaryKey])) { case (?pk) { pks.add(pk) }; case null {} };
         };
         // Fast path: an `#eq` on a column the TARGET itself indexes → probe that
         // index, WITHOUT materialising the whole dimension (this is what keeps a
@@ -644,15 +641,18 @@ module {
           switch pointRows { case null { return null }; case _ {} };
         };
         switch pointRows {
-          case (?it) { for (trow in it) { admit(trow) } };
+          case (?it) { for (trow in Predicate.filter(targetPred, it)) { admit(trow) } };
           // Otherwise build (once, via `getIndex`) and reuse the target's PK
           // index — the key IS the primary key. Fall back to a fresh scan only if
           // the target has no recipe (the edge filter is always a queried path,
           // so it normally does).
           case null {
             switch (getIndex(hops, targetName)) {
-              case (?idx) { for ((pk, trow) in idx.entries()) { if (matches(trow)) { pks.add(pk) } } };
-              case null { for (trow in target.rows(tSubject)) { admit(trow) } };
+              case (?idx) {
+                let kept = Predicate.filterBy(targetPred, idx.entries(), func ((_, trow) : (Value, Row)) : Row = trow);
+                for ((pk, _) in kept) { pks.add(pk) };
+              };
+              case null { for (trow in Predicate.filter(targetPred, target.rows(tSubject))) { admit(trow) } };
             };
           };
         };
@@ -1166,7 +1166,7 @@ module {
   func filter(it : Iter.Iter<Row>, where_ : ?Predicate.Predicate, admit : ?(Row -> Bool), cap : ?Nat) : [Row] {
     let residual = switch where_ {
       case null    { it };
-      case (?p)    { it.filter(Predicate.compile(p)) };
+      case (?p)    { Predicate.filter(p, it) };
     };
     // Ownership guard for a planned/pruned scoped read — applied on the LAZY
     // stream, after the residual (so app `canSee` code runs only on residual
@@ -1180,9 +1180,13 @@ module {
       case null { matched.toArray() };
       case (?n) {
         let acc = List.empty<Row>();
-        for (row in matched) {
-          if (acc.size() >= n) break;
-          acc.add(row);
+        // Check after adding: pulling past the cap would scan on to the next
+        // survivor (or the end of the source) for a row that is dropped.
+        if (n > 0) {
+          for (row in matched) {
+            acc.add(row);
+            if (acc.size() >= n) break;
+          };
         };
         acc.toArray()
       };

@@ -81,12 +81,24 @@ module {
     }
   };
 
-  /// `eval(p, _)` compiled once: leaves are specialised to their operand and
-  /// read flat rows by slot instead of by name. Answers exactly as `eval` does.
-  /// Use one compiled predicate per row stream: slots are resolved from the
-  /// first flat row and reused, per the `Row` contract that an entity's flat
-  /// rows share one resolver.
-  public func compile(p : Predicate) : Row -> Bool =
+  /// The rows of `rows` that satisfy `p`, answering exactly as `eval` does.
+  /// `p` is compiled once per call: leaves are specialised to their operand and
+  /// read flat rows by slot instead of by name, with slots resolved from the
+  /// stream's first flat row (an entity's flat rows share one resolver). Each
+  /// call compiles afresh, so no slot carries over from one stream to another.
+  public func filter(p : Predicate, rows : Iter.Iter<Row>) : Iter.Iter<Row> =
+    rows.filter(compile(p));
+
+  /// `filter` over items that each carry a row: the items whose row satisfies `p`.
+  public func filterBy<T>(p : Predicate, items : Iter.Iter<T>, rowOf : T -> Row) : Iter.Iter<T> {
+    let test = compile(p);
+    items.filter(func x = test(rowOf(x)))
+  };
+
+  /// `eval(p, _)` compiled for ONE row stream: its leaves cache the slot they
+  /// resolve on the first flat row, so the result must not outlive the stream
+  /// it was built for. Only `filter` calls it.
+  func compile(p : Predicate) : Row -> Bool =
     switch p {
       case (#eq (path, v)) {
         let rd = reader(path);
