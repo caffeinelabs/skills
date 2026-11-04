@@ -1,10 +1,10 @@
 ---
 name: extension-oql
-description: Make a canister's data queryable by the Caffeine Data Intelligence agent. Use whenever an app stores structured data (Maps/Lists/arrays of records) that should be answerable in natural language — "top customers", "revenue by region", "active projects". Adds a discoverable `schema()` and a JSON `execute()` query endpoint via the `caffeineai-oql` mops package's `Expose` mixin.
-version: 0.8.0
+description: Make a canister's data queryable by the Caffeine Data Intelligence agent and by the user's own AI assistant (Claude or ChatGPT through the ICP MCP connector, which reads app data only through OQL). Use whenever an app stores structured data (Maps/Lists/arrays of records) that should be answerable in natural language — "top customers", "revenue by region", "active projects". Adds a discoverable `schema()` and a JSON `execute()` query endpoint via the `caffeineai-oql` mops package's `Expose` mixin.
+version: 0.8.1
 compatibility:
   mops:
-    caffeineai-oql: "~0.8.0"
+    caffeineai-oql: "~0.8.1"
 caffeineai-subscription: [none]
 ---
 
@@ -16,13 +16,15 @@ declare one entity per table — the `Expose` mixin makes them queryable.
 
 # Backend
 
-Each entity carries an authorization level; the default `.controllerOnly()` is
-safe (private to users, still readable by the Data Intelligence agent). Model
-your entities first, then pick a level per entity — see `## Auth`.
+Each entity carries an authorization level. The default `.controllerOnly()` is
+read only by the Data Intelligence agent; a user's own AI assistant reads as that
+user, through the ICP MCP connector, and only through OQL, so rows a user owns
+need a scoped level. Model your entities first, then pick a level per entity —
+see `## Auth`.
 
 ## Setup
 
-Run `mops add caffeineai-oql@0.8.0` in the **same write batch** as your first
+Run `mops add caffeineai-oql@0.8.1` in the **same write batch** as your first
 `mo:caffeineai-oql/...` import. Auto-derivation requires `moc >= 1.11` (the
 generated-app template already satisfies this).
 
@@ -218,12 +220,13 @@ no tokens. The default when none is set is `#controllerOnly`.
 
 ### Choosing a level
 
-Pick per entity by who should read its rows — when in doubt, keep the default.
+Pick per entity by who should read its rows. A user's AI assistant reads that
+user's rows only when the entity has a scoped level.
 
 - **`.controllerOnly()`** *(default)* — private app data the agent should answer
-  over, but no end user reads directly (orders, metrics, audit logs, config). The
-  agent calls as the controller, so it reads everything while the data stays
-  private to users.
+  over, but no end user or their AI assistant reads (metrics, audit logs,
+  config). The agent calls as the controller, so it reads everything while the
+  data stays private to users.
 - **`.public_()`** — world-readable data, including logged-out visitors (public
   catalogue, published content, leaderboards).
 - **`.controllerOrScoped()`** — per-user data where each user reads only their own
@@ -632,7 +635,7 @@ node <this skill's directory>/scripts/ingest.mjs \
 
 ## Checklist
 
-- [ ] `mops add caffeineai-oql@0.8.0` in the same batch as the first import
+- [ ] `mops add caffeineai-oql@0.8.1` in the same batch as the first import
 - [ ] Resolver modules imported top-level (see `## Setup` → Imports): `Entity`
       (**always** — every builder method including `.payload` / `.flatten`
       resolves through it), the collection module(s) (`MapEntity` / …), and
