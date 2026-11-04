@@ -6,7 +6,7 @@ description: >-
   against the project's `backend` canister: read the schema, form JSON
   queries (filter / order / paginate / aggregate / dotted-path edges),
   and parse the Candid result rows.
-version: 0.8.0
+version: 0.8.1
 compatibility:
   mops: {}
   npm: {}
