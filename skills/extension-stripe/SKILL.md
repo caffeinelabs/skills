@@ -4,7 +4,7 @@ description: >-
   Payment support based on Stripe, supporting credit cards and debit cards.
   Checkout and session status use HTTP outcalls. For inbound Stripe webhooks
   (POST to the canister), also load extension-http-endpoints.
-version: 1.0.3
+version: 1.0.4
 compatibility:
   mops:
     caffeineai-stripe: "~1.0.1"
@@ -190,7 +190,7 @@ Usage:
     ```
     import { useMutation } from '@tanstack/react-query';
     import { useActor } from '@caffeineai/core-infrastructure';
-    import { ShoppingItem } from '../backend';
+    import { createActor, type ShoppingItem } from '@/backend';
 
     export type CheckoutSession = {
         id: string;
@@ -198,7 +198,7 @@ Usage:
     };
 
     export function useCreateCheckoutSession() {
-        const { actor } = useActor();
+        const { actor } = useActor(createActor);
 
         return useMutation({
             mutationFn: async (items: ShoppingItem[]): Promise<CheckoutSession> => {
