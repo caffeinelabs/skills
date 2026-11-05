@@ -5,7 +5,7 @@ description: >-
   including mandatory local verification of external REST API requests.
   Canister → internet only. For inbound webhooks / curl endpoints served by
   the canister, use extension-http-endpoints instead.
-version: 0.1.12
+version: 0.1.13
 compatibility:
   mops:
     caffeineai-http-outcalls: "~0.1.5"
@@ -48,8 +48,7 @@ Follow these rules:
   and returns every field the app consumes. When Motoko code changes, redo the
   local curl test.
 - **Check the bounds with `check_canister_api_compliance`.** It probes the
-  endpoint and measures the response against those limits, and it runs behind
-  the deploy gate, so an endpoint it refuses cannot ship.
+  endpoint and measures the response against those limits.
 
 The 1 MB and 10_000-entry limits above are the module's own ceilings —
 `defaultMaxResponseBytes` is 1 MB — and `check_canister_api_compliance` measures
@@ -195,11 +194,10 @@ HTTP outcall is incomplete and MUST NOT proceed to deployment.
    app. A response that is merely valid JSON is not sufficient.
 4. **MUST run `check_canister_api_compliance` on the exact URL and method the
    implementation uses.** It measures the response against the outcall byte
-   ceiling and entry bound and reports whether the URL is bounded server-side,
-   mechanically and behind the deploy gate, so an outcall to a host it never
-   cleared cannot ship. When it refuses an endpoint, choose a compatible public
-   API or narrow the feature honestly; do not implement an unbounded fetch-all
-   request and filter it in the canister.
+   ceiling and entry bound and reports whether the URL is bounded server-side.
+   When it refuses an endpoint, choose a compatible public API or narrow the
+   feature honestly; do not implement an unbounded fetch-all request and
+   filter it in the canister.
 
 Response bounds are that check's job, not curl's. The checks above are the ones
 it cannot do for you: it probes the endpoint, not the app, so it never learns
