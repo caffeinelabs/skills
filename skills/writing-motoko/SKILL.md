@@ -3,7 +3,7 @@ name: writing-motoko
 description: >-
   Motoko language reference, architecture patterns, and dependency tooling
   (mops). Load when writing or modifying backend .mo files.
-version: 0.2.12
+version: 0.2.13
 compatibility:
   toolchain:
     moc: ">=1.11.2"
@@ -970,7 +970,7 @@ Attaching cycles to an inter-canister call (`await (with cycles = ...) <call>`) 
 
 **Basic Types:** `Nat` `Int` `Text` `Bool` `Principal` `?T` `[T]` `[var T]` `Blob` `Float` — `Time.now()` returns `Int` (nanoseconds)
 
-**Common Operations:** `debug_show(value)` → Text | `assert condition` | `# "text"` concatenation | `break` / `continue` inside `for`, `while`, `loop`
+**Common Operations:** `debug_show value` → Text | `assert condition` | `# "text"` concatenation | `break` / `continue` inside `for`, `while`, `loop`
 
 | Structure | Use Case         | Key Operations     | Complexity  |
 | --------- | ---------------- | ------------------ | ----------- |
