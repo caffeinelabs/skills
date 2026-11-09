@@ -1,7 +1,7 @@
 ---
 name: caffeine-app
 description: "Scaffold and build a complete Caffeine app (caffeine.ai) from scratch — the project layout, the caffeine.toml workspace + canister manifests, the mops.toml for the single Motoko `backend` canister, the React/Vite frontend, and the caffeine CLI build loop (auth login, doctor, install, check --fix, preview --build). Use whenever the user wants to create, scaffold, set up, or build a Caffeine app or a caffeine.ai project, asks about caffeine.toml or mops.toml structure, or needs the caffeine CLI workflow — even if they do not say the words 'from scratch'. Always pair it with the `writing-motoko` skill for the backend code. Do NOT use it for Motoko language syntax or compiler errors (use the `writing-motoko` skill), and do NOT use it for generic Internet Computer / dfx / icp deployment (use the `icp-cli` skill)."
-version: 0.1.0
+version: 0.1.1
 compatibility:
   toolchain:
     mops: "3.x"
@@ -309,10 +309,13 @@ Notes:
 - **`caffeineai-authorization`** provides Internet Identity sign-in and roles
   (`MixinAuthorization`, `AccessControl`). It also ships a lint rule that fails
   `caffeine check` unless `main.mo` includes `MixinAuthorization`. To use custom
-  authentication instead, remove the package (`mops remove caffeineai-authorization`)
-  together with its imports, include, state field, and migration line — see the
-  `extension-authorization` skill:
+  authentication instead before the first deploy, remove the package
+  (`mops remove caffeineai-authorization`) together with its imports, include, state
+  field, and migration line — see the `extension-authorization` skill:
   <https://github.com/caffeinelabs/skills/tree/main/skills/extension-authorization>.
+  After a deploy, the applied first migration imports the package, so removing it
+  breaks the build: keep the package and `MixinAuthorization`, and add custom checks
+  alongside them.
 - **`[lint] extends = true`** runs the lint rules that dependencies ship (such as the one
   above) with the `lintoko` pinned in `[toolchain]`, as part of `mops check`.
 - **`ic`** provides the IC management canister's types and calls (`mo:ic/Types`,
