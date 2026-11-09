@@ -3,7 +3,7 @@ name: writing-motoko
 description: >-
   Motoko language reference, architecture patterns, and dependency tooling
   (mops). Load when writing or modifying backend .mo files.
-version: 0.2.13
+version: 0.2.14
 compatibility:
   toolchain:
     moc: ">=1.11.2"
@@ -770,7 +770,7 @@ A reject rolls nothing back. State the function changed before the failing call 
 | Recover                                               | Retry, or fall back to another source             |
 | Keep a loop or background job going past one failure  | Skip the item and continue                        |
 
-Otherwise, let the reject propagate. An empty `catch _ {}` belongs only around a side effect that nothing depends on. A `catch` arm that handles only some errors rethrows the rest with `throw e`; a trap there stops every caller from catching it.
+Otherwise, let the reject propagate. An empty `catch _ {}` belongs only around a side effect that nothing depends on. A `catch` arm that handles only some errors rethrows the rest with `throw e`, which keeps the original error. Trapping there instead ends the message: nothing in it can catch the trap, and a caller in another message gets an opaque reject in place of the original error.
 
 ```motoko project=try-catch filepath=src/backend/main.mo
 import Error "mo:core/Error";
