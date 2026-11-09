@@ -5,7 +5,7 @@ description: >-
   flags, and the fix for every new error. Load when bumping the moc toolchain
   to a 2.x release, when code that built on moc 1 fails on moc 2, or when one
   codebase must compile with both.
-version: 0.1.0
+version: 0.1.1
 compatibility:
   toolchain:
     mops: "3.x"
@@ -147,7 +147,7 @@ import Text "mo:core/Text";
 actor { /* ... */ };
 ```
 
-The upgrade that installs this version still runs the old `preupgrade`, so `entries` holds the data when the migration reads it. Warning M0207 on the dropped field is expected. Delete the `(with migration = ...)` clause once this version is deployed. With an enhanced migration chain (`--enhanced-migration`), put the same function in the next chain file as `public func migration` instead.
+The upgrade that installs this version still runs the old `preupgrade`, so `entries` holds the data when the migration reads it. Warning M0207 on the dropped field is expected. Delete the `(with migration = ...)` clause once this version is deployed. With an enhanced migration chain (`--enhanced-migration`), declare the field without an initializer, `let users : Map.Map<Text, Nat>;`, and put the same function in the next chain file as `public func migration` instead.
 
 ## Syntax that no longer parses
 
