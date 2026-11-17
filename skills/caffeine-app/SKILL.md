@@ -1,7 +1,7 @@
 ---
 name: caffeine-app
 description: "Scaffold and build a complete Caffeine app (caffeine.ai) from scratch — the project layout, the caffeine.toml workspace + canister manifests, the mops.toml for the single Motoko `backend` canister, the React/Vite frontend, and the caffeine CLI build loop (auth login, doctor, install, check --fix, preview --build). Use whenever the user wants to create, scaffold, set up, or build a Caffeine app or a caffeine.ai project, asks about caffeine.toml or mops.toml structure, or needs the caffeine CLI workflow — even if they do not say the words 'from scratch'. Always pair it with the `writing-motoko` skill for the backend code. Do NOT use it for Motoko language syntax or compiler errors (use the `writing-motoko` skill), and do NOT use it for generic Internet Computer / dfx / icp deployment (use the `icp-cli` skill)."
-version: 0.1.1
+version: 0.1.2
 compatibility:
   toolchain:
     mops: "3.x"
@@ -483,6 +483,9 @@ caffeine check --fix
 # 5. Upload a built draft (needs a cloud project id). For a brand-new app, create the
 #    cloud project once to obtain an id, then preview:
 caffeine projects create                 # reports a new project id
+#    (optional) place it on a specific cloud instead of the account default; the
+#    choices come from `caffeine clouds list`:
+#    caffeine projects create --cloud european
 #    put that id in caffeine.toml [project] id = "...", OR pass --project-id:
 caffeine preview --build --project-id <id>
 ```
@@ -510,7 +513,8 @@ at least once before `caffeine check` can typecheck the frontend. A brand-new ap
 returns its URL. Promote a draft to a live URL in the caffeine.ai web app (open it with
 `caffeine chat open` or visit caffeine.ai), or with the `caffeine_go_live` tool of the
 Caffeine MCP connector. There is no CLI deploy command. Use
-`caffeine projects show <id>` to see draft and live URLs, and any custom domains.
+`caffeine projects show <id>` to see draft and live URLs, any custom domains, and the cloud
+the project runs on.
 
 ### Alternative: let Caffeine's own AI build it
 
