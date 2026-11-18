@@ -1,7 +1,7 @@
 ---
 name: caffeine-app
 description: "Scaffold and build a complete Caffeine app (caffeine.ai) from scratch — the project layout, the caffeine.toml workspace + canister manifests, the mops.toml for the single Motoko `backend` canister, the React/Vite frontend, and the caffeine CLI build loop (auth login, doctor, install, check --fix, preview --build). Use whenever the user wants to create, scaffold, set up, or build a Caffeine app or a caffeine.ai project, asks about caffeine.toml or mops.toml structure, or needs the caffeine CLI workflow — even if they do not say the words 'from scratch'. Always pair it with the `writing-motoko` skill for the backend code. Do NOT use it for Motoko language syntax or compiler errors (use the `writing-motoko` skill), and do NOT use it for generic Internet Computer / dfx / icp deployment (use the `icp-cli` skill)."
-version: 0.1.2
+version: 0.1.3
 compatibility:
   toolchain:
     mops: "3.x"
@@ -266,7 +266,9 @@ Notes:
   against it, and `caffeine projects clone` restores it from the cloud. Do not delete
   `.old/`. **A from-scratch project must seed it** with an empty actor, as the Caffeine
   template does, or `caffeine check` fails with
-  `Deployed file not found: .old/src/backend/dist/backend.most`:
+  `Deployed file not found: .old/src/backend/dist/backend.most`. Projects cloned from
+  Caffeine may point `check-stable` at `deployed/backend.most` instead, the same baseline in
+  its new home; `caffeine preview` accepts either path, and clone writes both. The seed:
 
   ```motoko
   // Version: 1.0.0
