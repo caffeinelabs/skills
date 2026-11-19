@@ -3,7 +3,7 @@ name: writing-motoko
 description: >-
   Motoko language reference, architecture patterns, and dependency tooling
   (mops). Load when writing or modifying backend .mo files.
-version: 0.2.14
+version: 0.2.15
 compatibility:
   toolchain:
     moc: ">=1.11.2"
@@ -23,6 +23,7 @@ Motoko is an under-represented language for the Internet Computer Protocol, so y
 
 - `stable` keyword -- Not needed in enhanced orthogonal persistence mode
 - `mo:base` library -- Deprecated. Use `mo:core` instead
+- `mo:json` (the `json` package) or any JSON library other than `jayson` -- Use `jayson` (see [JSON](#json))
 - `.vals()` -- The deprecated `mo:base` iterator name. Always `.values()`. On arrays `.vals()` still compiles with deprecation warning M0269 (from moc 1.16); on core collections it fails with M0072
 - `system func preupgrade/postupgrade` -- Not needed with enhanced orthogonal persistence
 - `(with migration = ...)` actor-attached migration syntax -- Use the mops-managed migration chain in `migrations/`
@@ -907,6 +908,39 @@ let average = sum.toFloat() / count.toFloat(); // Nat.toFloat
 | `Iter.fromArray(a)`       | `a.values()`      |
 
 A conversion that needs several hops is a sign the wrong function was picked: verify the exact `mo:core` signature in [api-reference.md](api-reference.md), which lists only non-deprecated APIs.
+
+## JSON
+
+Parse and render all JSON (request and response bodies, HTTP outcall replies, stored documents) with `jayson`, never with `mo:json` or another JSON package. Run `mops add jayson` before the first import, even when `mo:jayson` already resolves: another package can pull in an older copy, and only your own pin gives your code the current version. jayson needs moc 1.14.0 or newer.
+
+Each type's codec is its own module (`TextJson`, `NatJson`, `IntJson`, `FloatJson`, `BoolJson`, `OptionJson`, `ArrayJson`, `RecordJson`, `VariantJson`); import the ones your types use. Encoding a record derives from its fields; decoding does not, so a record you parse gets a `decodeJson` in a module named after its type:
+
+```motoko project=json filepath=src/backend/main.mo
+import Jayson "mo:jayson";
+import NatJson "mo:jayson/NatJson";
+import RecordJson "mo:jayson/RecordJson";
+import TextJson "mo:jayson/TextJson";
+
+actor {
+  type Order = { item : Text; quantity : Nat };
+
+  module Order {
+    public func decodeJson(json : Jayson.Json) : ?Order = do ? {
+      let fields = Jayson.decodeRecord(json)!;
+      {
+        item = fields.decodeField<Text>("item")!;
+        quantity = fields.decodeField<Nat>("quantity")!;
+      };
+    };
+  };
+
+  // The order re-encoded, or null when the body is not an order.
+  public query func normalize(body : Text) : async ?Text {
+    let ?order = Jayson.fromJson<Order>(body) else return null;
+    ?order.toJson();
+  };
+};
+```
 
 ## Security and Authorization
 
