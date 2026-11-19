@@ -1,10 +1,10 @@
 ---
 name: extension-oql
 description: Make a canister's data queryable by the Caffeine Data Intelligence agent and by the user's own AI assistant (Claude or ChatGPT through the ICP MCP connector, which reads app data only through OQL). Use whenever an app stores structured data (Maps/Lists/arrays of records) that should be answerable in natural language — "top customers", "revenue by region", "active projects". Adds a discoverable `schema()` and a JSON `execute()` query endpoint via the `caffeineai-oql` mops package's `Expose` mixin.
-version: 0.8.1
+version: 0.9.0
 compatibility:
   mops:
-    caffeineai-oql: "~0.8.1"
+    caffeineai-oql: "~0.9.0"
 caffeineai-subscription: [none]
 ---
 
@@ -24,7 +24,7 @@ see `## Auth`.
 
 ## Setup
 
-Run `mops add caffeineai-oql@0.8.1` in the **same write batch** as your first
+Run `mops add caffeineai-oql@0.9.0` in the **same write batch** as your first
 `mo:caffeineai-oql/...` import. Auto-derivation requires `moc >= 1.11` (the
 generated-app template already satisfies this).
 
@@ -635,7 +635,7 @@ node <this skill's directory>/scripts/ingest.mjs \
 
 ## Checklist
 
-- [ ] `mops add caffeineai-oql@0.8.1` in the same batch as the first import
+- [ ] `mops add caffeineai-oql@0.9.0` in the same batch as the first import
 - [ ] Resolver modules imported top-level (see `## Setup` → Imports): `Entity`
       (**always** — every builder method including `.payload` / `.flatten`
       resolves through it), the collection module(s) (`MapEntity` / …), and
