@@ -6,7 +6,7 @@ description: >-
   a project converted from legacy persistence, or a request to remove the
   chain. Load only when the rules in migrating-motoko-actors do not explain what
   you are seeing.
-version: 0.1.6
+version: 0.1.7
 compatibility:
   toolchain:
     moc: ">=1.11.2"
@@ -44,7 +44,7 @@ Two consequences drive most of the rules in this skill:
 `mops check` validates your chain against the **deployed** canister's stable signature (its `.most` snapshot), not against local git history. So:
 
 - Diagnostics can name fields that are no longer anywhere in your source — they come from the deployed version.
-- The one-pending-migration limit counts migrations **not yet deployed**. Files that are already live do not count toward it.
+- The one-pending-migration limit counts migrations **newer than that baseline**. Files the baseline already records do not count toward it. When the platform rebases the build onto the live version, the baseline becomes live's, so migrations that earlier builds deployed only to the draft are pending again.
 - The stable-signature major in a `.most` header identifies the persistence model: `1` classic, `3` legacy inline `(with migration = ...)`, `4` enhanced migration chain. Once a project reaches `4` it never goes back (see [EM is one-way](#em-is-one-way)).
 
 ## Diagnostics you may hit
@@ -69,7 +69,8 @@ Write failures on a migration file are not a tooling bug — see the next sectio
 On platforms that freeze deployed migrations, each one is made read-only after a successful deploy and write tools reject it by its mode bits.
 
 - **Do not** `chmod` it, delete it, rename it, or route around the write failure. The freeze encodes a runtime invariant, not a policy preference.
-- A migration that is still **pending** (not yet applied) is not frozen: edit that one rather than adding a second file for the same change.
+- A migration that is still **pending** (not yet applied) is not frozen: edit that one rather than adding a second file for the same change. On these platforms, a file you can write to is pending.
+- When several files are pending, merge them into the newest one and delete the others.
 - If the change you need belongs conceptually in a frozen migration, express it as a new migration that transforms the current state into the shape you want. History is append-only.
 
 ## Converted (legacy → enhanced) projects
@@ -87,7 +88,7 @@ A project can also inherit such a chain without having been converted itself —
 
 Where a hosting platform owns the mops migrations config — the `[canisters.<name>.migrations]` section, its `chain` path, and `check-limit` — you cannot add, remove, or alter it, and the tooling will reject attempts.
 
-- **Never raise or drop `check-limit` to clear a "too many pending migrations" error.** The fix is always to fold the extra changes into a single pending migration. Every file the error lists has not been applied yet, so any of them can be edited.
+- **Never raise or drop `check-limit` to clear a "too many pending migrations" error.** The fix is always to fold every change into the latest pending migration, which the error names, and delete the other pending files. Every file the error lists has not been applied yet, so you can edit or delete any of them.
 - **The chain directory is whatever `chain = ...` says.** It is normally `src/backend/migrations`, but a project imported under a non-default canister name can differ. Read the mops config rather than assuming the path.
 - If the migrations section appears to be missing from a project that has a chain, do not re-add it yourself; report the inconsistency.
 
@@ -127,7 +128,7 @@ Initialization belongs in exactly two places:
 
 ## When you cannot resolve it
 
-Do not create room to proceed by relaxing protected configuration, deleting or renaming history, or rewriting a frozen file. Those turn a build failure into data loss. If the chain and the deployed signature genuinely disagree in a way none of the above explains, stop and report the mismatch: which fields the checker names, what the latest migration's `NewActor` declares, and what `main.mo` declares.
+Do not create room to proceed by relaxing protected configuration, deleting or renaming applied migrations, or rewriting a frozen file. Those turn a build failure into data loss. If the chain and the deployed signature genuinely disagree in a way none of the above explains, stop and report the mismatch: which fields the checker names, what the latest migration's `NewActor` declares, and what `main.mo` declares.
 
 ## Related skills
 
