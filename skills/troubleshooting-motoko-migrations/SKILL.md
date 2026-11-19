@@ -6,7 +6,7 @@ description: >-
   a project converted from legacy persistence, or a request to remove the
   chain. Load only when the rules in migrating-motoko-actors do not explain what
   you are seeing.
-version: 0.1.7
+version: 0.1.8
 compatibility:
   toolchain:
     moc: ">=1.11.2"
@@ -44,7 +44,7 @@ Two consequences drive most of the rules in this skill:
 `mops check` validates your chain against the **deployed** canister's stable signature (its `.most` snapshot), not against local git history. So:
 
 - Diagnostics can name fields that are no longer anywhere in your source — they come from the deployed version.
-- The one-pending-migration limit counts migrations **newer than that baseline**. Files the baseline already records do not count toward it. When the platform rebases the build onto the live version, the baseline becomes live's, so migrations that earlier builds deployed only to the draft are pending again.
+- The one-pending-migration limit counts migrations **newer than that baseline**. Files the baseline already records do not count toward it.
 - The stable-signature major in a `.most` header identifies the persistence model: `1` classic, `3` legacy inline `(with migration = ...)`, `4` enhanced migration chain. Once a project reaches `4` it never goes back (see [EM is one-way](#em-is-one-way)).
 
 ## Diagnostics you may hit
@@ -69,8 +69,7 @@ Write failures on a migration file are not a tooling bug — see the next sectio
 On platforms that freeze deployed migrations, each one is made read-only after a successful deploy and write tools reject it by its mode bits.
 
 - **Do not** `chmod` it, delete it, rename it, or route around the write failure. The freeze encodes a runtime invariant, not a policy preference.
-- A migration that is still **pending** (not yet applied) is not frozen: edit that one rather than adding a second file for the same change. On these platforms, a file you can write to is pending.
-- When several files are pending, merge them into the newest one and delete the others.
+- A migration that is still **pending** (not yet applied) is not frozen: edit that one rather than adding a second file for the same change.
 - If the change you need belongs conceptually in a frozen migration, express it as a new migration that transforms the current state into the shape you want. History is append-only.
 
 ## Converted (legacy → enhanced) projects
