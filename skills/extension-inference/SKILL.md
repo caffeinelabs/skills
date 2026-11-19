@@ -14,7 +14,7 @@ description: >-
   BEFORE writing any code that talks to an LLM host. Use `extension-openai`
   only when the spec explicitly requires a user- or admin-pasted `sk-...`
   key against `api.openai.com`.
-version: 0.2.3
+version: 0.2.4
 compatibility:
   mops:
     caffeineai-inference-client: "~0.4.0"
@@ -61,7 +61,7 @@ key-settings page, or a model picker.
 - An app can use both, one per feature.
 
 Never mint keys for anonymous callers: a key leaves the canister, so anyone
-could spend the app's credits with it. Check the caller in the mint method,
+could spend the app's balance with it. Check the caller in the mint method,
 with the app's own access rule.
 
 - Each backend chat method runs the access rule the spec gives its feature.
