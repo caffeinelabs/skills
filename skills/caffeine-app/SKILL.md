@@ -1,7 +1,7 @@
 ---
 name: caffeine-app
 description: "Scaffold and build a complete Caffeine app (caffeine.ai) from scratch — the project layout, the caffeine.toml workspace + canister manifests, the mops.toml for the single Motoko `backend` canister, the React/Vite frontend, and the caffeine CLI build loop (auth login, doctor, install, check --fix, preview --build). Use whenever the user wants to create, scaffold, set up, or build a Caffeine app or a caffeine.ai project, asks about caffeine.toml or mops.toml structure, or needs the caffeine CLI workflow — even if they do not say the words 'from scratch'. Always pair it with the `writing-motoko` skill for the backend code. Do NOT use it for Motoko language syntax or compiler errors (use the `writing-motoko` skill), and do NOT use it for generic Internet Computer / dfx / icp deployment (use the `icp-cli` skill)."
-version: 0.1.3
+version: 0.1.4
 compatibility:
   toolchain:
     mops: "3.x"
@@ -298,12 +298,12 @@ Notes:
   };
   ```
 
-  `check-limit = 1` allows **one pending (not yet deployed) migration**. Against the seeded
-  empty baseline, `00000000_000000.mo` is itself pending, so until the first deploy you add
-  new stable fields by editing that file, not by adding a second one; a second file fails
+  `check-limit = 1` allows **one pending migration** (one the deployed baseline does not
+  record yet). Against the seeded empty baseline, `00000000_000000.mo` is itself pending, so
+  until the first deploy you add new stable fields by editing that file, not by adding a second one; a second file fails
   `caffeine check` with `too many pending migrations for check-limit=1`. Never edit,
-  rename, or delete a migration after it is deployed. The rules for writing migrations
-  are in the `migrating-motoko-actors` skill:
+  rename, or delete a migration the deployed baseline already records. The rules for
+  writing migrations are in the `migrating-motoko-actors` skill:
   <https://github.com/caffeinelabs/skills/tree/main/skills/migrating-motoko-actors>.
 - **`core`** is the `mo:core` standard library. Use `mo:core`, never the deprecated
   `mo:base` — see the `writing-motoko` skill. **`caffeineai-oql`** provides the `Expose` mixin the
@@ -600,8 +600,10 @@ ordinary backend method.
     `[project] id` (or pass `--project-id <id>`), then preview. `caffeine build` alone
     needs no id and is enough to verify the app compiles.
 13. **`too many pending migrations for check-limit=1`.** Only one migration can be pending
-    at a time, and on a never-deployed project `00000000_000000.mo` already is. Fold the
-    new state into that pending file instead of adding another.
+    at a time, and on a never-deployed project `00000000_000000.mo` already is. Fold all
+    changes into the latest pending file, which the error names, and delete the other
+    pending files. Nothing is applied yet, so this is safe even when it removes
+    `00000000_000000.mo`.
 14. **`include-authorization` lint error, or `M0169` "stable variable `accessControlState`
     … cannot be implicitly discarded".** `main.mo` dropped `MixinAuthorization` or its
     `accessControlState` field while the package and the first migration still provide
