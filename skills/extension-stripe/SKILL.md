@@ -4,7 +4,7 @@ description: >-
   Payment support based on Stripe, supporting credit cards and debit cards.
   Checkout and session status use HTTP outcalls. For inbound Stripe webhooks
   (POST to the canister), also load extension-http-endpoints.
-version: 1.0.4
+version: 1.0.5
 compatibility:
   mops:
     caffeineai-stripe: "~1.0.1"
