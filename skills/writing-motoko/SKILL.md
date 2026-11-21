@@ -3,7 +3,7 @@ name: writing-motoko
 description: >-
   Motoko language reference, architecture patterns, and dependency tooling
   (mops). Load when writing or modifying backend .mo files.
-version: 0.2.15
+version: 0.2.16
 compatibility:
   toolchain:
     moc: ">=1.11.2"
@@ -39,7 +39,7 @@ Motoko is an under-represented language for the Internet Computer Protocol, so y
 
 - `mo:core` library version 2.6.0+ (compiler `moc` 1.11.2+)
 - Contextual dot notation -- `list.add(item)`, `map.get(key)`
-- An import of the key type's module in every file that operates on a `Map`/`Set` -- the implicit `compare` is resolved from the imported module (`import Nat "mo:core/Nat"` for a `Map.Map<Nat, _>`), never from the type alone. A missing key-module import is the usual cause of M0230; a record or variant key needs its own module with a `compare` (see Implicit Parameters)
+- An import of the key type's module in every file that operates on a `Map`/`Set` -- the implicit `compare` is resolved from the imported module (`import Nat "mo:core/Nat"` for a `Map.Map<Nat, _>`), never from the type alone (unless the project compiles with `--implicit-package=core`, which resolves `mo:core` modules such as `Nat` and `Text` without an import). Without that flag, a missing key-module import is the usual cause of M0230; with it, look for a record or variant key type with no `compare` in its own module, or a key type from a package other than `core` (see Implicit Parameters)
 - Null coalesce `??`, spaced on both sides, for unwrap-or-default and unwrap-or-trap (`opt ?? default`, `opt ?? Runtime.trap(...)`) -- prefer over a two-arm `switch` on `?T` (requires `moc >= 1.7.0`)
 - Plain `break` / `continue` to exit or skip a loop iteration -- they work inside `for`, `while`, and `loop` just like in other languages
 - Enhanced orthogonal persistence (state persists without `stable` keyword)
@@ -272,7 +272,7 @@ let map = Map.empty<Nat, Text>();
 map.add(5, "hello"); // compare resolved from the imported Nat
 ```
 
-Without `import Nat`, the same code fails — the type is known, but there is no module to take `compare` from:
+Without `import Nat`, the same code fails (unless the project compiles with `--implicit-package=core`) — the type is known, but there is no module to take `compare` from:
 
 ```text
 type error [M0230], Cannot determine implicit argument `compare` of type (Nat, Nat) -> Order
@@ -989,7 +989,7 @@ Attaching cycles to an inter-canister call (`await (with cycles = ...) <call>`) 
 | `M0074` / `M0081` / `M0101` inconsistent types         | Array elements or branches with nothing in common | Make them agree, or annotate `: Any`  |
 | `M0060` operator not defined for `{#tag : T}`          | Unparenthesized variant tag  | `#tag(x)`, never `#tag x`                   |
 | `M0060` operator not defined, on `==`                  | `==` on a record with a `var` field (not shared) | Use an `equal` function instead |
-| `M0230` cannot determine implicit argument `compare`   | Key type's module not in scope | Usually a missing import: `import` the key type's module (`Nat`, `Text`, …) in that file. For a record/variant key, add `compare` to the type's own module |
+| `M0230` cannot determine implicit argument `compare`   | Key type's module not in scope | Without `--implicit-package=core`, usually a missing import: `import` the key type's module (`Nat`, `Text`, …) in that file. With that flag, `core` types resolve without an import, so check record/variant key types (add `compare` to the type's own module) and key types from other packages (import their module) |
 | `M0070` expected object type, produces `Nat`           | Receiver `.equal`/`.compare` on a number | Use `==` or `Nat.equal(a, b)`   |
 | `M0096` actor cannot produce expected type `()`        | Declaration after the actor  | The actor must be the last declaration in the file |
 | `field compare does not exist` on Time                 | No Time.compare              | Use `Int.compare`                           |
