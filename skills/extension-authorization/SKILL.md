@@ -1,7 +1,7 @@
 ---
 name: extension-authorization
 description: Authorization system with role-based access control. Must-have for all apps that manage personal or access-restricted data.
-version: 1.4.1
+version: 1.4.2
 compatibility:
   mops:
     caffeineai-authorization: "~1.0.0"
@@ -45,13 +45,13 @@ module {
 
 Initialization is handled internally by `MixinAuthorization` -- do not call `initialize` directly. The first authenticated user to log in automatically becomes admin; no token or secret is required.
 
-IMPORTANT: The `include MixinAuthorization(accessControlState)` line MUST be placed in `main.mo`, not in a custom mixin file.
+IMPORTANT: The `include MixinAuthorization(accessControlState, null)` line MUST be placed in `main.mo`, not in a custom mixin file.
 
 ## Opting out / custom authentication
 
-If the user asks to replace this authorization system with custom authentication (for example username/password auth, no Internet Identity, or no `MixinAuthorization`), remove the `caffeineai-authorization` mops package from the project. This is the only supported way to remove the `include-authorization` lint requirement, because that lint rule is shipped by the package. Do not add suppression comments or leave the package installed while omitting `include MixinAuthorization(accessControlState)`.
+If the user asks to replace this authorization system with custom authentication (for example username/password auth, no Internet Identity, or no `MixinAuthorization`), remove the `caffeineai-authorization` mops package from the project. This is the only supported way to remove the `include-authorization` lint requirement, because that lint rule is shipped by the package. Do not add suppression comments or leave the package installed while omitting `include MixinAuthorization(accessControlState, null)`.
 
-When removing the package, also remove all `mo:caffeineai-authorization/*` imports, the `accessControlState` initialization, `include MixinAuthorization(accessControlState)`, and any `AccessControl` guard calls that belonged to this component. Replace them with the custom authentication and authorization checks requested by the user.
+When removing the package, also remove all `mo:caffeineai-authorization/*` imports, the `accessControlState` initialization, `include MixinAuthorization(accessControlState, null)`, and any `AccessControl` guard calls that belonged to this component. Replace them with the custom authentication and authorization checks requested by the user.
 
 ## Setup in main.mo
 
@@ -357,6 +357,7 @@ export default function LoginButton() {
 
   return (
     <button
+      type="button"
       onClick={handleAuth}
       disabled={isInitializing || isLoggingIn}
       className={`px-6 py-2 rounded-full transition-colors font-medium ${
@@ -375,14 +376,18 @@ The `login()` and `clear()` functions are fire-and-forget (they don't return pro
 
 When the app calls for Google or Microsoft sign-in or company/workspace SSO, use the same hook with options: `login({ provider: 'google' })`, `login({ provider: 'microsoft' })`, or `login({ ssoDomain: 'acme.com' })`. All variants produce the same identity and session behavior; see the `extension-core-infrastructure` skill for the full sign-in UI pattern.
 
+`InternetIdentityProvider` and `QueryClientProvider` already wrap `<App />` in the template's `src/frontend/src/main.tsx`. Don't add them again.
+
 Gate authenticated UI on `isAuthenticated` (covers both fresh login and restored sessions on page reload):
 ```typescript
 {isAuthenticated ? (
-  <AuthenticatedApp />
+  <SignedInHome />
 ) : (
   <LoginScreen />
 )}
 ```
+
+If the project has the sign-in scaffold `src/frontend/src/components/InternetIdentity.tsx`, use its `AuthenticatedApp`, `RequireSignIn`, and `SignInButton` exports instead, and don't declare components with those names. For Google, Microsoft, or SSO sign-in, render your own buttons that call `login({ provider })` or `login({ ssoDomain })` plus a plain `login()` fallback, and pass them as `RequireSignIn`'s `fallback`. The `extension-core-infrastructure` skill describes the scaffold.
 
 ## Comparing Current User with Data Author
 
