@@ -4,7 +4,7 @@ description: >-
   Motoko actor migration and schema evolution with the enhanced migration
   chain (migrations/). Load when upgrading canisters or changing actor
   state shape.
-version: 0.2.10
+version: 0.2.11
 compatibility:
   toolchain:
     moc: ">=1.11.2"
@@ -52,6 +52,8 @@ The runtime allows the upgrade if the new program is compatible with the old. No
 > **Do NOT add a migration file for changes in the implicit list below.** Every migration file replays forever on fresh install; adding a no-op file bloats the chain, slows fresh installs, and creates a frozen artifact you can never delete. A long enough chain becomes undeployable in a way no retry recovers, and `mops check` will not warn you. **Fewer migrations are always better.**
 >
 > **Identity body = no migration.** If your `(old : OldActor) : NewActor` body would just be `old` (or rebuild the same record field-by-field with no transformation), the change is stable-compatible — delete the file.
+>
+> **Exception:** never delete the first migration of a project converted from legacy persistence. Its `OldActor` is non-empty and its body is `old`, but it is the base of the chain: deleting it removes the migration chain and undoes the conversion.
 
 **Allowed without explicit migration (typical compatible changes):**
 
