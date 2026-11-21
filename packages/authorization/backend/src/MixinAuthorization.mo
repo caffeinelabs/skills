@@ -1,7 +1,7 @@
 import AccessControl "./access-control";
 import Challenges "mo:identity-attributes/Internal/Challenges";
-import Verify     "mo:identity-attributes/Internal/Verify";
-import Result     "mo:core/Result";
+import Verify "mo:identity-attributes/Internal/Verify";
+import Result "mo:core/Result";
 
 mixin (
   accessControlState : AccessControl.AccessControlState,

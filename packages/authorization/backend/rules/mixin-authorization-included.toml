@@ -1,5 +1,5 @@
 name = "include-authorization"
-description = "Include the authorization mixin with `include MixinAuthorization(accessControlState);`"
+description = "Include the authorization mixin with `include MixinAuthorization(accessControlState, null);`"
 query = """
 (source_file (obj_dec "actor" (obj_body))) @error
 (source_file (class_dec "actor" (obj_body))) @error

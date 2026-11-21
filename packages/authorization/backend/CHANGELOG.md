@@ -1,5 +1,9 @@
 
 
+### Bug Fixes
+
+- template color tokens and stale auth and migration skill guidance (#399)
+
 ### Features
 
 - **motoko**: prefer null coalesce ?? over nullable switch (#188)
