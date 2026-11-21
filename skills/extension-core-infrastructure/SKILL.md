@@ -1,7 +1,7 @@
 ---
 name: extension-core-infrastructure
 description: Core infrastructure providing backend connection configuration, storage client, and React app entry point.
-version: 2.0.0
+version: 2.0.1
 compatibility:
   npm:
     "@caffeineai/core-infrastructure": "^2.0.0"
@@ -37,24 +37,17 @@ The core-infrastructure frontend package (`@caffeineai/core-infrastructure`) is 
 
 ## App Entry Point
 
-Wrap the app with `InternetIdentityProvider` and `QueryClientProvider`:
+The template's `src/frontend/src/main.tsx` already wraps `<App />` in `QueryClientProvider` and `InternetIdentityProvider`. Don't wrap the app in either provider again, in `App.tsx` or anywhere else: a second `InternetIdentityProvider` starts an auth state that the rest of the app doesn't see.
 
-```typescript
-import { InternetIdentityProvider } from "@caffeineai/core-infrastructure";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import ReactDOM from "react-dom/client";
-import App from "./App";
+### Sign-in scaffold
 
-const queryClient = new QueryClient();
+Some projects also contain `src/frontend/src/components/InternetIdentity.tsx`, a ready-made sign-in scaffold. When it exists, use it instead of writing your own gate. It exports:
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
-  <QueryClientProvider client={queryClient}>
-    <InternetIdentityProvider>
-      <App />
-    </InternetIdentityProvider>
-  </QueryClientProvider>,
-);
-```
+- `AuthenticatedApp`: a full-page gate. It requires `children`, accepts optional `title`, `description`, `className`, and `buttonClassName`, and renders a sign-in panel until the user signs in.
+- `RequireSignIn`: the gate without the panel. It requires `children` and accepts an optional `fallback` to render while signed out (default: `SignInButton`). It gives each signed-in principal its own query cache, so mount private queries inside it.
+- `SignInButton`: a plain Internet Identity sign-in and sign-out button.
+
+Don't declare another component named `AuthenticatedApp`, `RequireSignIn`, or `SignInButton`. The scaffold's button only offers plain Internet Identity sign-in. For Google, Microsoft, or company SSO, render your own buttons that call `login({ provider })` or `login({ ssoDomain })`, plus a plain `login()` fallback (see [Sign-in variants](#sign-in-variants-plain-ii-google-microsoft-workspace-sso)), and pass them as `RequireSignIn`'s `fallback`.
 
 ## `useInternetIdentity()` — Authentication Hook
 
@@ -98,14 +91,14 @@ Gate authenticated UI on `isAuthenticated`:
 ```typescript
 const { isAuthenticated } = useInternetIdentity();
 
-{isAuthenticated ? <AuthenticatedApp /> : <LoginScreen />}
+{isAuthenticated ? <SignedInHome /> : <LoginScreen />}
 ```
 
 Disable the login button while initializing or logging in:
 ```typescript
 const { login, isInitializing, isLoggingIn } = useInternetIdentity();
 
-<button onClick={() => login()} disabled={isInitializing || isLoggingIn}>
+<button type="button" onClick={() => login()} disabled={isInitializing || isLoggingIn}>
   Sign in
 </button>
 ```
@@ -147,13 +140,13 @@ function SignInOptions() {
 
   return (
     <div>
-      <button onClick={() => login({ provider: "google" })} disabled={disabled}>
+      <button type="button" onClick={() => login({ provider: "google" })} disabled={disabled}>
         Continue with Google
       </button>
-      <button onClick={() => login({ provider: "microsoft" })} disabled={disabled}>
+      <button type="button" onClick={() => login({ provider: "microsoft" })} disabled={disabled}>
         Continue with Microsoft
       </button>
-      <button onClick={() => login()} disabled={disabled}>
+      <button type="button" onClick={() => login()} disabled={disabled}>
         Sign in with Internet Identity
       </button>
       {/* Company SSO: deliberately not a <form> — login must run inside the
@@ -164,6 +157,7 @@ function SignInOptions() {
         placeholder="yourcompany.com"
       />
       <button
+        type="button"
         onClick={() => login({ ssoDomain: ssoDomain.trim() })}
         disabled={disabled || !ssoDomain.trim()}
       >
