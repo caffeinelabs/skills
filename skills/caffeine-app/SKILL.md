@@ -1,7 +1,7 @@
 ---
 name: caffeine-app
 description: "Scaffold and build a complete Caffeine app (caffeine.ai) from scratch — the project layout, the caffeine.toml workspace + canister manifests, the mops.toml for the single Motoko `backend` canister, the React/Vite frontend, and the caffeine CLI build loop (auth login, doctor, install, check --fix, preview --build). Use whenever the user wants to create, scaffold, set up, or build a Caffeine app or a caffeine.ai project, asks about caffeine.toml or mops.toml structure, or needs the caffeine CLI workflow — even if they do not say the words 'from scratch'. Always pair it with the `writing-motoko` skill for the backend code. Do NOT use it for Motoko language syntax or compiler errors (use the `writing-motoko` skill), and do NOT use it for generic Internet Computer / dfx / icp deployment (use the `icp-cli` skill)."
-version: 0.1.4
+version: 0.1.5
 compatibility:
   toolchain:
     mops: "3.x"
@@ -482,8 +482,8 @@ caffeine build
 #    backend `mops check --fix`, frontend `pnpm typecheck` + `pnpm fix`).
 caffeine check --fix
 
-# 5. Upload a built draft (needs a cloud project id). For a brand-new app, create the
-#    cloud project once to obtain an id, then preview:
+# 5. Upload the source as a draft; Caffeine builds and deploys it (needs a cloud project
+#    id). For a brand-new app, create the cloud project once to obtain an id, then preview:
 caffeine projects create                 # reports a new project id
 #    (optional) place it on a specific cloud instead of the account default; the
 #    choices come from `caffeine clouds list`:
@@ -492,9 +492,11 @@ caffeine projects create                 # reports a new project id
 caffeine preview --build --project-id <id>
 ```
 
-`caffeine preview` refuses to upload when sources changed since the last `caffeine build`;
-`--build` rebuilds first. It also checks the `mops.toml` structure described above and
-needs `src/backend/dist/backend.wasm` and `src/frontend/dist/index.html`. Do not
+`caffeine preview` uploads the project source, never local build output: Caffeine builds
+the code itself. `--build` runs `caffeine build` first, so compile errors show up before
+the upload. Preview checks the `mops.toml` structure described above and refuses while
+another deployment of the project is running. If Caffeine's build fails, the build output
+is in the project chat (`caffeine chat open`). Do not
 `caffeine projects clone` a project you just created: it has no code yet, so the clone
 fails with `No committed draft found`.
 
