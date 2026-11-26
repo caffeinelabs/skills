@@ -6,7 +6,7 @@ description: >-
   a project converted from legacy persistence, or a request to remove the
   chain. Load only when the rules in migrating-motoko-actors do not explain what
   you are seeing.
-version: 0.1.8
+version: 0.1.9
 compatibility:
   toolchain:
     moc: ">=1.11.2"
@@ -118,7 +118,7 @@ Nothing in the toolchain caps chain length, so the one-migration-per-version dis
 
 The actor body must not do work. Stable fields are typed declarations; their values come from the chain.
 
-Older toolchains rejected any effectful actor body outright, and that compiler check has since been relaxed for transient bindings — but the rule stands regardless of whether the compiler complains, because **top-level seeding re-runs on every upgrade** and would overwrite live state.
+Older toolchains rejected any effectful actor body outright, and that compiler check has since been relaxed for transient bindings — but the rule stands regardless of whether the compiler complains, because **top-level seeding re-runs on every upgrade** and would overwrite live state. Starting timers is the exception: upgrades cancel them, so recurring timers belong in the actor body (see `writing-motoko`).
 
 Initialization belongs in exactly two places:
 
