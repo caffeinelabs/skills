@@ -601,7 +601,7 @@ actor {
   };
 
   // Upgrades cancel all timers; this line runs again on every upgrade and restarts it
-  ignore Timer.recurringTimer<system>(#seconds(3600), cleanup);
+  ignore Timer.recurringTimer<system>(#hours(1), cleanup);
 
   public query func getLogs() : async [(Int, Text)] {
     logs.toArray();
