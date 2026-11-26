@@ -11,7 +11,7 @@ description: >-
   Load this skill whenever the user, spec, or any prior task mentions X or
   Twitter, posting a tweet, "tweet this", sharing to X, X mentions, an X
   timeline or X search — and BEFORE writing any code that touches an X endpoint.
-version: 0.5.0
+version: 0.5.1
 caffeineai-subscription: [none]
 compatibility:
   mops:
@@ -300,7 +300,8 @@ module {
     // Verify `state`, then POST https://api.x.com/2/oauth2/token
     //   (application/x-www-form-urlencoded): grant_type=authorization_code
     //   & code & redirect_uri & client_id & code_verifier (persisted for `caller`).
-    // Return XAuth with expires_at = Time.now() + expires_in * 1_000_000_000.
+    // Return XAuth with expires_at =
+    //   (Time.now() + Time.toNanoseconds(#seconds(expires_in))).toNat().toNat64().
     let _ = clientId;
     let _ = code;
     let _ = redirectUri;
