@@ -12,7 +12,7 @@ description: >-
   or any prior task mentions scheduling, calendar events, appointments,
   meetings, "add to calendar", or any equivalent phrasing — and BEFORE
   writing any code that touches a Google endpoint.
-version: 0.4.1
+version: 0.4.2
 caffeineai-subscription: [none]
 compatibility:
   mops:
@@ -812,7 +812,8 @@ build the candidate grid with plain integer arithmetic, filter with
 `LibCalendar.nanosToRfc3339` so they are ready to display and to pass straight to
 `createEvent` (whose `startDateTime` / `endDateTime` are RFC 3339 text). The grid
 below is a fixed UTC window; real working-hours / timezone policy is app-specific,
-but the parse → integer-math → format shape is the same:
+but the parse → integer-math → format shape is the same. It needs `Array` and
+`Time` from `mo:core`:
 
 ```motoko
 func availableSlots(
@@ -822,7 +823,7 @@ func availableSlots(
   slotCount : Nat,      // number of consecutive slots to consider
   slotMinutes : Nat,    // slot length, e.g. 30
 ) : async* [(Text, Text)] {
-  let slotNs = slotMinutes * 60 * 1_000_000_000;
+  let slotNs = Time.toNanoseconds(#minutes(slotMinutes));
   let start0 = LibCalendar.rfc3339ToNanos(windowStart);
   // Candidate grid of [s, s+slot) instants.
   let candidates = Array.tabulate<(Int, Int)>(slotCount, func(i) {
