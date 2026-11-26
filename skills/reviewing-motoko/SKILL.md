@@ -4,7 +4,7 @@ description: >-
   Design review for Motoko backends — invariants encoded in types, enhanced
   migration state discipline, and multi-file structure. Load when reviewing,
   auditing, or refactoring existing .mo files rather than writing new ones.
-version: 0.1.4
+version: 0.1.5
 compatibility:
   toolchain:
     moc: ">=1.11.2"
@@ -149,6 +149,10 @@ Every bare `let`/`var` at the top of a `mixin` is implicitly stable and traps at
 - A stable field in `main.mo` that no migration in the chain supplies (M0254 / M0267).
 
 An identity migration body is a **Warning** — the change was stable-compatible, so delete the file. [Full table](references/state-and-persistence.md#migration-hygiene).
+
+### S6. Recurring timer the actor body does not restart — **Blocker**
+
+Upgrades cancel every timer, so a recurring timer started only from a public method silently stops at the next deploy, and a stable timer ID kept to cancel it then names a dead timer or an unrelated new one, because IDs start over. Start it in the actor body of `main.mo`. See `writing-motoko`.
 
 ## Structure
 
