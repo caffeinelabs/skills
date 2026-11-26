@@ -3,7 +3,7 @@ name: writing-motoko
 description: >-
   Motoko language reference, architecture patterns, and dependency tooling
   (mops). Load when writing or modifying backend .mo files.
-version: 0.2.16
+version: 0.2.17
 compatibility:
   toolchain:
     moc: ">=1.11.2"
@@ -482,7 +482,7 @@ Add `<In, Out>` only when the compiler actually reports M0098; adding it when in
 The one exception is a callback that must return `async`. There `: async ()` is load-bearing on moc 1 — it is what makes the body async, and there is no unannotated form (`func() = async { ... }` does not work either). Without it moc 1 infers `() -> ()` and the call fails with M0096. moc 2 infers the async callback, but keep the annotation so the code builds on both:
 
 ```motoko
-Timer.recurringTimer<system>(#seconds(3600), func() : async () { cleanup() });
+Timer.recurringTimer<system>(#seconds(3600), func() : async () { pruneLogs() });
 ```
 
 ```motoko
@@ -886,6 +886,16 @@ transient let cache = Map.empty<Text, User>();   // derived; rebuilt after each 
 ```
 
 **Static** (what a module `let` field allows) = literals, variant tags (`#x`), options (`?x`), tuples, immutable arrays and records, function values, and imported/variable names — plus `.field` projection over those. **Non-static** = function calls, operators (`+`, `==`, `#`), control flow (`if`/`switch`/loops), and array indexing (`a[i]`).
+
+### Timers
+
+Upgrades cancel every timer, and every install and upgrade runs the actor body again. Start recurring timers in the actor body of `main.mo`, not from a public method and not in a mixin body, which fails with M0197 ([full example](examples.md#timer-example)):
+
+```motoko
+ignore Timer.recurringTimer<system>(#seconds(3600), cleanup);
+```
+
+A timer set at runtime, such as a reminder a call schedules, is lost on the next upgrade, and timer IDs start over, so never keep one in stable state. Each upgrade also restarts a recurring timer's interval. For work that must still happen, or a long interval, keep the due time in stable state and set the timer again from the actor body.
 
 ## Numeric Conversion Hygiene
 
